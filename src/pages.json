@@ -1,0 +1,283 @@
+{
+	"pages": [
+		{
+			"path": "pages/diary/index",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationBarTitleText": "日记",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"onReachBottomDistance": 50,
+				"app-plus": {
+					"titleNView": false,
+					"pullToRefresh": {
+						"support": true,
+						"color": "#668166",
+						"style": "default"
+					}
+				}
+			}
+		},
+		{
+			"path": "pages/diary/edit",
+			"style": {
+				"navigationBarTitleText": "写日记",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/todo/list",
+			"style": {
+				"navigationBarTitleText": "我的待办",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/todo/edit",
+			"style": {
+				"navigationBarTitleText": "待办",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/cards",
+			"style": {
+				"navigationBarTitleText": "菇卡",
+				"navigationStyle": "custom",
+				"app-plus": {
+					"titleNView": false,
+					"pullToRefresh": {
+						"support": true,
+						"color": "#668166",
+						"style": "default"
+					}
+				}
+			}
+		},
+		{
+			"path": "pages/shroom/discover",
+			"style": {
+				"navigationBarTitleText": "发现",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true,
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/me",
+			"style": {
+				"navigationBarTitleText": "我的",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/friends",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationBarTitleText": "我的人脉",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"onReachBottomDistance": 80,
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/friend-edit",
+			"style": {
+				"navigationBarTitleText": "关系档案",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/life-os",
+			"style": {
+				"navigationBarTitleText": "人生 OS",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/compound",
+			"style": {
+				"navigationBarTitleText": "复利系统",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/reminders",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationBarTitleText": "关系提醒",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/export",
+			"style": {
+				"navigationBarTitleText": "数据导出",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/ai-analysis",
+			"style": {
+				"navigationBarTitleText": "日记观察",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/observers",
+			"style": {
+				"navigationBarTitleText": "我的观察席",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/memory",
+			"style": {
+				"navigationBarTitleText": "回看",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/common/cards/detail",
+			"style": {
+				"navigationBarTitleText": "菇卡详情",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/common/cards/edit",
+			"style": {
+				"navigationBarTitleText": "编辑菇卡",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/common/cards/select",
+			"style": {
+				"navigationBarTitleText": "选择菇卡",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/common/cards/practice",
+			"style": {
+				"navigationBarTitleText": "记录练习",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/common/diary/search",
+			"style": {
+				"enablePullDownRefresh": true,
+				"navigationBarTitleText": "搜索日记",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"onReachBottomDistance": 80,
+				"app-plus": {
+					"titleNView": false,
+					"pullToRefresh": {
+						"support": true,
+						"color": "#668166",
+						"style": "default"
+					}
+				}
+			}
+		},
+		{
+			"path": "pages/public/login",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom",
+				"app-plus": {
+					"titleNView": false,
+					"animationType": "slide-in-bottom"
+				}
+			}
+		},
+		{
+			"path": "pages/public/password",
+			"style": {
+				"navigationBarTitleText": "找回密码",
+				"navigationStyle": "custom",
+				"app-plus": {
+					"titleNView": false,
+					"animationType": "slide-in-bottom"
+				}
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "菇日记｜Shroom Diary",
+		"navigationBarBackgroundColor": "#ffffff",
+		"backgroundColor": "#f1f8e9"
+	},
+	"tabBar": {
+		"color": "#9aa39a",
+		"selectedColor": "#172019",
+		"borderStyle": "white",
+		"backgroundColor": "#ffffff",
+		"list": [
+			{
+				"pagePath": "pages/diary/index",
+				"iconPath": "static/tab-home.png",
+				"selectedIconPath": "static/tab-home-black.png",
+				"text": "日记"
+			},
+			{
+				"pagePath": "pages/shroom/cards",
+				"iconPath": "static/tab-level.png",
+				"selectedIconPath": "static/tab-level-black.png",
+				"text": "菇卡"
+			},
+			{
+				"pagePath": "pages/shroom/discover",
+				"iconPath": "static/tab-spot.png",
+				"selectedIconPath": "static/tab-spot-black.png",
+				"text": "发现"
+			},
+			{
+				"pagePath": "pages/shroom/me",
+				"iconPath": "static/tab-my.png",
+				"selectedIconPath": "static/tab-my-black.png",
+				"text": "我的"
+			}
+		]
+	}
+}

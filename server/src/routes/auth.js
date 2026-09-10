@@ -1,0 +1,121 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const express = require('express');
+const db = require('../db');
+const config = require('../config');
+const {
+  createAccessToken,
+  createRefreshToken,
+  hashPassword,
+  hashToken,
+  isLegacyPasswordHash,
+  verifyAccessToken,
+  verifyPassword
+} = require('../security');
+const { asyncRoute, fail, ok, text } = require('../http');
+const { ensureDefaultObservers } = require('../observer-store');
+
+const router = express.Router();
+const MOBILE_PATTERN = /^1[3-9]\d{9}$/;
+
+function member(user) {
+  return {
+    id: user.id,
+    mobile: user.mobile,
+    nickname: user.nickname,
+    avatar: user.avatar_url || ''
+  };
+}
+
+async function issueSession(user) {
+  const accessToken = createAccessToken(user.id);
+  const refreshToken = createRefreshToken();
+  const refreshId = crypto.randomUUID();
+  await db.query(
+    `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
+     VALUES ($1, $2, $3, now() + ($4 || ' days')::interval)`,
+    [refreshId, user.id, hashToken(refreshToken), config.refreshTokenDays]
+  );
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: config.accessTokenSeconds,
+    member: member(user)
+  };
+}
+
+router.post('/register', asyncRoute(async (req, res) => {
+  const mobile = text(req.body.mobile, 32);
+  const password = String(req.body.password || '');
+  const nickname = text(req.body.nickname, 80) || `Shroom ${mobile.slice(-4)}`;
+  if (!MOBILE_PATTERN.test(mobile)) return fail(res, 400, '手机号格式不正确');
+  if (password.length < 6 || password.length > 72) return fail(res, 400, '密码需要 6–72 位');
+
+  const existing = await db.query('SELECT id FROM users WHERE mobile = $1', [mobile]);
+  if (existing.rowCount) return fail(res, 400, '这个手机号已经注册');
+
+  const user = await db.transaction(async client => {
+    const result = await client.query(
+      `INSERT INTO users (id, mobile, nickname, password_hash)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, mobile, nickname, avatar_url`,
+      [crypto.randomUUID(), mobile, nickname, hashPassword(password)]
+    );
+    await ensureDefaultObservers(result.rows[0].id, client);
+    return result.rows[0];
+  });
+  return ok(res, member(user), '账号已创建');
+}));
+
+router.post('/login', asyncRoute(async (req, res) => {
+  const mobile = text(req.body.mobile, 32);
+  const password = String(req.body.password || '');
+  const result = await db.query(
+    'SELECT id, mobile, nickname, avatar_url, password_hash FROM users WHERE mobile = $1',
+    [mobile]
+  );
+  const user = result.rows[0];
+  if (!user || !verifyPassword(password, user.password_hash)) {
+    return fail(res, 400, '手机号或密码不正确');
+  }
+  if (isLegacyPasswordHash(user.password_hash)) {
+    await db.query(
+      `UPDATE users SET password_hash = $2, updated_at = now()
+        WHERE id = $1 AND password_hash = $3`,
+      [user.id, hashPassword(password), user.password_hash]
+    );
+  }
+  return ok(res, await issueSession(user), '登录成功');
+}));
+
+router.post('/refresh', asyncRoute(async (req, res) => {
+  const refreshToken = String(req.body.refresh_token || '');
+  if (!refreshToken) return fail(res, 401, '刷新凭证无效');
+  const result = await db.query(
+    `SELECT rt.id AS refresh_id, u.id, u.mobile, u.nickname, u.avatar_url
+       FROM refresh_tokens rt
+       JOIN users u ON u.id = rt.user_id
+      WHERE rt.token_hash = $1 AND rt.revoked_at IS NULL AND rt.expires_at > now()`,
+    [hashToken(refreshToken)]
+  );
+  const user = result.rows[0];
+  if (!user) return fail(res, 401, '刷新凭证已失效');
+  await db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1', [user.refresh_id]);
+  return ok(res, await issueSession(user));
+}));
+
+router.post('/verify', asyncRoute(async (req, res) => {
+  const token = String(req.body.token || req.get('x-api-key') || '');
+  const payload = verifyAccessToken(token);
+  if (!payload) return fail(res, 401, '登录状态已失效');
+  const result = await db.query('SELECT id FROM users WHERE id = $1', [payload.sub]);
+  if (!result.rowCount) return fail(res, 401, '账号不存在');
+  return ok(res, { token: true });
+}));
+
+router.post('/sms-code', (req, res) => fail(res, 400, '短信登录尚未启用，请使用密码登录'));
+router.post('/mobile-login', (req, res) => fail(res, 400, '短信登录尚未启用，请使用密码登录'));
+router.post('/password', (req, res) => fail(res, 400, '短信找回尚未启用，请联系管理员处理'));
+
+module.exports = router;

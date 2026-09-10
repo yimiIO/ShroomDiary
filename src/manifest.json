@@ -1,0 +1,118 @@
+{
+	"name": "菇日记｜Shroom Diary",
+	"appid": "__UNI__E3F11EC",
+	"description": "日记、理解与连接，让每一次记录都更靠近自己。",
+	"versionName": "1.5.0",
+	"versionCode": 1,
+	"transformPx": false,
+	"app-plus": {
+		"nvueCompiler": "uni-app",
+		"usingComponents": true,
+		"compatible": {
+			"ignoreVersion": true
+		},
+		"ios": {
+			"UIUserInterfaceStyle": "Automatic"
+		},
+		"safearea": {
+			"bottom": {
+				"offset": "auto"
+			}
+		},
+		"splashscreen": {
+			"alwaysShowBeforeRender": true,
+			"waiting": true,
+			"autoclose": true,
+			"delay": 0
+		},
+		"modules": {},
+		"distribute": {
+			"android": {
+				"permissions": [
+					"<uses-permission android:name=\"android.permission.INTERNET\"/>",
+					"<uses-permission android:name=\"android.permission.CAMERA\"/>",
+					"<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>",
+					"<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+					"<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>"
+				]
+			},
+			"ios": {
+				"privacyDescription": {
+					"NSPhotoLibraryUsageDescription": "用于从相册选择图片添加到日记",
+					"NSPhotoLibraryAddUsageDescription": "用于保存你主动导出的内容",
+					"NSCameraUsageDescription": "用于拍摄图片添加到日记",
+					"NSMicrophoneUsageDescription": "用于录制语音日记"
+				}
+			},
+			"icons": {
+				"android": {
+					"hdpi": "unpackage/res/icons/72x72.png",
+					"xhdpi": "unpackage/res/icons/96x96.png",
+					"xxhdpi": "unpackage/res/icons/144x144.png",
+					"xxxhdpi": "unpackage/res/icons/192x192.png"
+				},
+				"ios": {
+					"appstore": "unpackage/res/icons/1024x1024.png",
+					"iphone": {
+						"app@2x": "unpackage/res/icons/120x120.png",
+						"app@3x": "unpackage/res/icons/180x180.png"
+					},
+					"ipad": {
+						"app": "unpackage/res/icons/76x76.png",
+						"app@2x": "unpackage/res/icons/152x152.png"
+					}
+				}
+			}
+		},
+		"uniStatistics": {
+			"enable": true
+		}
+	},
+	"mp-weixin": {
+		"usingComponents": true,
+		"appid": "wx7643a6d8e8cda47a",
+		"setting": {
+			"urlCheck": true,
+			"minified": true,
+			"postcss": true,
+			"es6": true,
+			"ignoreDevUnusedFiles": true,
+			"ignoreUploadUnusedFiles": true
+		},
+		"optimization": {
+			"subPackages": true,
+			"treeShaking": {
+				"enable": true
+			}
+		},
+		"uniStatistics": {
+			"enable": true
+		}
+	},
+	"h5": {
+		"router": {
+			"mode": "history"
+		},
+		"async": {
+			"loading": "AsyncLoading",
+			"error": "AsyncError",
+			"delay": 200,
+			"timeout": 10000
+		},
+		"title": "菇日记｜Shroom Diary",
+		"uniStatistics": {
+			"enable": true
+		}
+	},
+	"mp-qq": {
+		"appid": "",
+		"setting": {
+			"minified": true
+		}
+	},
+	"mp-alipay": {},
+	"mp-baidu": {},
+	"mp-toutiao": {
+		"appid": "ttac9cda2133a40a86"
+	}
+}

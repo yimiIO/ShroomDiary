@@ -1,0 +1,43 @@
+.DS_Store
+node_modules/
+unpackage/
+#src/api/params.js
+dist/
+
+# Runtime data and local operator configuration
+server/.env
+server/.env.*
+!server/.env.example
+server/uploads/
+server/public/media/
+server/coverage/
+server/*.log
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+*.db
+
+# One-off migration and deployment artifacts
+docs/media-upload-result-*.json
+server/migrate/*.manifest.json
+server/migrate/*-backup/
+
+# local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.project
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw*

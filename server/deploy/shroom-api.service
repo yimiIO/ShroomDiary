@@ -1,0 +1,29 @@
+[Unit]
+Description=Shroom independent API
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=shroom
+Group=shroom
+WorkingDirectory=/www/wwwroot/shroom/server
+EnvironmentFile=/etc/shroom/shroom.env
+EnvironmentFile=-/etc/shroom/cos.env
+ExecStart=/usr/bin/node /www/wwwroot/shroom/server/src/server.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/www/wwwroot/shroom/shared/uploads
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+CapabilityBoundingSet=
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
