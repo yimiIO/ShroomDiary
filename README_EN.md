@@ -6,6 +6,14 @@ Shroom is an open-source, private-first AI journal for memory, reflection, and l
 
 > The journal preserves reality. AI helps you look back. Interpretation, choice, and disclosure always remain with the user.
 
+## Vision
+
+> Remember without taking over; help without constant interruption.
+
+Shroom's long-term vision is to become an AI companion that grows alongside each person. With privacy and human agency as hard boundaries, it should gradually understand a person's experiences, choices, relationships, open questions, and long-term goals, then offer help, reminders, and fresh perspectives at moments when they are genuinely useful.
+
+Today, deliberate journaling is Shroom's primary memory interface. Over time, Shroom should evolve from intentional capture to low-friction, low-interruption collection of useful signals, and eventually into a companion capable of timely, proactive support. "Ambient" must never mean invisible surveillance: every automatic input must be visible, opt-in, pausable, inspectable, and deletable, while meaningful interpretations and actions remain subject to user confirmation.
+
 ## What Shroom includes
 
 - **Cross-platform journaling** with text, private images, voice recordings, calendar views, archives, search, and paginated history.
