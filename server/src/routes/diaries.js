@@ -11,6 +11,7 @@ const {
   invalidateDiaryDerivatives
 } = require('../memory-store');
 const { enqueueFriendSync, removeDiaryFriendEffects } = require('../friend-sync');
+const { invalidateDiaryInquiryEvidence } = require('../inquiry-store');
 const { asyncRoute, fail, ok, pageParams, requireUser, text, visibility } = require('../http');
 
 const router = express.Router();
@@ -306,6 +307,9 @@ router.put('/update', asyncRoute(async (req, res) => {
       await enqueueDiaryIndex(client, updated.rows[0]);
       await enqueueFriendSync(client, updated.rows[0]);
     }
+    if (contentChanged) {
+      await invalidateDiaryInquiryEvidence(client, req.user.id, current.id, { content });
+    }
     await bumpCorpusRevision(client, req.user.id);
     return updated;
   });
@@ -321,6 +325,7 @@ router.delete('/delete', asyncRoute(async (req, res) => {
       [req.query.id, req.user.id]
     );
     if (!updated.rowCount) return updated;
+    await invalidateDiaryInquiryEvidence(client, req.user.id, req.query.id, { remove: true });
     await removeDiaryFriendEffects(client, req.user.id, req.query.id);
     await invalidateDiaryDerivatives(client, req.user.id, req.query.id, 'diary_deleted');
     await bumpCorpusRevision(client, req.user.id);
@@ -363,6 +368,7 @@ router.patch('/ai-access', asyncRoute(async (req, res) => {
     const current = currentResult.rows[0];
     if (current.ai_allowed === req.body.allowed) return currentResult;
     await invalidateDiaryDerivatives(client, req.user.id, current.id, 'diary_ai_access_changed');
+    await invalidateDiaryInquiryEvidence(client, req.user.id, current.id);
     const updated = await client.query(
       `UPDATE diaries SET ai_allowed = $3, index_epoch = index_epoch + 1, updated_at = now()
        WHERE id = $1 AND user_id = $2

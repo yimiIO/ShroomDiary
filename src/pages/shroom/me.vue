@@ -72,6 +72,14 @@
 							</view>
 							<text class="menu-arrow">›</text>
 						</view>
+						<view class="menu-item" @tap="openInquiries">
+							<view class="menu-icon green">?</view>
+							<view class="menu-copy">
+								<text class="menu-title">未解之问</text>
+								<text class="menu-description">{{ inquiryDescription }}</text>
+							</view>
+							<text class="menu-arrow">›</text>
+						</view>
 						<view class="menu-item" @tap="openCards">
 							<view class="menu-icon yellow">◇</view>
 							<view class="menu-copy">
@@ -148,6 +156,7 @@
 import { diaryStats } from '@/api/diary';
 import { lifeOsConfig } from '@/api/shroom-system';
 import { COMPOUND_OWNER_USER_ID, compoundToday } from '@/api/compound-system';
+import { inquirySummary } from '@/api/inquiry';
 
 export default {
 	data() {
@@ -155,6 +164,7 @@ export default {
 			statusBarHeight: 0,
 			journalStats: null,
 			lifeOs: null,
+			inquiryOverview: null,
 			compoundOverview: null
 		};
 	},
@@ -192,6 +202,12 @@ export default {
 			if (!clauseCount) return `V${this.lifeOs.version} · 等待整理为少量当前原则`;
 			const pending = Number(this.lifeOs.pendingProposalCount || 0) ? ' · 有待确认建议' : '';
 			return `V${this.lifeOs.version} · ${clauseCount} 条当前原则${pending}`;
+		},
+		inquiryDescription() {
+			if (!this.hasLogin) return '把暂时想不明白的事留给时间';
+			if (!this.inquiryOverview || !this.inquiryOverview.openCount) return '留下问题，让日记慢慢提供线索';
+			const due = Number(this.inquiryOverview.reviewDueCount || 0);
+			return `${this.inquiryOverview.openCount} 个正在想${due ? ` · ${due} 个适合再看看` : ''}`;
 		}
 	},
 	onLoad() {
@@ -202,6 +218,7 @@ export default {
 		if (this.hasLogin) {
 			this.loadDiaryStats();
 			this.loadLifeOs();
+			this.loadInquiries();
 			if (this.hasCompoundSystemAccess) this.loadCompoundOverview();
 		}
 	},
@@ -222,6 +239,14 @@ export default {
 				this.lifeOs = null;
 			}
 		},
+		async loadInquiries() {
+			try {
+				const response = await this.$http.get(inquirySummary);
+				this.inquiryOverview = response.data || null;
+			} catch (error) {
+				this.inquiryOverview = null;
+			}
+		},
 		async loadCompoundOverview() {
 			try {
 				const response = await this.$http.get(compoundToday);
@@ -238,6 +263,9 @@ export default {
 		},
 		openCards() {
 			uni.switchTab({ url: '/pages/shroom/cards' });
+		},
+		openInquiries() {
+			uni.navigateTo({ url: '/pages/shroom/inquiries' });
 		},
 		openFriends() {
 			uni.navigateTo({ url: '/pages/shroom/friends' });

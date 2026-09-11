@@ -29,15 +29,15 @@ async function recordAiUsage(context, payload, at = new Date()) {
   const id = crypto.randomUUID();
   await db.query(
     `INSERT INTO ai_usage_events
-      (id, user_id, feature, diary_id, analysis_id, conversation_id, task_id, observer_id,
+      (id, user_id, feature, diary_id, analysis_id, conversation_id, task_id, observer_id, inquiry_id,
        request_label, provider, model, provider_request_id, prompt_tokens, cache_hit_tokens,
        cache_miss_tokens, completion_tokens, total_tokens, cost_usd, cost_cny, price_snapshot, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-       $17, $18, $19, $20::jsonb, $21)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+       $18, $19, $20, $21::jsonb, $22)`,
     [
       id, context.userId, String(context.feature || 'other').slice(0, 64), context.diaryId || null,
       context.analysisId || null, context.conversationId || null, context.taskId || null,
-      context.observerId || null, String(context.label || '').slice(0, 160), provider, model,
+      context.observerId || null, context.inquiryId || null, String(context.label || '').slice(0, 160), provider, model,
       payload.id ? String(payload.id).slice(0, 160) : null, estimate.promptTokens,
       estimate.cacheHitTokens, estimate.cacheMissTokens, estimate.completionTokens,
       estimate.totalTokens, estimate.costUsd, estimate.costCny,
@@ -78,7 +78,8 @@ async function usageSummary(userId, filters = {}) {
   const clauses = ['user_id = $1'];
   const values = [userId];
   for (const [key, column] of [
-    ['analysisId', 'analysis_id'], ['diaryId', 'diary_id'], ['conversationId', 'conversation_id'], ['taskId', 'task_id']
+    ['analysisId', 'analysis_id'], ['diaryId', 'diary_id'], ['conversationId', 'conversation_id'],
+    ['taskId', 'task_id'], ['inquiryId', 'inquiry_id']
   ]) {
     if (filters[key]) {
       values.push(filters[key]);

@@ -11,6 +11,7 @@ Shroom 是一款以私人日记为原点的开源 AI 记忆、理解与轻社交
 - **跨端日记**：按天与时段记录文字、图片和语音，支持日历、归档、搜索与分页回看。
 - **高精度语音转写**：原始录音先私密保存，转写结果是可编辑草稿，不会直接覆盖正文。
 - **日记记忆**：基于 PostgreSQL + pgvector 的语义检索，用相关日记作为证据回答长期问题，并明确引用来源。
+- **未解之问**：把一次讨论回答不了的困惑保存下来，经用户确认持续关联日记与新线索，再形成带支持、反例和未知项的阶段理解。
 - **五个观察席**：每位新用户拥有默认观察视角，也可以新增、编辑和切换自己的观察者。
 - **菇卡**：从具体经历中保留下次仍能使用的理解、提醒或观察视角；它不是待办，也不是口号。
 - **人生 OS**：持续修订的少量跨情境判断标准。AI 只能提出带证据的草案，用户确认后才会发布新版本。
@@ -23,7 +24,7 @@ Shroom 是一款以私人日记为原点的开源 AI 记忆、理解与轻社交
 
 Shroom 不是医疗诊断工具，也不替用户下最终结论。AI 生成的情绪理解、关系判断和人生 OS 建议都应被视为可检查的候选解释。产品不会偷偷采集浏览器历史，也不会因为一次分析就自动改写用户的人生原则或公开私人内容。
 
-更完整的产品定义见 [docs/PRODUCT.md](./docs/PRODUCT.md)，菇卡与人生 OS 的边界见 [docs/LIFE_OS.md](./docs/LIFE_OS.md)，记忆检索架构见 [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md)。
+更完整的产品定义见 [docs/PRODUCT.md](./docs/PRODUCT.md)，长期问题机制见 [docs/INQUIRIES.md](./docs/INQUIRIES.md)，菇卡与人生 OS 的边界见 [docs/LIFE_OS.md](./docs/LIFE_OS.md)，记忆检索架构见 [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md)。
 
 ## 技术架构
 

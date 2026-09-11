@@ -48,6 +48,23 @@
 			</view>
 		</view>
 
+		<view class="inquiry-shelf" v-if="$mStore.getters.hasLogin">
+			<view class="inquiry-shelf-heading">
+				<view><text class="inquiry-kicker">LIVING QUESTIONS</text><text class="inquiry-title">正在想明白的事</text></view>
+				<button @tap="openInquiries">全部</button>
+			</view>
+			<scroll-view v-if="activeInquiries.length" class="inquiry-scroll" scroll-x :show-scrollbar="false">
+				<view class="inquiry-row">
+					<button v-for="item in activeInquiries" :key="item.id" class="inquiry-card" @tap="openInquiry(item)">
+						<view class="inquiry-card-top"><text>{{ item.evidenceCount }} 条线索</text><text v-if="item.reviewDue">适合再看看</text></view>
+						<text class="inquiry-question">{{ item.question }}</text>
+						<text class="inquiry-next">{{ item.synthesisVersion ? '当前理解 V' + item.synthesisVersion : '还没有急着下结论' }} ›</text>
+					</button>
+				</view>
+			</scroll-view>
+			<button v-else class="inquiry-empty" @tap="openInquiries"><text class="inquiry-empty-mark">?</text><view><text>有件事暂时想不明白？</text><text>留下问题，让未来的日记慢慢补充线索</text></view><text>›</text></button>
+		</view>
+
 		<!-- 今天整篇日记横向列表 -->
 		<view class="full-day-diaries-container">
 			<scroll-view class="full-day-diaries-scroll" scroll-x>
@@ -183,6 +200,7 @@
 import moment from '@/common/moment.js';
 import { diaryCalendar, diaryList } from '@/api/diary';
 import { todoList } from '@/api/todo';
+import { inquirySummary } from '@/api/inquiry';
 import diaryTime from '@/utils/diary-time.js';
 import diaryPreviewUtils from '@/utils/diary-preview.js';
 
@@ -210,6 +228,7 @@ export default {
 			visitorCount: 0,
 			showFullCalendarView: false,
 			pendingTodoCount: 0, // 待完成待办数量
+			inquiryOverview: null,
 			// 默认图片URL
 			defaultImageUrl: 'https://images.unsplash.com/photo-1493612276216-ee3925520721?w=800&h=600&fit=crop'
 		};
@@ -243,6 +262,9 @@ export default {
 				// 如果日记没有 hour 和 minute 属性，或者 hour 为 null，则认为是整篇日记
 				return isFullDayDiary(diary);
 			});
+		},
+		activeInquiries() {
+			return (this.inquiryOverview && Array.isArray(this.inquiryOverview.active)) ? this.inquiryOverview.active : [];
 		}
 	},
 	onLoad() {
@@ -274,6 +296,7 @@ export default {
 		this.loadDiaries();
 		this.loadCalendarDates(this.selectedMonth);
 		this.loadPendingTodoCount();
+		this.loadInquiryOverview();
 	},
 	methods: {
 		// 初始化日期选择器
@@ -610,6 +633,29 @@ export default {
 			}
 		},
 
+		async loadInquiryOverview() {
+			if (!this.$mStore.getters.hasLogin) {
+				this.inquiryOverview = null;
+				return;
+			}
+			try {
+				const res = await this.$http.get(inquirySummary);
+				this.inquiryOverview = res.data || null;
+			} catch (error) {
+				console.error('加载长期问题失败', error);
+				this.inquiryOverview = null;
+			}
+		},
+
+		openInquiries() {
+			if (!this.requireLogin()) return;
+			uni.navigateTo({ url: '/pages/shroom/inquiries' });
+		},
+
+		openInquiry(item) {
+			if (item && item.id) uni.navigateTo({ url: `/pages/shroom/inquiry?id=${item.id}` });
+		},
+
 		// 跳转到待办列表
 		goToTodoList(e) {
 			if (e) {
@@ -893,6 +939,63 @@ export default {
 		}
 	}
 }
+
+.inquiry-shelf {
+	display: block;
+	padding: 0 40rpx 34rpx;
+}
+
+.inquiry-shelf-heading {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	margin-bottom: 18rpx;
+}
+
+.inquiry-shelf-heading > view { display: flex; flex-direction: column; }
+.inquiry-kicker { color: #718075; font-size: 16rpx; font-weight: 700; letter-spacing: 3rpx; }
+.inquiry-title { margin-top: 8rpx; color: #263028; font-family: Georgia, 'Songti SC', serif; font-size: 27rpx; }
+.inquiry-shelf-heading > button { margin: 0; padding: 12rpx; background: transparent; color: #647165; font-size: 20rpx; line-height: 1; }
+.inquiry-shelf-heading > button::after, .inquiry-card::after, .inquiry-empty::after { border: 0; }
+.inquiry-scroll { width: 100%; white-space: nowrap; }
+.inquiry-row { display: inline-flex; padding-right: 20rpx; gap: 16rpx; }
+.inquiry-card {
+	width: 430rpx;
+	min-height: 190rpx;
+	margin: 0;
+	padding: 24rpx;
+	box-sizing: border-box;
+	border: 1rpx solid rgba(23,32,25,.08);
+	border-radius: 27rpx;
+	background: #fffdf7;
+	line-height: 1;
+	text-align: left;
+	display: flex;
+	flex-direction: column;
+}
+.inquiry-card-top { display: flex; align-items: center; justify-content: space-between; color: #7b857c; font-size: 18rpx; }
+.inquiry-card-top text:last-child { color: #8a6638; }
+.inquiry-question { display: -webkit-box; margin-top: 16rpx; color: #263028; font-family: Georgia, 'Songti SC', serif; font-size: 26rpx; line-height: 1.48; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+.inquiry-next { margin-top: auto; padding-top: 18rpx; color: #738073; font-size: 18rpx; line-height: 1.2; }
+.inquiry-empty {
+	width: 100%;
+	min-height: 112rpx;
+	margin: 0;
+	padding: 20rpx 22rpx;
+	box-sizing: border-box;
+	border: 1rpx dashed rgba(82,98,47,.28);
+	border-radius: 26rpx;
+	background: rgba(255,255,255,.44);
+	display: flex;
+	align-items: center;
+	line-height: 1;
+	text-align: left;
+}
+.inquiry-empty-mark { width: 50rpx; height: 50rpx; flex: 0 0 50rpx; border-radius: 50%; background: #dfe8bd; color: #4f5e35; display: flex; align-items: center; justify-content: center; font-family: Georgia, serif; font-size: 25rpx; }
+.inquiry-empty > view { min-width: 0; flex: 1; padding: 0 16rpx; display: flex; flex-direction: column; }
+.inquiry-empty > view text:first-child { color: #38433a; font-size: 22rpx; font-weight: 650; }
+.inquiry-empty > view text:last-child { margin-top: 8rpx; color: #7c857d; font-size: 18rpx; line-height: 1.4; }
+.inquiry-empty > text:last-child { color: #788278; font-size: 30rpx; }
 
 // 今天整篇日记横向列表
 .full-day-diaries-container {

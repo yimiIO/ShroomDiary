@@ -11,6 +11,7 @@ Shroom is an open-source, private-first AI journal for memory, reflection, and l
 - **Cross-platform journaling** with text, private images, voice recordings, calendar views, archives, search, and paginated history.
 - **High-accuracy transcription** where the recording is stored privately first and the transcript remains an editable draft.
 - **Semantic journal memory** built on PostgreSQL and pgvector, with evidence-linked answers rather than unsupported summaries.
+- **Living questions** that preserve dilemmas a single conversation cannot answer, accumulate user-confirmed journal evidence, and produce versioned interpretations with support, counterevidence, and explicit unknowns.
 - **Five observer seats** available to every new user, plus user-defined observers that can be edited and switched.
 - **Shroom Cards** for reusable understandings, reminders, or perspectives derived from concrete experience. They are not tasks or slogans.
 - **Life OS** as a small, evolving set of cross-context decision principles. AI proposes evidence-backed drafts; only the user can publish a revision.
@@ -23,7 +24,7 @@ Shroom is an open-source, private-first AI journal for memory, reflection, and l
 
 Shroom is not a medical diagnostic product and does not make final decisions for its users. Emotion assessments, relationship interpretations, and Life OS suggestions are inspectable hypotheses. Shroom does not silently collect browser history, automatically rewrite a person's principles after one analysis, or publish private content without confirmation.
 
-See [docs/PRODUCT.md](./docs/PRODUCT.md) for the full product model, [docs/LIFE_OS.md](./docs/LIFE_OS.md) for the boundary between cards and Life OS, and [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md) for the memory architecture.
+See [docs/PRODUCT.md](./docs/PRODUCT.md) for the full product model, [docs/INQUIRIES.md](./docs/INQUIRIES.md) for the living-question lifecycle, [docs/LIFE_OS.md](./docs/LIFE_OS.md) for the boundary between cards and Life OS, and [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md) for the memory architecture.
 
 ## Architecture
 

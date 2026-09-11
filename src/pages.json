@@ -169,6 +169,26 @@
 			}
 		},
 		{
+			"path": "pages/shroom/inquiries",
+			"style": {
+				"navigationBarTitleText": "未解之问",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/inquiry",
+			"style": {
+				"navigationBarTitleText": "问题线索",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/common/cards/detail",
 			"style": {
 				"navigationBarTitleText": "菇卡详情",

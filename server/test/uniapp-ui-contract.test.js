@@ -142,6 +142,29 @@ test('memory review exposes tokens and a plain-language CNY estimate', () => {
 	assert.doesNotMatch(memory, /暂无价格|公开单价估算/);
 });
 
+test('unresolved questions form a user-confirmed evidence and review loop', () => {
+  const home = source('src/pages/diary/index.vue');
+  const edit = source('src/pages/diary/edit.vue');
+  const list = source('src/pages/shroom/inquiries.vue');
+  const detail = source('src/pages/shroom/inquiry.vue');
+  const me = source('src/pages/shroom/me.vue');
+  const pages = source('src/pages.json');
+  const route = source('server/src/routes/inquiries.js');
+
+  assert.match(home, /正在想明白的事/);
+  assert.match(edit, /关联问题/);
+  assert.match(edit, /syncInquiryLinks/);
+  assert.match(list, /有些答案，需要生活慢慢提供证据/);
+  assert.match(detail, /生活留下的线索/);
+  assert.match(detail, /状态不会由 AI 自动改变/);
+  assert.match(detail, /costSummary/);
+  assert.match(me, /未解之问/);
+  assert.match(pages, /pages\/shroom\/inquir(?:y|ies)/);
+  assert.match(route, /usageContext: \{ userId: req\.user\.id, inquiryId/);
+  assert.match(route, /d\.ai_allowed/);
+  assert.doesNotMatch(route, /req\.body\.userId/);
+});
+
 test('public cards form a horizontal deck and open an ownership-aware detail', () => {
   const discover = source('src/pages/shroom/discover.vue');
   const personalCards = source('src/pages/shroom/cards.vue');

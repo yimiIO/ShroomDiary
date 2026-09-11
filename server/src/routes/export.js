@@ -26,7 +26,7 @@ router.get('/all', asyncRoute(async (req, res) => {
   const redacted = ['1', 'true', 'yes'].includes(String(req.query.redacted || '').toLowerCase());
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
     lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses, friendSettings,
-    compoundSettings, compoundCheckins, observers, aiUsage] = await Promise.all([
+    compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, aiUsage] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
     db.query('SELECT id, content, deadline, tags, status, completed_at, created_at, updated_at FROM todos WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, seed_sentence, my_understanding, usage_items, tags, visibility, copied_from_id, collection_slug, editorial_source, source_diary_id, source_analysis_id, last_reviewed_at, created_at, updated_at FROM cards WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
@@ -50,7 +50,10 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query('SELECT morning_prayer, financial_plan, created_at, updated_at FROM compound_settings WHERE user_id = $1', [req.user.id]),
     db.query('SELECT ritual_key, period_key, checkin_date, mode, duration_minutes, note, created_at, updated_at FROM compound_checkins WHERE user_id = $1 ORDER BY checkin_date, ritual_key', [req.user.id]),
     db.query('SELECT id, preset_key, name, description, prompt, render_type, is_system, enabled, sort_order, created_at, updated_at FROM ai_observers WHERE user_id = $1 ORDER BY sort_order, created_at', [req.user.id]),
-    db.query(`SELECT feature, diary_id, analysis_id, conversation_id, task_id, observer_id,
+    db.query('SELECT id, question, context, status, current_synthesis, synthesis_version, evidence_revision, last_reviewed_at, created_at, updated_at FROM inquiries WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT id, inquiry_id, diary_id, source_type, source_label, excerpt, note, relation, created_at, updated_at FROM inquiry_evidence WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT inquiry_id, version, result, evidence_refs, invalidated_at, invalidated_reason, created_at FROM inquiry_syntheses WHERE user_id = $1 ORDER BY inquiry_id, version', [req.user.id]),
+    db.query(`SELECT feature, diary_id, analysis_id, conversation_id, task_id, observer_id, inquiry_id,
       request_label, provider, model, prompt_tokens, cache_hit_tokens, cache_miss_tokens,
       completion_tokens, total_tokens, cost_usd, cost_cny, price_snapshot, created_at
       FROM ai_usage_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id])
@@ -82,6 +85,9 @@ router.get('/all', asyncRoute(async (req, res) => {
     monthlyRelationshipReviews: reviews.rows,
     diaryAnalysis: analyses.rows,
     observers: observers.rows,
+    inquiries: inquiries.rows,
+    inquiryEvidence: inquiryEvidence.rows,
+    inquirySyntheses: inquirySyntheses.rows,
     aiUsage: aiUsage.rows,
     compoundSettings: compoundSettings.rows[0] || null,
     compoundCheckins: compoundCheckins.rows

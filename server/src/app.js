@@ -18,6 +18,7 @@ const exportRoutes = require('./routes/export');
 const aiRoutes = require('./routes/ai');
 const memoryRoutes = require('./routes/memory');
 const compoundRoutes = require('./routes/compound');
+const inquiryRoutes = require('./routes/inquiries');
 const { isAiConfigured } = require('./ai-engine');
 const { embeddingProfile, isEmbeddingConfigured } = require('./embedding-provider');
 const { isTranscriptionConfigured } = require('./transcription');
@@ -109,6 +110,7 @@ app.use('/api/export/v1', exportRoutes);
 app.use('/api/ai/v1', aiRoutes);
 app.use('/api/memory/v1', memoryRoutes);
 app.use('/api/compound/v1', compoundRoutes);
+app.use('/api/inquiries/v1', inquiryRoutes);
 
 const publicDir = process.env.STATIC_DIR || path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir, { index: 'index.html', maxAge: '1h' }));

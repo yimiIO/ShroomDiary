@@ -73,6 +73,10 @@
 							<text class="tool-symbol">✦</text>
 							<text>关联菇卡</text>
 						</button>
+						<button class="writing-tool" :class="{ active: linkedInquiries.length }" @click="selectInquiry">
+							<text class="tool-symbol question-symbol">?</text>
+							<text>关联问题</text>
+						</button>
 						<button class="writing-tool" @click="detailsOpen = !detailsOpen">
 							<text class="tool-symbol">···</text>
 							<text>设置</text>
@@ -235,6 +239,18 @@
 					</view>
 				</view>
 
+				<view class="linked-inquiries" v-if="linkedInquiries.length">
+					<view class="linked-inquiry-heading">
+						<view><text class="section-heading">放进长期问题</text><text>保存后成为一条由你确认的线索</text></view>
+						<button @tap="selectInquiry">调整</button>
+					</view>
+					<view class="linked-inquiry" v-for="item in linkedInquiries" :key="item.id">
+						<text class="linked-inquiry-mark">?</text>
+						<text class="linked-inquiry-text">{{ item.question }}</text>
+						<button class="linked-card-delete" @tap="removeInquiry(item.id)">×</button>
+					</view>
+				</view>
+
 				<view class="details-panel" v-if="detailsOpen">
 					<view class="details-header">
 						<view>
@@ -304,6 +320,7 @@
 import moment from '@/common/moment.js';
 import { diaryAiAccess, diaryDetail, diaryCreate, diaryUpdate } from '@/api/diary';
 import { shroomCardDetail } from '@/api/shroomCard';
+import { inquiryDiaryLinks } from '@/api/inquiry';
 import { uploadImage, uploadVoice, transcribeVoiceBase } from '@/api/upload';
 import indexConfig from '@/config/index.config';
 import voiceProgress from '@/utils/voice-progress.js';
@@ -390,6 +407,7 @@ export default {
 				transcriptionStatusKnown: false,
 				analysisAvailable: false,
 			lookBackAfterSave: false,
+			linkedInquiries: [],
 			aiAccessChanging: false,
 			saving: false,
 			recordSeconds: 0,
@@ -512,6 +530,7 @@ export default {
 				this.transcriptDraft = diary.voice && diary.voice.transcript ? diary.voice.transcript : '';
 				this.syncSelectedTime();
 				this.voicePanelOpen = Boolean(diary.voice);
+				await this.loadInquiryLinks(id);
 			} catch (error) {
 				console.error('加载日记失败', error);
 				uni.showToast({ title: '日记暂时打不开', icon: 'none' });
@@ -987,6 +1006,36 @@ export default {
 				}
 			});
 		},
+		selectInquiry() {
+			const selected = encodeURIComponent(JSON.stringify(this.linkedInquiries.map(item => ({
+				id: item.id, question: item.question, status: item.status
+			}))));
+			uni.navigateTo({
+				url: `/pages/shroom/inquiries?mode=select&selected=${selected}`,
+				success: res => {
+					res.eventChannel.on('selectInquiries', items => {
+						this.linkedInquiries = Array.isArray(items) ? items.slice(0, 3) : [];
+					});
+				}
+			});
+		},
+		removeInquiry(id) {
+			this.linkedInquiries = this.linkedInquiries.filter(item => item.id !== id);
+		},
+		async loadInquiryLinks(diaryId) {
+			try {
+				const res = await this.$http.get(inquiryDiaryLinks(diaryId));
+				this.linkedInquiries = Array.isArray(res.data) ? res.data : [];
+			} catch (error) {
+				console.error('加载问题关联失败', error);
+				this.linkedInquiries = [];
+			}
+		},
+		async syncInquiryLinks(diaryId) {
+			await this.$http.put(inquiryDiaryLinks(diaryId), {
+				inquiryIds: this.linkedInquiries.map(item => item.id)
+			});
+		},
 		removeCard(cardId) {
 			this.diaryForm.linkedCards = this.diaryForm.linkedCards.filter(card => (card.id || card) !== cardId);
 		},
@@ -1079,6 +1128,13 @@ export default {
 						: await this.$http.post(diaryCreate, diaryData);
 					if (res.code !== 200) throw new Error(res.message || 'Save failed');
 					this.diaryId = res.data && res.data.id ? res.data.id : this.diaryId;
+					let linkSyncFailed = false;
+					try {
+						await this.syncInquiryLinks(this.diaryId);
+					} catch (error) {
+						linkSyncFailed = true;
+						console.error('同步问题线索失败', error);
+					}
 					if (this.lookBackAfterSave && this.diaryId) {
 						uni.redirectTo({
 							url: `/pages/shroom/memory?diaryId=${this.diaryId}`,
@@ -1086,7 +1142,7 @@ export default {
 						});
 						return;
 					}
-					uni.showToast({ title: '这一刻已经保存', icon: 'success' });
+					uni.showToast({ title: linkSyncFailed ? '日记已保存，问题关联请重试' : '这一刻已经保存', icon: linkSyncFailed ? 'none' : 'success' });
 					setTimeout(() => this.leaveEditor(), 700);
 			} catch (error) {
 				console.error('保存日记失败', error);
@@ -1367,7 +1423,7 @@ button::after { border: 0; }
 .insert-button { height: 66rpx; min-height: 66rpx; margin-left: 12rpx; padding: 0 24rpx; border-radius: 34rpx; background: #52622f; color: #fff; font-size: 22rpx; font-weight: 650; line-height: 1; display: flex; align-items: center; justify-content: center; box-sizing: border-box; flex: 0 0 auto; }
 .insert-button text { display: block; line-height: 1; }
 
-.image-strip, .linked-cards { margin-top: 34rpx; padding: 30rpx; border-radius: 28rpx; background: rgba(255, 253, 249, 0.64); border: 1rpx solid rgba(65, 48, 39, 0.08); }
+.image-strip, .linked-cards, .linked-inquiries { margin-top: 34rpx; padding: 30rpx; border-radius: 28rpx; background: rgba(255, 253, 249, 0.64); border: 1rpx solid rgba(65, 48, 39, 0.08); }
 .image-grid { margin-top: 22rpx; display: flex; flex-wrap: wrap; }
 .image-item, .image-add { width: calc(33.333% - 12rpx); height: 190rpx; margin-right: 18rpx; margin-bottom: 18rpx; position: relative; border-radius: 20rpx; overflow: hidden; box-sizing: border-box; }
 .image-item:nth-child(3n), .image-add:nth-child(3n) { margin-right: 0; }
@@ -1379,6 +1435,14 @@ button::after { border: 0; }
 .linked-card-mark { color: #697649; }
 .linked-card-text { flex: 1; margin-left: 15rpx; font-size: 23rpx; line-height: 1.5; }
 .linked-card-delete { width: 46rpx; height: 46rpx; color: #8b7e76; font-size: 30rpx; }
+.question-symbol { width: 30rpx; height: 30rpx; border: 2rpx solid currentColor; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 21rpx; line-height: 1; }
+.linked-inquiry-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
+.linked-inquiry-heading > view { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.linked-inquiry-heading > view text:last-child { margin-top: 8rpx; color: #7a837b; font-size: 19rpx; line-height: 1.5; }
+.linked-inquiry-heading > button { padding: 10rpx 14rpx; color: #617044; font-size: 20rpx; }
+.linked-inquiry { margin-top: 18rpx; padding: 20rpx; border-radius: 18rpx; display: flex; align-items: center; background: #f0f2e5; }
+.linked-inquiry-mark { width: 42rpx; height: 42rpx; border-radius: 50%; background: #d9e4af; color: #4f5d32; display: flex; align-items: center; justify-content: center; font-family: Georgia, serif; font-size: 23rpx; }
+.linked-inquiry-text { min-width: 0; flex: 1; margin-left: 15rpx; font-size: 23rpx; line-height: 1.5; white-space: normal; word-break: break-word; }
 
 .details-panel { background: #fffdf9; color: #281d19; box-shadow: 0 24rpx 64rpx rgba(68, 50, 39, 0.08); }
 .details-panel .voice-kicker { color: #77815f; }
