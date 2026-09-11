@@ -140,6 +140,9 @@ test('memory review exposes tokens and a plain-language CNY estimate', () => {
 	assert.match(memory, /约 ¥/);
 	assert.match(memory, /最终以 DeepSeek 账单为准/);
 	assert.doesNotMatch(memory, /暂无价格|公开单价估算/);
+	assert.match(memory, /message\.result\.presentation === 'evidence_list'/);
+	assert.match(memory, /item\.reason/);
+	assert.match(memory, /analysisItemExcerpt/);
 });
 
 test('unresolved questions form a user-confirmed evidence and review loop', () => {
@@ -188,7 +191,9 @@ test('public cards form a horizontal deck and open an ownership-aware detail', (
   assert.match(detail, /收藏/);
 	assert.match(detail, /引用到我的菇卡|保存为私密参考/);
 	assert.match(detail, /引用并开始练习/);
-	assert.match(discover, /resolveAuthorName/);
+  assert.match(discover, /resolveAuthorName/);
+	assert.match(discover, /过去我有哪些做得不好的地方？/);
+	assert.doesNotMatch(discover, /创建菇卡|成为第一个分享者|createCard|publish-button|publish-plus/);
 	assert.doesNotMatch(discover, /人类留给自己的提醒|heritageCollection|FEATURED JOURNALERS/);
 	assert.doesNotMatch(discover, /SHROOM 策展|CURATED SHROOM CARDS|source-line|editorial-feature/);
   assert.match(detail, /Shroom 转译|provenanceLabel/);

@@ -9,10 +9,6 @@
 					<text class="page-title">发现</text>
 					<text class="page-subtitle">看见别人如何理解自己，也让你的经验成为回声。</text>
 				</view>
-				<view class="publish-button" @tap="createCard">
-					<text class="publish-plus">+</text>
-					<text>创建菇卡</text>
-				</view>
 			</view>
 
 			<view class="memory-entry">
@@ -133,8 +129,7 @@
 			<view class="state-panel" v-else>
 				<text class="state-symbol">◌</text>
 				<text class="state-title">这里还很安静</text>
-				<text class="state-copy">当有人公开一张菇卡，它就会在这里出现。</text>
-				<view class="state-button" @tap="createCard">成为第一个分享者</view>
+				<text class="state-copy">公开的菇卡会在这里出现，等待下一次回声。</text>
 			</view>
 
 			<view class="list-footer" v-if="cards.length && loading">正在加载…</view>
@@ -168,7 +163,7 @@ export default {
 				{ label: '行动', value: '行动' }
 			],
 			memoryQuestion: '',
-			memoryPrompts: ['最近反复出现什么？', '我处理关系的方式变了吗？']
+			memoryPrompts: ['最近反复出现什么？', '我处理关系的方式变了吗？', '过去我有哪些做得不好的地方？']
 		};
 	},
 	computed: {
@@ -276,17 +271,13 @@ export default {
 			if (this.$mStore.getters.hasLogin) return true;
 			uni.showModal({
 				title: '登录后继续',
-				content: '共鸣、创建和收藏会保存到你的 Shroom 空间。',
+				content: '共鸣、收藏和私密回看会保存到你的 Shroom 空间。',
 				confirmText: '去登录',
 				success: res => {
 					if (res.confirm) uni.navigateTo({ url: '/pages/public/login' });
 				}
 			});
 			return false;
-		},
-		createCard() {
-			if (!this.requireLogin()) return;
-			uni.navigateTo({ url: '/pages/common/cards/edit' });
 		},
 		openMemory(question = '') {
 			if (!this.requireLogin()) return;
@@ -474,25 +465,6 @@ export default {
 	font-size: 25rpx;
 	line-height: 1.75;
 	color: #607063;
-}
-
-.publish-button {
-	display: flex;
-	align-items: center;
-	gap: 8rpx;
-	flex-shrink: 0;
-	padding: 18rpx 25rpx;
-	border-radius: 999rpx;
-	background: #172019;
-	color: #fff;
-	font-size: 24rpx;
-	font-weight: 650;
-}
-
-.publish-plus {
-	font-size: 34rpx;
-	font-weight: 300;
-	line-height: .7;
 }
 
 .control-row {

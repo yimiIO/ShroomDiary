@@ -117,7 +117,17 @@
 												</view>
 											</view>
 										</scroll-view>
-										<scroll-view class="analysis-items-scroll" scroll-x :show-scrollbar="false" v-if="analysisCountedItems(message.result).length">
+										<view class="analysis-evidence-list" v-if="message.result.presentation === 'evidence_list' && analysisCountedItems(message.result).length">
+											<button v-for="item in analysisCountedItems(message.result)" :key="item.key" @tap="openSource(analysisItemSource(message.result, item))">
+												<view class="analysis-evidence-meta">
+													<text>{{ formatAnalysisDate(item.date) }}</text>
+													<text>{{ analysisItemLabel(item.label) }} · 原文 ↗</text>
+												</view>
+												<text class="analysis-evidence-reason">{{ item.reason }}</text>
+												<text class="analysis-evidence-quote">“{{ analysisItemExcerpt(message.result, item) }}”</text>
+											</button>
+										</view>
+										<scroll-view class="analysis-items-scroll" scroll-x :show-scrollbar="false" v-else-if="analysisCountedItems(message.result).length">
 											<view class="analysis-items">
 												<button v-for="item in analysisCountedItems(message.result)" :key="item.key" @tap="openSource(analysisItemSource(message.result, item))">
 													<text>{{ formatAnalysisDate(item.date) }}</text>
@@ -157,7 +167,7 @@
 									</view>
 								</view>
 
-								<view class="source-section" v-if="message.result.sources && message.result.sources.length">
+								<view class="source-section" v-if="message.result.presentation !== 'evidence_list' && message.result.sources && message.result.sources.length">
 									<text class="section-kicker">SOURCE NOTES</text>
 									<scroll-view class="source-scroll" scroll-x :show-scrollbar="false">
 										<view class="source-list">
@@ -414,6 +424,10 @@ export default {
 				const refs = item && Array.isArray(item.evidenceRefs) ? item.evidenceRefs : [];
 				return refs.length ? this.sourceFor(result, refs[0]) : null;
 			},
+			analysisItemExcerpt(result, item) {
+				const source = this.analysisItemSource(result, item);
+				return source && source.excerpt ? source.excerpt : '没有可展示的原文';
+			},
 			analysisItemLabel(label) {
 				return label === 'partial' ? '部分符合' : '明确符合';
 			},
@@ -578,6 +592,15 @@ button::after { border: 0; }
 .analysis-groups text, .analysis-items button text { display: block; color: #fff; }
 .analysis-groups text:first-child, .analysis-items button text:first-child { font-size: 21rpx; font-weight: 680; }
 .analysis-groups text:last-child, .analysis-items button text:last-child { margin-top: 8rpx; font-size: 16rpx; color: #b8c99a; }
+.analysis-evidence-list { display: flex; flex-direction: column; gap: 13rpx; margin-top: 23rpx; }
+.analysis-evidence-list button { width: 100%; margin: 0; padding: 22rpx; border: 1rpx solid rgba(221,236,140,.2); border-radius: 21rpx; background: rgba(255,255,255,.07); text-align: left; box-sizing: border-box; }
+.analysis-evidence-list button::after { border: 0; }
+.analysis-evidence-meta { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
+.analysis-evidence-meta text { min-width: 0; font-size: 17rpx; color: #b8c99a; }
+.analysis-evidence-meta text:first-child { font-weight: 680; color: #fff; }
+.analysis-evidence-reason, .analysis-evidence-quote { display: block; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+.analysis-evidence-reason { margin-top: 15rpx; font-size: 22rpx; line-height: 1.55; color: #f4f6ef; }
+.analysis-evidence-quote { margin-top: 12rpx; font-family: Georgia, 'Songti SC', serif; font-size: 19rpx; line-height: 1.55; color: rgba(255,255,255,.58); }
 .result-section, .source-section, .feedback-row, .card-draft, .follow-up-list { margin-top: 38rpx; }
 .section-kicker { display: block; color: #899486; }
 .observation { display: flex; gap: 18rpx; margin-top: 23rpx; }

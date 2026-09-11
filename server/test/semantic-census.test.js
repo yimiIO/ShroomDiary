@@ -7,6 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   aggregateSemanticUnits,
+  buildSemanticResult,
   normalizeSemanticAssessments
 } = require('../src/semantic-census');
 
@@ -59,4 +60,26 @@ test('claims without an exact quote cannot become counted evidence', () => {
     assessments: [{ sourceRef: 'D1', label: 'match', confidence: 1, reason: '声称命中', evidenceQuote: '不存在的句子' }]
   });
   assert.equal(normalized[0].label, 'uncertain');
+});
+
+test('qualitative full-coverage questions return an evidence list rather than a count-only answer', () => {
+  const mishandled = {
+    ...entries[0], label: 'match', confidence: 0.92,
+    reason: '答应的事情被反复拖延，且日记记录了已造成的影响',
+    evidenceStart: 0, evidenceEnd: 12, evidenceExcerpt: '开会时几次想解释'
+  };
+  const result = buildSemanticResult('过去我有哪些做得不好的地方？', {
+    intent: 'search', strategy: 'semantic_census', requiresFullCoverage: true,
+    criterion: '用户本人的具体处理不当且有正文证据', subject: '用户本人',
+    unit: 'entry', groupBy: 'none', matchPolicy: 'strict', scope: {},
+    rangeLabel: '全部已授权日记', resultLabel: '过去没处理好的事情'
+  }, entries, [mishandled, {
+    ...entries[1], label: 'no_match', confidence: 0.9, reason: '只是一次不愉快结果',
+    evidenceStart: null, evidenceEnd: null, evidenceExcerpt: ''
+  }]);
+  assert.equal(result.presentation, 'evidence_list');
+  assert.match(result.summary, /找到 1 篇/);
+  assert.match(result.summary, /不是对你的人格评价/);
+  assert.equal(result.analysisStats.items[0].reason, mishandled.reason);
+  assert.deepEqual(result.analysisStats.items[0].evidenceRefs, ['S1']);
 });

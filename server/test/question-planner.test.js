@@ -5,7 +5,7 @@ process.env.TOKEN_SECRET = process.env.TOKEN_SECRET || 'test-secret';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeQuestionPlan } = require('../src/question-planner');
+const { normalizeQuestionPlan, questionRequiresFullCoverage } = require('../src/question-planner');
 
 test('a model-planned natural-language count becomes a full semantic census', () => {
   const plan = normalizeQuestionPlan({
@@ -59,4 +59,22 @@ test('a qualitative relationship question stays on evidence retrieval', () => {
   }, {}, new Date('2026-09-09T03:00:00Z'));
   assert.equal(plan.strategy, 'hybrid_retrieval');
   assert.equal(plan.requiresFullCoverage, false);
+});
+
+test('an open-ended enumeration uses a full semantic census instead of top-k retrieval', () => {
+  const plan = normalizeQuestionPlan({
+    intent: 'search', strategy: 'hybrid_retrieval', requiresFullCoverage: true,
+    criterion: '用户本人在日记中明确记录的处理不当、疏忽、逃避或失约行为',
+    subject: '用户本人', unit: 'entry', groupBy: 'none', matchPolicy: 'strict',
+    dateFrom: null, dateTo: null, resultLabel: '过去没处理好的事情'
+  }, {}, new Date('2026-09-11T03:00:00Z'));
+  assert.equal(plan.strategy, 'semantic_census');
+  assert.equal(plan.requiresFullCoverage, true);
+  assert.equal(plan.intent, 'search');
+});
+
+test('enumeration phrasing is only used to choose coverage, not to keyword-match diary content', () => {
+  assert.equal(questionRequiresFullCoverage('过去我有哪些做得不好的地方？'), true);
+  assert.equal(questionRequiresFullCoverage('找出所有我没有处理好的事情'), true);
+  assert.equal(questionRequiresFullCoverage('最近一次我是怎么处理这件事的？'), false);
 });
