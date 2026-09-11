@@ -189,6 +189,69 @@ async function run() {
     const search = expectCode(await api('/api/diaries/v1/search?keyword=integration', { token: tokenA }));
     assert.equal(search.total, 1);
 
+    const emptyInquirySummary = expectCode(await api('/api/inquiries/v1/summary', {
+      token: sessionB.access_token
+    }));
+    assert.equal(emptyInquirySummary.openCount, 0);
+    expectCode(await api('/api/inquiries/v1', {
+      method: 'POST', token: tokenA, body: { question: '短问' }
+    }), 400);
+    const inquiry = expectCode(await api('/api/inquiries/v1', {
+      method: 'POST', token: tokenA,
+      body: {
+        question: '我为什么在重要选择前会反复否定自己？',
+        context: '这是一个需要长期观察、而不是立即得出答案的集成测试问题。'
+      }
+    }));
+    assert.equal(inquiry.status, 'OPEN');
+    assert.equal(inquiry.evidenceCount, 0);
+    expectCode(await api(`/api/inquiries/v1/${inquiry.id}`, {
+      token: sessionB.access_token
+    }), 404);
+    expectCode(await api(`/api/inquiries/v1/diary-links/${diary.id}`, {
+      method: 'PUT', token: sessionB.access_token, body: { inquiryIds: [inquiry.id] }
+    }), 404);
+    const linkedInquiryIds = expectCode(await api(`/api/inquiries/v1/diary-links/${diary.id}`, {
+      method: 'PUT', token: tokenA, body: { inquiryIds: [inquiry.id] }
+    }));
+    assert.deepEqual(linkedInquiryIds.inquiryIds, [inquiry.id]);
+    const diaryInquiryLinks = expectCode(await api(`/api/inquiries/v1/diary-links/${diary.id}`, {
+      token: tokenA
+    }));
+    assert.equal(diaryInquiryLinks.length, 1);
+    assert.equal(diaryInquiryLinks[0].id, inquiry.id);
+    const manualEvidence = expectCode(await api(`/api/inquiries/v1/${inquiry.id}/evidence`, {
+      method: 'POST', token: tokenA,
+      body: {
+        sourceType: 'ACTION',
+        sourceLabel: '一次真实选择',
+        excerpt: '这次我在信息不完整时先做了一个可逆的小决定。',
+        relation: 'CHALLENGE'
+      }
+    }));
+    assert.equal(manualEvidence.sourceType, 'ACTION');
+    let inquiryDetail = expectCode(await api(`/api/inquiries/v1/${inquiry.id}`, { token: tokenA }));
+    assert.equal(inquiryDetail.evidenceCount, 2);
+    assert.equal(inquiryDetail.usableEvidenceCount, 2);
+    assert.equal(inquiryDetail.reviewDue, true);
+    assert.equal(inquiryDetail.costSummary.calls, 0);
+    assert.ok(inquiryDetail.evidence.some(item => item.diaryId === diary.id));
+    assert.ok(inquiryDetail.evidence.some(item => item.id === manualEvidence.id));
+    const pausedInquiry = expectCode(await api(`/api/inquiries/v1/${inquiry.id}`, {
+      method: 'PATCH', token: tokenA, body: { status: 'PAUSED' }
+    }));
+    assert.equal(pausedInquiry.status, 'PAUSED');
+    const pausedList = expectCode(await api('/api/inquiries/v1?status=PAUSED&page=1&pageSize=20', {
+      token: tokenA
+    }));
+    assert.equal(pausedList.total, 1);
+    assert.equal(pausedList.list[0].id, inquiry.id);
+    expectCode(await api(`/api/inquiries/v1/${inquiry.id}`, {
+      method: 'PATCH', token: tokenA, body: { status: 'OPEN' }
+    }));
+    inquiryDetail = expectCode(await api(`/api/inquiries/v1/${inquiry.id}`, { token: tokenA }));
+    assert.equal(inquiryDetail.status, 'OPEN');
+
     const friend = expectCode(await api('/api/friends/v1/upsert', {
       method: 'POST',
       legacyToken: tokenA,
@@ -270,7 +333,7 @@ async function run() {
     const emptyLifeOs = expectCode(await api('/api/life-os/v1/config', { token: tokenA }));
     assert.equal(emptyLifeOs.version, 0);
     const lifeOsDraftStatus = expectCode(await api('/api/life-os/v1/draft/status', { token: tokenA }));
-    assert.equal(lifeOsDraftStatus.diaryCount, 2);
+    assert.equal(lifeOsDraftStatus.diaryCount, 1);
     assert.equal(lifeOsDraftStatus.ready, false);
     expectCode(await api('/api/life-os/v1/draft', {
       method: 'POST', token: tokenA, body: {}
@@ -281,7 +344,7 @@ async function run() {
         version: 0,
         origin: 'ai_assisted',
         sourceRefs: [{ type: 'diary', id: diary.id }],
-        generationMeta: { principleCount: 1, diaryCount: 2, generatedAt: '2026-09-09T00:00:00.000Z' }
+        generationMeta: { principleCount: 1, diaryCount: 1, generatedAt: '2026-09-09T00:00:00.000Z' }
       }
     }));
     assert.equal(lifeOs.version, 1);
@@ -301,7 +364,7 @@ async function run() {
       expectCode(await api('/api/ai/v1/analyze', {
         method: 'POST', token: tokenA, body: { diaryId: diary.id, sync: false }
       }), 503);
-    } else {
+    } else if (process.env.TEST_SKIP_PAID_AI !== '1') {
       const analysis = expectCode(await api('/api/ai/v1/analyze', {
         method: 'POST', token: tokenA, body: { diaryId: diary.id, sync: true }
       }));
@@ -400,13 +463,16 @@ async function run() {
     assert.equal(exported.diaries.length, 2);
     assert.equal(exported.friends.length, 3);
     assert.equal(exported.lifeOs.version, 1);
+    assert.equal(exported.inquiries.length, 1);
+    assert.equal(exported.inquiryEvidence.length, 2);
+    assert.equal(exported.inquirySyntheses.length, 0);
     const redactedExport = expectCode(await api('/api/export/v1/all?redacted=true', { token: tokenA }));
     assert.deepEqual(redactedExport.account, {});
     assert.ok(redactedExport.friends.every(item => Object.keys(item.contact).length === 0));
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', 'ai-five-view-flow', 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();
