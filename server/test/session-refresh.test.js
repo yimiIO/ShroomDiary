@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const createRefreshCoordinator = require('../../src/utils/request/refresh-coordinator');
 
 test('concurrent expired requests share one refresh attempt', async () => {
@@ -37,4 +39,11 @@ test('a failed refresh does not permanently block the next attempt', async () =>
 	await assert.rejects(refresh(), /expired/);
 	assert.deepEqual(await refresh(), { access_token: 'recovered' });
 	assert.equal(calls, 2);
+});
+
+test('app restore verifies through the replaceable auth header instead of a stale body token', () => {
+	const appSource = fs.readFileSync(path.join(__dirname, '../../src/App.vue'), 'utf8');
+	assert.match(appSource, /getStorageSync\('refreshToken'\)/);
+	assert.match(appSource, /post\(verifyAccessToken, \{\}\)/);
+	assert.doesNotMatch(appSource, /post\(verifyAccessToken, \{\s*token\s*\}\)/);
 });

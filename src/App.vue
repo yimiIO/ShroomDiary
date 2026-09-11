@@ -26,9 +26,12 @@ export default {
 		},
 		async restoreSession() {
 			const token = uni.getStorageSync('accessToken');
-			if (!token) return;
+			const refreshToken = uni.getStorageSync('refreshToken');
+			if (!token && !refreshToken) return;
 			try {
-				const response = await this.$http.post(verifyAccessToken, { token });
+				// The request layer supplies the current access token in the header. If it
+				// has expired, it can refresh and retry without carrying a stale body token.
+				const response = await this.$http.post(verifyAccessToken, {});
 				if (!response.data || !response.data.token) this.$mStore.commit('logout');
 			} catch (error) {
 				// 网络异常不应直接抹掉本地会话；真正的 401 会由请求层统一处理。

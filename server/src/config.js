@@ -68,5 +68,6 @@ module.exports = {
   },
   ffmpegPath: process.env.FFMPEG_PATH || bundledFfmpegPath || 'ffmpeg',
   accessTokenSeconds: Number(process.env.ACCESS_TOKEN_SECONDS || 7200),
-  refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS || 90)
+  refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS || 90),
+  refreshReuseGraceSeconds: Math.max(0, Math.min(120, Number(process.env.REFRESH_REUSE_GRACE_SECONDS || 30)))
 };

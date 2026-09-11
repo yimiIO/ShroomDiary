@@ -28,11 +28,11 @@ function member(user) {
   };
 }
 
-async function issueSession(user) {
+async function issueSession(user, client = db) {
   const accessToken = createAccessToken(user.id);
   const refreshToken = createRefreshToken();
   const refreshId = crypto.randomUUID();
-  await db.query(
+  await client.query(
     `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at)
      VALUES ($1, $2, $3, now() + ($4 || ' days')::interval)`,
     [refreshId, user.id, hashToken(refreshToken), config.refreshTokenDays]
@@ -92,21 +92,30 @@ router.post('/login', asyncRoute(async (req, res) => {
 router.post('/refresh', asyncRoute(async (req, res) => {
   const refreshToken = String(req.body.refresh_token || '');
   if (!refreshToken) return fail(res, 401, '刷新凭证无效');
-  const result = await db.query(
-    `SELECT rt.id AS refresh_id, u.id, u.mobile, u.nickname, u.avatar_url
-       FROM refresh_tokens rt
-       JOIN users u ON u.id = rt.user_id
-      WHERE rt.token_hash = $1 AND rt.revoked_at IS NULL AND rt.expires_at > now()`,
-    [hashToken(refreshToken)]
-  );
-  const user = result.rows[0];
-  if (!user) return fail(res, 401, '刷新凭证已失效');
-  await db.query('UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1', [user.refresh_id]);
-  return ok(res, await issueSession(user));
+  const session = await db.transaction(async client => {
+    const result = await client.query(
+      `SELECT rt.id AS refresh_id, u.id, u.mobile, u.nickname, u.avatar_url
+         FROM refresh_tokens rt
+         JOIN users u ON u.id = rt.user_id
+        WHERE rt.token_hash = $1 AND rt.expires_at > now()
+          AND (rt.revoked_at IS NULL OR rt.revoked_at > now() - ($2 || ' seconds')::interval)
+        FOR UPDATE OF rt`,
+      [hashToken(refreshToken), config.refreshReuseGraceSeconds]
+    );
+    const user = result.rows[0];
+    if (!user) return null;
+    await client.query(
+      'UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, now()) WHERE id = $1',
+      [user.refresh_id]
+    );
+    return issueSession(user, client);
+  });
+  if (!session) return fail(res, 401, '刷新凭证已失效');
+  return ok(res, session);
 }));
 
 router.post('/verify', asyncRoute(async (req, res) => {
-  const token = String(req.body.token || req.get('x-api-key') || '');
+  const token = String(req.get('x-api-key') || req.body.token || '');
   const payload = verifyAccessToken(token);
   if (!payload) return fail(res, 401, '登录状态已失效');
   const result = await db.query('SELECT id FROM users WHERE id = $1', [payload.sub]);
