@@ -7,6 +7,7 @@ const config = require('../config');
 const { callJson, isAiConfigured } = require('../ai-engine');
 const { usageSummary } = require('../ai-usage');
 const { normalizeCardSuggestion } = require('../card-suggestions');
+const { listDiaryCandidates, normalizeInquiryCandidates, syncDiaryCandidates } = require('../inquiry-candidates');
 const { ENTITY_PROMPT, FOLLOWUP_PROMPT, VERSION, VIEW_PROMPTS } = require('../ai-prompts');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 const { activeObserverSnapshot, listObservers } = require('../observer-store');
@@ -52,6 +53,14 @@ function mapAnalysis(row) {
   };
 }
 
+async function mapAnalysisWithCandidates(row, userId, queryable = db) {
+  const analysis = mapAnalysis(row);
+  analysis.inquiryCandidates = row.status === 'done'
+    ? await listDiaryCandidates(queryable, userId, row.diary_id)
+    : [];
+  return analysis;
+}
+
 const analysisFields = `id, diary_id, engine_version, five_views, observer_snapshot, observations,
   todo_candidates, card_suggestion, friend_changes, cost_summary, status, error_message,
   started_at, finished_at, created_at, updated_at`;
@@ -83,6 +92,21 @@ async function cardHistory(userId, linkedCards) {
 async function lifeOs(userId) {
   const result = await db.query('SELECT content_md FROM life_os WHERE user_id = $1', [userId]);
   return result.rows[0]?.content_md || '';
+}
+
+async function currentInquiries(userId) {
+  const result = await db.query(
+    `SELECT id, question, context, status FROM inquiries
+      WHERE user_id = $1 AND status IN ('OPEN', 'PAUSED')
+      ORDER BY updated_at DESC LIMIT 50`,
+    [userId]
+  );
+  return result.rows.map(row => ({
+    id: row.id,
+    question: row.question,
+    context: text(row.context, 800),
+    status: row.status
+  }));
 }
 
 async function latestFriendChanges(userId, diaryId) {
@@ -131,10 +155,11 @@ async function executeAnalysis(userId, analysisId, diaryId) {
   try {
     const diary = await ownedDiary(userId, diaryId);
     if (!diary) throw Object.assign(new Error('日记不存在'), { code: 'SHROOM_AI_INPUT' });
-    const [os, cards, stored] = await Promise.all([
+    const [os, cards, stored, existingInquiries] = await Promise.all([
       lifeOs(userId),
       cardHistory(userId, diary.linked_cards),
-      db.query('SELECT observer_snapshot FROM diary_analysis WHERE id = $1 AND user_id = $2', [analysisId, userId])
+      db.query('SELECT observer_snapshot FROM diary_analysis WHERE id = $1 AND user_id = $2', [analysisId, userId]),
+      currentInquiries(userId)
     ]);
     let observers = Array.isArray(stored.rows[0]?.observer_snapshot) ? stored.rows[0].observer_snapshot : [];
     if (!observers.length) observers = await activeObserverSnapshot(userId);
@@ -169,25 +194,38 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       diary: viewInput(diary, os, observers[0]).diary,
       fiveViews,
       observations,
-      existingCards: cards
+      existingCards: cards,
+      existingInquiries
     }, '行动与菇卡整理', {
       usageContext: { userId, feature: 'diary_observation_followup', diaryId, analysisId }
     });
     const rawCandidates = followup.todoCandidates || followup.candidates;
     const candidates = Array.isArray(rawCandidates) ? rawCandidates.slice(0, 30) : [];
     const cardSuggestion = normalizeCardSuggestion(followup.cardSuggestion, cards);
+    const inquiryCandidates = normalizeInquiryCandidates(
+      followup.inquiryCandidates,
+      existingInquiries.map(item => item.id)
+    );
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
-    const result = await db.query(
-      `UPDATE diary_analysis SET status = 'done', five_views = $3::jsonb, observations = $4::jsonb,
-         todo_candidates = $5::jsonb, card_suggestion = $6::jsonb, friend_changes = $7::jsonb,
-         cost_summary = $8::jsonb,
-         finished_at = now(), updated_at = now()
-       WHERE id = $1 AND user_id = $2 RETURNING ${analysisFields}`,
-      [analysisId, userId, JSON.stringify(fiveViews), JSON.stringify(observations), JSON.stringify(candidates),
-        JSON.stringify(cardSuggestion), JSON.stringify(friendChanges), JSON.stringify(costSummary)]
-    );
-    return mapAnalysis(result.rows[0]);
+    return db.transaction(async client => {
+      const result = await client.query(
+        `UPDATE diary_analysis SET status = 'done', five_views = $3::jsonb, observations = $4::jsonb,
+           todo_candidates = $5::jsonb, card_suggestion = $6::jsonb, friend_changes = $7::jsonb,
+           cost_summary = $8::jsonb,
+           finished_at = now(), updated_at = now()
+         WHERE id = $1 AND user_id = $2 RETURNING ${analysisFields}`,
+        [analysisId, userId, JSON.stringify(fiveViews), JSON.stringify(observations), JSON.stringify(candidates),
+          JSON.stringify(cardSuggestion), JSON.stringify(friendChanges), JSON.stringify(costSummary)]
+      );
+      await syncDiaryCandidates(client, {
+        userId,
+        diaryId,
+        modelVersion: VERSION,
+        candidates: inquiryCandidates
+      });
+      return mapAnalysisWithCandidates(result.rows[0], userId, client);
+    });
   } catch (error) {
     const costSummary = await usageSummary(userId, { analysisId }).catch(() => null);
     await db.query(
@@ -232,7 +270,7 @@ async function startAnalysis(req, res) {
   }
   setImmediate(() => executeAnalysis(req.user.id, result.rows[0].id, diary.id)
     .catch(error => console.error('background diary analysis failed', { analysisId: result.rows[0].id, message: error.message })));
-  return ok(res, mapAnalysis(result.rows[0]), '分析任务已创建');
+  return ok(res, await mapAnalysisWithCandidates(result.rows[0], req.user.id), '分析任务已创建');
 }
 
 router.get('/status', asyncRoute(async (req, res) => ok(res, {
@@ -305,7 +343,7 @@ router.get('/analysis', asyncRoute(async (req, res) => {
     `SELECT ${analysisFields} FROM diary_analysis WHERE user_id = $1 AND diary_id = $2`,
     [req.user.id, diaryId]
   );
-  return ok(res, result.rowCount ? mapAnalysis(result.rows[0]) : null);
+  return ok(res, result.rowCount ? await mapAnalysisWithCandidates(result.rows[0], req.user.id) : null);
 }));
 
 router.get('/diary-flow/:taskId', asyncRoute(async (req, res) => {
@@ -314,7 +352,7 @@ router.get('/diary-flow/:taskId', asyncRoute(async (req, res) => {
     [req.user.id, req.params.taskId]
   );
   if (!result.rowCount) return fail(res, 404, '分析任务不存在');
-  return ok(res, mapAnalysis(result.rows[0]));
+  return ok(res, await mapAnalysisWithCandidates(result.rows[0], req.user.id));
 }));
 
 router.post('/diary-flow/:taskId/todos', asyncRoute(async (req, res) => {
@@ -414,7 +452,7 @@ router.post('/diary-flow/:taskId/cards/create', asyncRoute(async (req, res) => {
        WHERE id = $1 AND user_id = $2 RETURNING ${analysisFields}`,
       [analysis.id, req.user.id, JSON.stringify(nextSuggestion)]
     );
-    return { cardId, analysis: mapAnalysis(updated.rows[0]) };
+    return { cardId, analysis: await mapAnalysisWithCandidates(updated.rows[0], req.user.id, client) };
   });
   if (created.error === 'analysis') return fail(res, 404, '已完成的分析任务不存在');
   if (created.error === 'suggestion') return fail(res, 400, '这次分析没有建议创建新菇卡');
@@ -453,7 +491,7 @@ router.post('/diary-flow/:taskId/cards/bind', asyncRoute(async (req, res) => {
        WHERE id = $1 AND user_id = $2 RETURNING ${analysisFields}`,
       [analysis.id, req.user.id, JSON.stringify(nextSuggestion)]
     );
-    return { cardIds: requested, analysis: mapAnalysis(updated.rows[0]) };
+    return { cardIds: requested, analysis: await mapAnalysisWithCandidates(updated.rows[0], req.user.id, client) };
   });
   if (bound.error === 'analysis') return fail(res, 404, '已完成的分析任务不存在');
   if (bound.error === 'suggestion') return fail(res, 400, '只能关联这次分析推荐的历史菇卡');

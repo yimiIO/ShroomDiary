@@ -8,6 +8,7 @@ const { usageSummary } = require('../ai-usage');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
 const { INQUIRY_REVIEW_PROMPT, normalizeInquiryReview } = require('../inquiry-review');
 const { resetInquirySyntheses } = require('../inquiry-store');
+const { mapCandidate } = require('../inquiry-candidates');
 
 const router = express.Router();
 router.use(requireUser);
@@ -266,6 +267,113 @@ router.post('/', asyncRoute(async (req, res) => {
     [id, req.user.id, question, context]
   );
   return ok(res, mapInquiry(result.rows[0]), '问题已留下，先让生活继续提供线索');
+}));
+
+router.get('/candidates', asyncRoute(async (req, res) => {
+  const { page, pageSize, offset } = pageParams(req.query);
+  const selectedStatus = ['PENDING', 'ACCEPTED', 'IGNORED'].includes(req.query.status)
+    ? req.query.status : 'PENDING';
+  const [items, total] = await Promise.all([
+    db.query(
+      `SELECT c.*, count(cd.diary_id)::int AS evidence_count,
+              min(to_char(d.occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')) AS source_date
+         FROM inquiry_candidates c
+         JOIN inquiry_candidate_diaries cd ON cd.candidate_id = c.id AND cd.user_id = c.user_id
+         JOIN diaries d ON d.id = cd.diary_id AND d.user_id = c.user_id AND d.deleted_at IS NULL
+        WHERE c.user_id = $1 AND c.status = $2
+        GROUP BY c.id ORDER BY c.created_at DESC LIMIT $3 OFFSET $4`,
+      [req.user.id, selectedStatus, pageSize, offset]
+    ),
+    db.query(
+      'SELECT count(*)::int AS total FROM inquiry_candidates WHERE user_id = $1 AND status = $2',
+      [req.user.id, selectedStatus]
+    )
+  ]);
+  return ok(res, { list: items.rows.map(mapCandidate), total: total.rows[0].total, page, pageSize });
+}));
+
+router.post('/candidates/:candidateId/accept', asyncRoute(async (req, res) => {
+  const candidateId = uuid(req.params.candidateId);
+  if (!candidateId) return fail(res, 404, '候选问题不存在');
+  const accepted = await db.transaction(async client => {
+    const candidateResult = await client.query(
+      'SELECT * FROM inquiry_candidates WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [candidateId, req.user.id]
+    );
+    if (!candidateResult.rowCount) return { error: 'missing' };
+    const candidate = candidateResult.rows[0];
+    if (candidate.status === 'IGNORED') return { error: 'ignored' };
+    if (candidate.status === 'ACCEPTED' && candidate.accepted_inquiry_id) {
+      return { inquiryId: candidate.accepted_inquiry_id, created: false, alreadyAccepted: true };
+    }
+    let inquiryId = candidate.suggested_inquiry_id;
+    if (inquiryId) {
+      const existing = await client.query(
+        `SELECT id FROM inquiries WHERE id = $1 AND user_id = $2 AND status <> 'RESOLVED'`,
+        [inquiryId, req.user.id]
+      );
+      if (!existing.rowCount) inquiryId = null;
+    }
+    let created = false;
+    if (!inquiryId) {
+      inquiryId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO inquiries (id, user_id, question, context) VALUES ($1, $2, $3, $4)`,
+        [inquiryId, req.user.id, candidate.question, candidate.context]
+      );
+      created = true;
+    }
+    const diaries = await client.query(
+      `SELECT d.id, d.content,
+              to_char(d.occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
+         FROM inquiry_candidate_diaries cd
+         JOIN diaries d ON d.id = cd.diary_id AND d.user_id = cd.user_id AND d.deleted_at IS NULL
+        WHERE cd.candidate_id = $1 AND cd.user_id = $2 ORDER BY d.occurred_at`,
+      [candidateId, req.user.id]
+    );
+    let changed = 0;
+    for (const diary of diaries.rows) {
+      const result = await client.query(
+        `INSERT INTO inquiry_evidence
+          (id, user_id, inquiry_id, diary_id, source_type, source_label, excerpt)
+         VALUES ($1, $2, $3, $4, 'DIARY', $5, $6)
+         ON CONFLICT (inquiry_id, diary_id) WHERE diary_id IS NOT NULL DO NOTHING
+         RETURNING id`,
+        [crypto.randomUUID(), req.user.id, inquiryId, diary.id, `${diary.source_date} 的日记`, text(diary.content, 5000)]
+      );
+      changed += result.rowCount;
+    }
+    if (changed) {
+      await client.query(
+        'UPDATE inquiries SET evidence_revision = evidence_revision + 1, updated_at = now() WHERE id = $1 AND user_id = $2',
+        [inquiryId, req.user.id]
+      );
+    }
+    await client.query(
+      `UPDATE inquiry_candidates SET status = 'ACCEPTED', accepted_inquiry_id = $3, updated_at = now()
+        WHERE id = $1 AND user_id = $2`,
+      [candidateId, req.user.id, inquiryId]
+    );
+    return { inquiryId, created, alreadyAccepted: false, evidenceCount: diaries.rowCount };
+  });
+  if (accepted.error === 'missing') return fail(res, 404, '候选问题不存在');
+  if (accepted.error === 'ignored') return fail(res, 400, '这个候选已经忽略');
+  const message = accepted.alreadyAccepted
+    ? '这个问题已经开始观察'
+    : accepted.created ? '问题已留下，日记已成为第一条线索' : '日记已关联到已有问题';
+  return ok(res, accepted, message);
+}));
+
+router.post('/candidates/:candidateId/ignore', asyncRoute(async (req, res) => {
+  const candidateId = uuid(req.params.candidateId);
+  if (!candidateId) return fail(res, 404, '候选问题不存在');
+  const result = await db.query(
+    `UPDATE inquiry_candidates SET status = 'IGNORED', updated_at = now()
+      WHERE id = $1 AND user_id = $2 AND status = 'PENDING' RETURNING id`,
+    [candidateId, req.user.id]
+  );
+  if (!result.rowCount) return fail(res, 404, '待确认的候选问题不存在');
+  return ok(res, { id: result.rows[0].id }, '已忽略，不会创建未解之问');
 }));
 
 router.get('/:id', asyncRoute(async (req, res) => {

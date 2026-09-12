@@ -13,7 +13,7 @@ API and never select a user with a client-supplied `userId`.
 | Diaries and private media metadata | `diaries`, `media_assets` |
 | Relationship assets | `friends`, `interactions`, `score_histories`, `friend_todos`, `friend_milestones`, `friend_asset_settings` |
 | Life OS snapshots, clauses, evidence and review proposals | `life_os`, `life_os_versions`, `life_os_clauses`, `life_os_clause_evidence`, `life_os_review_proposals` |
-| AI analysis, card suggestions and confirmed actions | `diary_analysis`, `todos` |
+| AI analysis, question/card suggestions and confirmed actions | `diary_analysis`, `inquiry_candidates`, `inquiry_candidate_diaries`, `todos` |
 | Shroom cards, diary provenance and social actions | `cards`, `card_practices`, `card_resonances`, `card_favorites` |
 
 Every private row is owned by `user_id`. The authenticated browser session or

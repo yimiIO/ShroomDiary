@@ -203,6 +203,35 @@ async function run() {
     const search = expectCode(await api('/api/diaries/v1/search?keyword=integration', { token: tokenA }));
     assert.equal(search.total, 1);
 
+    const candidateId = crypto.randomUUID();
+    const candidateOwner = await pool.query('SELECT id FROM users WHERE mobile = $1', [mobileA]);
+    await pool.query(
+      `INSERT INTO inquiry_candidates
+        (id, user_id, question, context, source, confidence, fingerprint, model_version)
+       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', 0.82, $5, 'integration')`,
+      [candidateId, candidateOwner.rows[0].id, '我为什么在临近完成时转向别的事情？',
+        '需要未来行为结果才能逐步理解。', crypto.randomBytes(32).toString('hex')]
+    );
+    await pool.query(
+      'INSERT INTO inquiry_candidate_diaries (candidate_id, diary_id, user_id) VALUES ($1, $2, $3)',
+      [candidateId, diary.id, candidateOwner.rows[0].id]
+    );
+    const pendingCandidates = expectCode(await api('/api/inquiries/v1/candidates', { token: tokenA }));
+    assert.equal(pendingCandidates.total, 1);
+    assert.equal(pendingCandidates.list[0].evidenceCount, 1);
+    expectCode(await api(`/api/inquiries/v1/candidates/${candidateId}/accept`, {
+      method: 'POST', token: sessionB.access_token, body: {}
+    }), 404);
+    const acceptedCandidate = expectCode(await api(`/api/inquiries/v1/candidates/${candidateId}/accept`, {
+      method: 'POST', token: tokenA, body: {}
+    }));
+    assert.equal(acceptedCandidate.created, true);
+    const acceptedInquiry = expectCode(await api(`/api/inquiries/v1/${acceptedCandidate.inquiryId}`, { token: tokenA }));
+    assert.equal(acceptedInquiry.evidenceCount, 1);
+    assert.equal(acceptedInquiry.evidence[0].diaryId, diary.id);
+    await pool.query('DELETE FROM inquiries WHERE id = $1 AND user_id = $2', [acceptedCandidate.inquiryId, candidateOwner.rows[0].id]);
+    await pool.query('DELETE FROM inquiry_candidates WHERE id = $1 AND user_id = $2', [candidateId, candidateOwner.rows[0].id]);
+
     const emptyInquirySummary = expectCode(await api('/api/inquiries/v1/summary', {
       token: sessionB.access_token
     }));
@@ -486,7 +515,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();

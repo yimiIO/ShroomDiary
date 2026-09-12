@@ -68,6 +68,20 @@
 					<view><text>{{ formatCost(analysis.costSummary) }}</text><text>预计花费 · 最终以 DeepSeek 账单为准</text></view>
 				</view>
 
+				<view class="inquiry-section" v-if="inquiryCandidates.length">
+					<view class="inquiry-heading"><text>这篇留下了还没想明白的事吗？</text><text>这只是 AI 提出的候选。只有你确认后，才会成为持续观察的问题。</text></view>
+					<view class="inquiry-candidate" v-for="item in inquiryCandidates" :key="item.id">
+						<text class="inquiry-mark">?</text>
+						<view class="inquiry-copy"><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
+							<view class="inquiry-actions" v-if="item.status === 'PENDING'">
+								<button class="inquiry-ignore" :disabled="processingInquiryId === item.id" @tap="ignoreInquiryCandidate(item)">忽略</button>
+								<button class="inquiry-accept" :disabled="processingInquiryId === item.id" @tap="acceptInquiryCandidate(item)">{{ item.suggestedInquiryId ? '关联已有问题' : '开始观察' }}</button>
+							</view>
+							<button class="inquiry-open" v-else-if="item.acceptedInquiryId" @tap="openInquiry(item.acceptedInquiryId)">✓ 已开始观察 · 查看问题</button>
+						</view>
+					</view>
+				</view>
+
 				<view class="card-section" v-if="cardSuggestion">
 					<view class="card-heading">
 						<view><text>从经历到菇卡</text><text>AI 只提出建议，由你决定是否沉淀或关联。</text></view>
@@ -114,9 +128,10 @@
 
 <script>
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask } from '@/api/shroom-system';
+import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 
 export default {
-		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false }; },
+		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
@@ -145,7 +160,7 @@ export default {
 				if (this.autoStart && this.analysisEnabled && (!existing.data || !['pending', 'running'].includes(existing.data.status))) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
-		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); },
+		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; },
 		async startAnalysis() {
 			if (!this.analysisEnabled) return;
 			this.stopPolling();
@@ -211,6 +226,28 @@ export default {
 			} catch (error) { console.error('关联历史菇卡失败', error); }
 			finally { this.bindingCards = false; }
 		},
+		async acceptInquiryCandidate(item) {
+			if (!item || !item.id || this.processingInquiryId) return;
+			this.processingInquiryId = item.id;
+			try {
+				const res = await this.$http.post(inquiryCandidateAccept(item.id), {});
+				item.status = 'ACCEPTED';
+				item.acceptedInquiryId = res.data.inquiryId;
+				uni.showToast({ title: res.data.created ? '问题已开始观察' : '已关联已有问题', icon: 'success' });
+			} catch (error) { console.error('确认未解之问候选失败', error); }
+			finally { this.processingInquiryId = ''; }
+		},
+		async ignoreInquiryCandidate(item) {
+			if (!item || !item.id || this.processingInquiryId) return;
+			this.processingInquiryId = item.id;
+			try {
+				await this.$http.post(inquiryCandidateIgnore(item.id), {});
+				this.inquiryCandidates = this.inquiryCandidates.filter(candidate => candidate.id !== item.id);
+				uni.showToast({ title: '已忽略', icon: 'none' });
+			} catch (error) { console.error('忽略未解之问候选失败', error); }
+			finally { this.processingInquiryId = ''; }
+		},
+		openInquiry(inquiryId) { if (inquiryId) uni.navigateTo({ url: `/pages/shroom/inquiry?id=${inquiryId}` }); },
 		viewCreatedCard() { if (this.cardSuggestion && this.cardSuggestion.createdCardId) uni.navigateTo({ url: `/pages/common/cards/detail?id=${this.cardSuggestion.createdCardId}` }); },
 		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果，并产生新的 AI 用量。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
 		openObservers() { uni.navigateTo({ url: '/pages/shroom/observers' }); },
@@ -274,6 +311,21 @@ button::after { border: 0; }
 .cost-card > view:last-child { text-align: right; }
 .cost-card > view:first-child text:first-child, .cost-card > view:last-child text:first-child { font-size: 20rpx; font-weight: 690; color: #3f5042; }
 .cost-card > view:first-child text:last-child, .cost-card > view:last-child text:last-child { font-size: 16rpx; color: #829083; }
+.inquiry-section { margin-top: 24rpx; padding: 30rpx; border-radius: 31rpx; background: #172019; color: #fff; }
+.inquiry-heading { display: flex; flex-direction: column; gap: 8rpx; }
+.inquiry-heading text:first-child { font-size: 27rpx; font-weight: 720; line-height: 1.45; }
+.inquiry-heading text:last-child { font-size: 18rpx; line-height: 1.55; color: #aebaae; }
+.inquiry-candidate { display: flex; align-items: flex-start; gap: 18rpx; margin-top: 23rpx; padding-top: 23rpx; border-top: 1rpx solid rgba(255,255,255,.1); }
+.inquiry-mark { display: flex; width: 46rpx; height: 46rpx; flex: 0 0 46rpx; align-items: center; justify-content: center; border-radius: 50%; background: #dfe9bd; color: #263027; font-family: Georgia, serif; font-size: 25rpx; }
+.inquiry-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.inquiry-copy > text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; line-height: 1.55; }
+.inquiry-copy > text:nth-child(2) { margin-top: 10rpx; font-size: 18rpx; line-height: 1.6; color: #b9c4ba; }
+.inquiry-actions { display: flex; justify-content: flex-end; gap: 12rpx; margin-top: 20rpx; }
+.inquiry-ignore, .inquiry-accept, .inquiry-open { min-height: 58rpx; padding: 0 21rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; font-size: 18rpx; line-height: 1.2; }
+.inquiry-ignore { border: 1rpx solid rgba(255,255,255,.2); color: #c4cec5; }
+.inquiry-accept { background: #e5efd9; color: #172019; font-weight: 700; }
+.inquiry-open { align-self: flex-start; margin-top: 18rpx; background: rgba(229,239,217,.13); color: #e0eadc; }
+.inquiry-ignore[disabled], .inquiry-accept[disabled] { opacity: .45; }
 .view-heading { display: flex; align-items: center; gap: 20rpx; padding-bottom: 26rpx; border-bottom: 1rpx solid #e8ede6; }
 .view-heading > text { font-size: 47rpx; font-weight: 760; color: #d4ded0; }
 .view-heading > view { display: flex; flex-direction: column; gap: 6rpx; }

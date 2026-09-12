@@ -133,6 +133,20 @@ test('observers are user-configurable and analysis renders dynamic seats with co
   assert.match(pages, /pages\/shroom\/observers/);
 });
 
+test('diary analysis proposes unresolved questions without requiring a mood or tag', () => {
+  const analysis = source('src/pages/shroom/ai-analysis.vue');
+  const prompt = source('server/src/ai-prompts.js');
+  const route = source('server/src/routes/ai.js');
+
+  assert.match(analysis, /这篇留下了还没想明白的事吗/);
+  assert.match(analysis, /acceptInquiryCandidate/);
+  assert.match(analysis, /ignoreInquiryCandidate/);
+  assert.match(prompt, /不依赖问号、标签或情绪选择/);
+  assert.match(prompt, /需要未来经历、行为结果、反例或跨时间比较/);
+  assert.match(route, /normalizeInquiryCandidates/);
+  assert.match(route, /syncDiaryCandidates/);
+});
+
 test('memory review exposes tokens and a plain-language CNY estimate', () => {
   const memory = source('src/pages/shroom/memory.vue');
   assert.match(memory, /visibleCost/);
@@ -158,6 +172,10 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   assert.match(edit, /关联问题/);
   assert.match(edit, /syncInquiryLinks/);
   assert.match(list, /有些答案，需要生活慢慢提供证据/);
+  assert.match(list, /从过去日记里发现的线索/);
+  assert.match(list, /loadCandidates/);
+  assert.match(list, /acceptCandidate/);
+  assert.match(list, /ignoreCandidate/);
   assert.match(detail, /生活留下的线索/);
   assert.match(detail, /状态不会由 AI 自动改变/);
   assert.match(detail, /costSummary/);

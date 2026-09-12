@@ -306,7 +306,7 @@
 
 				<view class="analysis-bridge" v-if="diaryId && diaryForm.content.length > 20">
 						<view class="analysis-orbit"><text>5</text></view>
-						<view class="analysis-copy"><text>五视角重新观察</text><text>AI 会分析这段经历，也会判断是否值得沉淀新菇卡或关联历史菇卡。</text></view>
+						<view class="analysis-copy"><text>五视角重新观察</text><text>AI 会分析这段经历，并提出可能值得长期观察的问题与菇卡建议，都由你确认。</text></view>
 					<button class="analysis-button" @click="openAnalysis">查看</button>
 				</view>
 

@@ -102,3 +102,16 @@ while storing only prayer, body, and monthly financial-rule confirmations in
 `compound_settings` and `compound_checkins`. The configured owner UUID is
 checked server-side on every request; a client-provided user identifier is never
 trusted. See `../docs/COMPOUND_SYSTEM.md`.
+
+With the account owner's explicit authorization, legacy diaries can be scanned
+once for unresolved-question candidates without rerunning the full five-view
+analysis for every entry:
+
+```bash
+npm run backfill:inquiries -- --mobile=13800000000 --apply
+```
+
+The command reads only AI-allowed text diaries owned by that exact account,
+records provider usage, and writes pending candidates. It never creates a formal
+inquiry until the user confirms it in the product. Re-running against existing
+pending historical candidates requires the explicit `--replace-pending` flag.

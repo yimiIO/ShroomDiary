@@ -34,6 +34,29 @@
 					</view>
 				</view>
 
+				<view class="candidate-panel" v-if="!selectionMode && pendingCandidates.length">
+					<view class="candidate-heading">
+						<view>
+							<text class="candidate-kicker">FROM YOUR JOURNAL</text>
+							<text class="candidate-title">从过去日记里发现的线索</text>
+						</view>
+						<text class="candidate-count">{{ pendingCandidates.length }} 个待确认</text>
+					</view>
+					<text class="candidate-intro">这些还不是你的长期问题。AI 只负责提出可能性，由你决定是否值得继续观察。</text>
+					<view class="candidate-card" v-for="item in pendingCandidates" :key="item.id">
+						<view class="candidate-mark"><text>?</text></view>
+						<view class="candidate-body">
+							<text class="candidate-question">{{ item.question }}</text>
+							<text class="candidate-context" v-if="item.context">{{ item.context }}</text>
+							<text class="candidate-source">来自 {{ item.evidenceCount }} 篇日记{{ item.sourceDate ? ' · 最早 ' + item.sourceDate : '' }}</text>
+							<view class="candidate-actions">
+								<button class="candidate-ignore" :disabled="processingCandidateId === item.id" @tap="ignoreCandidate(item)">不是这个</button>
+								<button class="candidate-accept" :disabled="processingCandidateId === item.id" @tap="acceptCandidate(item)">{{ item.suggestedInquiryId ? '关联已有问题' : '开始观察' }}</button>
+							</view>
+						</view>
+					</view>
+				</view>
+
 				<view class="status-tabs" v-if="!selectionMode">
 					<button v-for="item in tabs" :key="item.value" class="status-tab" :class="{ active: status === item.value }" @tap="changeStatus(item.value)">{{ item.label }}</button>
 				</view>
@@ -55,7 +78,7 @@
 					</button>
 				</view>
 
-				<view class="empty-state" v-else-if="!loading">
+				<view class="empty-state" v-else-if="!loading && !pendingCandidates.length">
 					<text class="empty-mark">?</text>
 					<text class="empty-title">{{ status === 'OPEN' ? '还没有正在追踪的问题' : '这里暂时没有记录' }}</text>
 					<text class="empty-copy">问题不需要漂亮，只要对你真实。</text>
@@ -68,7 +91,7 @@
 </template>
 
 <script>
-import { inquiryList } from '@/api/inquiry';
+import { inquiryCandidateAccept, inquiryCandidateIgnore, inquiryCandidates, inquiryList } from '@/api/inquiry';
 
 export default {
 	data() {
@@ -82,6 +105,8 @@ export default {
 				{ value: 'RESOLVED', label: '已经想明白' }
 			],
 			items: [],
+			pendingCandidates: [],
+			processingCandidateId: '',
 			selected: [],
 			creating: false,
 			creatingInquiry: false,
@@ -96,8 +121,46 @@ export default {
 			try { this.selected = JSON.parse(decodeURIComponent(options.selected)); } catch (error) { this.selected = []; }
 		}
 		this.loadItems();
+		if (!this.selectionMode) this.loadCandidates();
 	},
 	methods: {
+		async loadCandidates() {
+			try {
+				const res = await this.$http.get(inquiryCandidates, { status: 'PENDING', page: 1, pageSize: 50 });
+				this.pendingCandidates = (res.data && res.data.list) || [];
+			} catch (error) {
+				console.error('加载待确认问题失败', error);
+				this.pendingCandidates = [];
+			}
+		},
+		async acceptCandidate(item) {
+			if (!item || !item.id || this.processingCandidateId) return;
+			this.processingCandidateId = item.id;
+			try {
+				await this.$http.post(inquiryCandidateAccept(item.id), {});
+				this.pendingCandidates = this.pendingCandidates.filter(candidate => candidate.id !== item.id);
+				this.status = 'OPEN';
+				await this.loadItems();
+				uni.showToast({ title: item.suggestedInquiryId ? '已关联问题' : '已开始观察', icon: 'success' });
+			} catch (error) {
+				console.error('确认候选问题失败', error);
+			} finally {
+				this.processingCandidateId = '';
+			}
+		},
+		async ignoreCandidate(item) {
+			if (!item || !item.id || this.processingCandidateId) return;
+			this.processingCandidateId = item.id;
+			try {
+				await this.$http.post(inquiryCandidateIgnore(item.id), {});
+				this.pendingCandidates = this.pendingCandidates.filter(candidate => candidate.id !== item.id);
+				uni.showToast({ title: '已忽略', icon: 'none' });
+			} catch (error) {
+				console.error('忽略候选问题失败', error);
+			} finally {
+				this.processingCandidateId = '';
+			}
+		},
 		async loadItems() {
 			this.loading = true;
 			try {
@@ -199,6 +262,24 @@ button::after { border: 0; }
 .cancel-button { color: #657065; border: 1rpx solid rgba(23,32,25,.12); }
 .save-button { background: #52622f; color: white; }
 .save-button[disabled] { opacity: .35; }
+.candidate-panel { margin-top: 28rpx; padding: 30rpx; border-radius: 31rpx; background: #172019; color: #f4f7ef; }
+.candidate-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
+.candidate-heading > view { min-width: 0; display: flex; flex-direction: column; }
+.candidate-kicker { color: #b8ca7d; font-size: 16rpx; font-weight: 700; letter-spacing: 2.6rpx; }
+.candidate-title { margin-top: 9rpx; font-family: Georgia, 'Songti SC', serif; font-size: 29rpx; line-height: 1.45; }
+.candidate-count { flex: 0 0 auto; padding: 10rpx 15rpx; border-radius: 999rpx; background: rgba(219,231,178,.12); color: #dbe7b2; font-size: 17rpx; }
+.candidate-intro { display: block; margin-top: 15rpx; color: #aeb9af; font-size: 20rpx; line-height: 1.65; }
+.candidate-card { display: flex; gap: 18rpx; margin-top: 25rpx; padding-top: 25rpx; border-top: 1rpx solid rgba(255,255,255,.1); }
+.candidate-mark { width: 46rpx; height: 46rpx; flex: 0 0 46rpx; border-radius: 50%; background: #dbe7b2; color: #172019; display: flex; align-items: center; justify-content: center; font-family: Georgia, serif; font-size: 25rpx; }
+.candidate-body { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.candidate-question { font-family: Georgia, 'Songti SC', serif; font-size: 26rpx; line-height: 1.55; overflow-wrap: anywhere; }
+.candidate-context { margin-top: 10rpx; color: #bac4bb; font-size: 19rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.candidate-source { margin-top: 14rpx; color: #89968b; font-size: 17rpx; }
+.candidate-actions { margin-top: 20rpx; display: flex; justify-content: flex-end; gap: 12rpx; }
+.candidate-ignore, .candidate-accept { min-height: 60rpx; padding: 0 22rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; font-size: 19rpx; }
+.candidate-ignore { border: 1rpx solid rgba(255,255,255,.18); color: #c0c9c1; }
+.candidate-accept { background: #e5efd9; color: #172019; font-weight: 700; }
+.candidate-ignore[disabled], .candidate-accept[disabled] { opacity: .42; }
 .status-tabs { margin: 34rpx 0 22rpx; display: flex; gap: 10rpx; }
 .status-tab { height: 60rpx; padding: 0 24rpx; border-radius: 30rpx; color: #748075; font-size: 22rpx; display: flex; align-items: center; justify-content: center; }
 .status-tab.active { background: #1f2921; color: white; }
