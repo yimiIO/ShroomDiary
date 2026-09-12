@@ -6,6 +6,7 @@
 - [COMPOUND_SYSTEM.md](./COMPOUND_SYSTEM.md)：五类 20 个长期方向、跨次推进、卡点处理、结果确认、日记联动与阶段回看。
 - [LIFE_OS.md](./LIFE_OS.md)：人生 OS 与菇卡/行动的区别、生成修订机制、数据与 API 契约。
 - [INQUIRIES.md](./INQUIRIES.md)：未解之问的入口、证据生命周期、AI 复盘和隐私边界。
+- [TODO_PROJECTS.md](./TODO_PROJECTS.md)：待办、项目、重复实例、行动记录与复利系统的统一行动层。
 
 下面的 `API.md` 和 `database.sql` 是项目早期基于 MySQL 草案留下的参考，不能代表当前生产 PostgreSQL API 与数据库；现行服务端结构以 `server/sql/`、`server/src/routes/` 和 `server/STORAGE.md` 为准。
 

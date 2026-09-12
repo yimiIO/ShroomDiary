@@ -25,7 +25,7 @@ Today, deliberate journaling is Shroom's primary memory interface. Over time, Sh
 - **Shroom Cards** for reusable understandings, reminders, or perspectives derived from concrete experience. They are not tasks or slogans.
 - **Compounding System** that starts with one of 20 long-horizon directions and persists the goal, blocker, confirmed real-world result, and next step across sessions.
 - **Life OS** for a small set of user-signed cross-context decision principles. AI may propose revisions, while the Compounding System may only reference—not rewrite—them.
-- **Relationships and tasks** that turn diary evidence into versioned relationship events, commitments, and actionable follow-ups.
+- **Relationships and an action layer** that turn diary evidence into versioned relationship events and confirmed follow-ups. Tasks support four views, projects, separate scheduled/deadline dates, recurrence instances, results, and reversible action records.
 - **Controllable AI** with per-entry AI permission and model, token, price-snapshot, and estimated CNY cost records.
 - **Lightweight social discovery** through public cards, resonance, favorites, references, and practice—without making private journals public.
 - **Portable data** through personal export. Journal text remains the authoritative source; embeddings and analyses are derived data.
@@ -34,7 +34,7 @@ Today, deliberate journaling is Shroom's primary memory interface. Over time, Sh
 
 Shroom is not a medical diagnostic product and does not make final decisions for its users. Emotion assessments, relationship interpretations, and Life OS suggestions are inspectable hypotheses. Shroom does not silently collect browser history, automatically rewrite a person's principles after one analysis, or publish private content without confirmation.
 
-See [docs/PRODUCT.md](./docs/PRODUCT.md) for the full product model, [docs/COMPOUND_SYSTEM.md](./docs/COMPOUND_SYSTEM.md) for the persistent action loop, [docs/INQUIRIES.md](./docs/INQUIRIES.md) for the living-question lifecycle, [docs/LIFE_OS.md](./docs/LIFE_OS.md) for the boundary between cards and Life OS, and [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md) for the memory architecture.
+See [docs/PRODUCT.md](./docs/PRODUCT.md) for the full product model, [docs/TODO_PROJECTS.md](./docs/TODO_PROJECTS.md) for the task and project action layer, [docs/COMPOUND_SYSTEM.md](./docs/COMPOUND_SYSTEM.md) for the persistent action loop, [docs/INQUIRIES.md](./docs/INQUIRIES.md) for the living-question lifecycle, [docs/LIFE_OS.md](./docs/LIFE_OS.md) for the boundary between cards and Life OS, and [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md) for the memory architecture.
 
 ## Architecture
 

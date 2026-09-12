@@ -44,6 +44,22 @@
 			}
 		},
 		{
+			"path": "pages/todo/detail",
+			"style": {
+				"navigationBarTitleText": "待办详情",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/todo/project",
+			"style": {
+				"navigationBarTitleText": "项目",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/cards",
 			"style": {
 				"navigationBarTitleText": "菇卡",

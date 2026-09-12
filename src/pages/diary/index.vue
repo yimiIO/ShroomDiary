@@ -97,6 +97,13 @@
 			</scroll-view>
 		</view>
 
+		<view class="action-records" v-if="actionRecords.length">
+			<view class="action-records-heading"><text>ACTIONS</text><text>当天完成 · {{ actionRecords.length }}</text></view>
+			<button v-for="record in actionRecords" :key="record.id" @tap="openActionRecord(record)">
+				<text class="action-mark">✓</text><view><text>{{ record.title }}</text><text v-if="record.result">结果：{{ record.result }}</text><text v-else-if="record.projectName">{{ record.projectName }}</text></view><text>›</text>
+			</button>
+		</view>
+
 		<view class="wellbeing-glimpse" v-if="wellbeingOverview && wellbeingOverview.records && wellbeingOverview.records.length" @tap="openWellbeing">
 			<view class="wellbeing-glimpse-top"><view><text>BODY & MIND</text><text>{{ wellbeingCardTitle }}</text></view><text>›</text></view>
 			<text class="wellbeing-glimpse-copy">{{ wellbeingRecordPreview(wellbeingOverview.records[0]) }}</text>
@@ -214,6 +221,7 @@ export default {
 			diaryRequestSequence: 0,
 			calendarRequestSequence: 0,
 			timeSlots: [],
+			actionRecords: [],
 			visitorCount: 0,
 			showFullCalendarView: false,
 			pendingTodoCount: 0, // 待完成待办数量
@@ -431,6 +439,7 @@ export default {
 		async loadDiaries() {
 			if (!this.$mStore.getters.hasLogin) {
 				this.diaryList = [];
+				this.actionRecords = [];
 				this.initDates();
 				this.initTimeSlots();
 				return;
@@ -447,6 +456,7 @@ export default {
 				if (requestSequence !== this.diaryRequestSequence || requestedDate !== this.selectedDate) return;
 				if (res.code === 200) {
 					this.diaryList = res.data.list || [];
+					this.actionRecords = res.data.actionRecords || [];
 					this.initDates();
 					this.initTimeSlots();
 				} else {
@@ -457,6 +467,7 @@ export default {
 				}
 			} catch (error) {
 				console.error('加载日记失败', error);
+				this.actionRecords = [];
 				uni.showToast({
 					title: '加载失败',
 					icon: 'none'
@@ -546,6 +557,10 @@ export default {
 			});
 		},
 
+		openActionRecord(record) {
+			if (record && record.taskId) uni.navigateTo({ url: `/pages/todo/detail?id=${record.taskId}` });
+		},
+
 		// 创建整篇日记
 		createFullDayDiary() {
 			if (!this.requireLogin()) return;
@@ -596,7 +611,7 @@ export default {
 				const res = await this.$http.get(todoList, {
 					page: 1,
 					pageSize: 100, // 获取足够多的数据来计算总数
-					status: 'pending'
+					status: 'open'
 				});
 
 				if (res.code === 200 && res.data) {
@@ -934,6 +949,24 @@ export default {
 		}
 	}
 }
+
+.action-records {
+	display: flex;
+	flex-direction: column;
+	margin: 0 40rpx 25rpx;
+	padding: 20rpx 22rpx;
+	border: 1rpx solid rgba(47,64,51,.08);
+	border-radius: 22rpx;
+	background: rgba(255,253,247,.72);
+}
+.action-records-heading { display: flex; justify-content: space-between; margin-bottom: 7rpx; color: #78827a; font-size: 15rpx; font-weight: 700; letter-spacing: 2rpx; }
+.action-records button { display: flex; align-items: center; gap: 13rpx; min-height: 67rpx; border-top: 1rpx solid rgba(47,64,51,.07); background: transparent; text-align: left; }
+.action-records button::after { border: 0; }
+.action-records button > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }
+.action-records button > view text:first-child { overflow: hidden; color: #354139; font-size: 21rpx; text-overflow: ellipsis; white-space: nowrap; }
+.action-records button > view text:last-child { overflow: hidden; color: #7d867e; font-size: 17rpx; text-overflow: ellipsis; white-space: nowrap; }
+.action-mark { display: flex; width: 34rpx; height: 34rpx; align-items: center; justify-content: center; border-radius: 50%; background: #dfe8bd; color: #435334; font-size: 17rpx; }
+.action-records button > text:last-child { color: #879088; font-size: 25rpx; }
 
 .wellbeing-glimpse {
 	margin: 0 40rpx 28rpx;

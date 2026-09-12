@@ -1,4 +1,6 @@
-# 待办功能后端接口文档
+# 待办功能后端接口文档（历史草案，已废弃）
+
+> 本文档是早期 MySQL / `rf-todo` 草案，不代表当前产品或生产 API。当前 PostgreSQL 行动层见 [TODO_PROJECTS.md](./TODO_PROJECTS.md) 和 `server/src/routes/todos.js`。特别是：完成待办不再伪造日记正文，而是生成可撤销的系统行动记录。
 
 ## 数据库表设计
 

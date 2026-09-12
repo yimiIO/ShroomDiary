@@ -18,15 +18,50 @@ function styleRule(vueSource, selector) {
   return match[1];
 }
 
-test('todo creation uses native buttons and exposes visible success state', () => {
+test('todo creation stays page-local, title-first and exposes visible success state', () => {
   const list = source('src/pages/todo/list.vue');
   const edit = source('src/pages/todo/edit.vue');
   const analysis = source('src/pages/shroom/ai-analysis.vue');
 
-  assert.match(list, /<button class="add-button"[^>]+@tap="addTodo"/);
-  assert.match(edit, /<button class="nav-save"[^>]+@tap="saveTodo"/);
+  assert.match(list, /data-testid="add-todo"[^>]+@tap="openQuickAdd"/);
+  assert.match(list, /class="save-button"[^>]+@tap="saveTask"/);
+  assert.match(list, /已保存，可在相应视图查看/);
+  assert.match(edit, /data-testid="save-todo"[^>]+@tap="save"/);
   assert.match(analysis, /<button[^>]+data-testid="create-analysis-todos"[^>]+@tap="createTodos"/);
   assert.match(analysis, /createdTodoNotice/);
+});
+
+test('todo execution layer has current views, projects, recurrence and reversible action records', () => {
+  const list = source('src/pages/todo/list.vue');
+  const edit = source('src/pages/todo/edit.vue');
+  const detail = source('src/pages/todo/detail.vue');
+  const project = source('src/pages/todo/project.vue');
+  const row = source('src/components/TodoRow.vue');
+  const route = source('server/src/routes/todos.js');
+  const migration = source('server/sql/026_todo_projects.sql');
+  const diary = source('src/pages/diary/index.vue');
+  const compound = source('src/pages/shroom/compound.vue');
+
+  for (const label of ['当前', '之后', '未安排', '项目']) assert.match(list, new RegExp(label));
+  assert.match(list, /showQuickSheet/);
+  assert.match(list, /repeatLabels: \['不重复', '每天', '每周', '每月'\]/);
+  assert.match(list, /undoComplete/);
+  assert.match(list, /selectionMode/);
+  assert.match(row, /已过截止日期/);
+  assert.match(detail, /记录结果并完成/);
+  assert.match(detail, /不会伪造或修改你的日记正文/);
+  assert.match(detail, /恢复为未完成/);
+  assert.match(project, /项目还有|未完成|归档项目/);
+  assert.match(project, /转移到其他项目/);
+  assert.match(edit, /仅本次/);
+  assert.match(edit, /本次及以后/);
+  assert.match(route, /generateActiveRules/);
+  assert.match(route, /ON CONFLICT \(user_id, recurrence_rule_id, occurrence_date\)/);
+  assert.match(route, /这条待办已在其他页面更新/);
+  assert.match(migration, /todo_recurrence_rules/);
+  assert.match(migration, /todo_events/);
+  assert.match(diary, /actionRecords/);
+  assert.match(compound, /把这一步安排到待办/);
 });
 
 test('diary text surfaces stay inside their cards and action labels are centered', () => {

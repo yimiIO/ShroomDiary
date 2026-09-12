@@ -25,7 +25,7 @@ Shroom 的远景是成为每个人长期陪伴的 AI 伙伴：在尊重隐私和
 - **菇卡**：从具体经历中保留下次仍能使用的理解、提醒或观察视角；它不是待办，也不是口号。
 - **复利系统**：从五类 20 个长期方向中只选一件开始，跨次保留目标、卡点、真实结果和下一步，让用户不必每次从零开始。
 - **人生 OS**：保存少量、跨情境的判断原则；AI 只能提出候选，用户确认后才签发新版本，复利系统只能引用而不能自动改写。
-- **人脉与待办**：从日记中提取关系事件与承诺，规则化更新关系记录；真正需要执行的事情进入待办或实验。
+- **人脉与待办**：从日记中提取关系事件与承诺；待办支持四视图、项目、独立安排/截止日期、重复实例、完成结果与可撤销行动记录。
 - **可控 AI**：每篇日记可单独关闭 AI 使用；分析与回看记录模型、token、价格快照和人民币费用估算。
 - **轻社交**：用户可以公开、共鸣、收藏、引用和练习菇卡，私人日记本身默认不公开。
 - **数据可携带**：支持导出自己的日记和衍生数据，日记正文始终是权威源。
@@ -34,7 +34,7 @@ Shroom 的远景是成为每个人长期陪伴的 AI 伙伴：在尊重隐私和
 
 Shroom 不是医疗诊断工具，也不替用户下最终结论。AI 生成的情绪理解、关系判断和人生 OS 建议都应被视为可检查的候选解释。产品不会偷偷采集浏览器历史，也不会因为一次分析就自动改写用户的人生原则或公开私人内容。
 
-更完整的产品定义见 [docs/PRODUCT.md](./docs/PRODUCT.md)，复利系统见 [docs/COMPOUND_SYSTEM.md](./docs/COMPOUND_SYSTEM.md)，长期问题机制见 [docs/INQUIRIES.md](./docs/INQUIRIES.md)，菇卡与人生 OS 的边界见 [docs/LIFE_OS.md](./docs/LIFE_OS.md)，记忆检索架构见 [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md)。
+更完整的产品定义见 [docs/PRODUCT.md](./docs/PRODUCT.md)，待办与项目见 [docs/TODO_PROJECTS.md](./docs/TODO_PROJECTS.md)，复利系统见 [docs/COMPOUND_SYSTEM.md](./docs/COMPOUND_SYSTEM.md)，长期问题机制见 [docs/INQUIRIES.md](./docs/INQUIRIES.md)，菇卡与人生 OS 的边界见 [docs/LIFE_OS.md](./docs/LIFE_OS.md)，记忆检索架构见 [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md)。
 
 ## 技术架构
 

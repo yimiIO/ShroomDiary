@@ -155,6 +155,7 @@ app.use((error, req, res, next) => {
   if (error.code === 'SHROOM_AI_UNAVAILABLE') return fail(res, 503, error.message);
   if (['SHROOM_COS_CONFIG', 'SHROOM_COS_UNAVAILABLE'].includes(error.code)) return fail(res, 503, error.message);
   if (error.code === 'SHROOM_API_SCOPE') return fail(res, 403, error.message);
+  if (error.code === 'SHROOM_TODO_INPUT') return fail(res, 400, error.message);
   if (['SHROOM_AI_FAILED', 'SHROOM_AI_INPUT'].includes(error.code)) return fail(res, 503, error.message);
   if (error.code === 'SHROOM_REFLECTION_INPUT') return fail(res, 400, error.message);
   if (String(error.code || '').startsWith('SHROOM_EMBEDDING_')) return fail(res, 503, error.message);

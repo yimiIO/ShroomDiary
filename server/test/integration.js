@@ -600,6 +600,111 @@ async function run() {
     }));
     assert.equal(completed.status, 'completed');
 
+    const titleOnlyRequest = `integration-title-only-${suffix}`;
+    const titleOnly = expectCode(await api('/api/todos/v1/create', {
+      method: 'POST', token: tokenA,
+      body: { title: 'title only task', clientRequestId: titleOnlyRequest, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(titleOnly.scheduledDate, null);
+    assert.equal(titleOnly.projectId, null);
+    const repeatedCreate = expectCode(await api('/api/todos/v1/create', {
+      method: 'POST', token: tokenA,
+      body: { title: 'title only task', clientRequestId: titleOnlyRequest, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(repeatedCreate.id, titleOnly.id);
+    const unscheduled = expectCode(await api('/api/todos/v1/home?view=unscheduled&timeZone=Asia%2FShanghai', { token: tokenA }));
+    assert.ok(unscheduled.groups[0].items.some(item => item.id === titleOnly.id));
+    expectCode(await api(`/api/todos/v1/view?id=${titleOnly.id}`, { token: sessionB.access_token }), 404);
+
+    const startedTask = expectCode(await api('/api/todos/v1/status', {
+      method: 'PATCH', token: tokenA,
+      body: { id: titleOnly.id, action: 'START', version: titleOnly.version, operationId: `start-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(startedTask.status, 'in_progress');
+    assert.equal(startedTask.scheduledDate, null);
+    const currentTasks = expectCode(await api('/api/todos/v1/home?view=current&timeZone=Asia%2FShanghai', { token: tokenA }));
+    assert.equal(currentTasks.groups[0].key, 'progressing');
+    assert.ok(currentTasks.groups[0].items.some(item => item.id === titleOnly.id));
+
+    const project = expectCode(await api('/api/todos/v1/projects', {
+      method: 'POST', token: tokenA,
+      body: { name: 'Integration project', goal: 'verify one shared task identity' }
+    }));
+    const projectTask = expectCode(await api('/api/todos/v1/create', {
+      method: 'POST', token: tokenA,
+      body: { title: 'project task', projectId: project.id, scheduledDate: currentTasks.today, clientRequestId: `project-task-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    const projectView = expectCode(await api(`/api/todos/v1/projects/${project.id}?timeZone=Asia%2FShanghai`, { token: tokenA }));
+    assert.ok(projectView.groups.some(group => group.items.some(item => item.id === projectTask.id)));
+    const currentWithProject = expectCode(await api('/api/todos/v1/home?view=current&timeZone=Asia%2FShanghai', { token: tokenA }));
+    assert.ok(currentWithProject.groups.some(group => group.items.some(item => item.id === projectTask.id)));
+
+    const repeatTask = expectCode(await api('/api/todos/v1/create', {
+      method: 'POST', token: tokenA,
+      body: {
+        title: 'daily repeat task', timeZone: 'Asia/Shanghai', clientRequestId: `repeat-${suffix}`,
+        recurrence: { frequency: 'DAILY', startsOn: currentTasks.today, timeZone: 'Asia/Shanghai' }
+      }
+    }));
+    assert.ok(repeatTask.recurrenceRuleId);
+    await api('/api/todos/v1/home?view=current&timeZone=Asia%2FShanghai', { token: tokenA });
+    await api('/api/todos/v1/home?view=current&timeZone=Asia%2FShanghai', { token: tokenA });
+    const occurrenceCount = await pool.query(
+      'SELECT count(*)::int AS count, count(DISTINCT occurrence_date)::int AS dates FROM todos WHERE recurrence_rule_id=$1',
+      [repeatTask.recurrenceRuleId]
+    );
+    assert.equal(occurrenceCount.rows[0].count, occurrenceCount.rows[0].dates);
+    const updatedRepeat = expectCode(await api(`/api/todos/v1/recurrences/${repeatTask.recurrenceRuleId}`, {
+      method: 'PUT', token: tokenA,
+      body: {
+        title: 'weekly repeat task', description: 'changed from this occurrence forward',
+        currentTaskId: repeatTask.id, effectiveOn: repeatTask.occurrenceDate,
+        version: repeatTask.recurrence.version, operationId: `repeat-update-${suffix}`,
+        timeZone: 'Asia/Shanghai',
+        recurrence: { frequency: 'WEEKLY', startsOn: repeatTask.occurrenceDate, weekDays: [1, 3], timeZone: 'Asia/Shanghai' }
+      }
+    }));
+    assert.equal(updatedRepeat.frequency, 'WEEKLY');
+    const repeatInstanceAfterUpdate = expectCode(await api(`/api/todos/v1/view?id=${repeatTask.id}`, { token: tokenA }));
+    assert.equal(repeatInstanceAfterUpdate.title, 'weekly repeat task');
+    assert.equal(repeatInstanceAfterUpdate.recurrence.frequency, 'WEEKLY');
+    const duplicateRepeatUpdate = expectCode(await api(`/api/todos/v1/recurrences/${repeatTask.recurrenceRuleId}`, {
+      method: 'PUT', token: tokenA,
+      body: {
+        title: 'weekly repeat task', currentTaskId: repeatTask.id, effectiveOn: repeatTask.occurrenceDate,
+        version: repeatTask.recurrence.version, operationId: `repeat-update-${suffix}`,
+        timeZone: 'Asia/Shanghai',
+        recurrence: { frequency: 'WEEKLY', startsOn: repeatTask.occurrenceDate, weekDays: [1, 3], timeZone: 'Asia/Shanghai' }
+      }
+    }));
+    assert.equal(duplicateRepeatUpdate.id, repeatTask.recurrenceRuleId);
+
+    const completedWithResult = expectCode(await api('/api/todos/v1/status', {
+      method: 'PATCH', token: tokenA,
+      body: { id: startedTask.id, action: 'COMPLETE', version: startedTask.version, result: 'produced an integration result', operationId: `complete-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(completedWithResult.status, 'completed');
+    assert.equal(completedWithResult.result, 'produced an integration result');
+    const duplicateComplete = expectCode(await api('/api/todos/v1/status', {
+      method: 'PATCH', token: tokenA,
+      body: { id: startedTask.id, action: 'COMPLETE', version: startedTask.version, result: 'duplicate', operationId: `complete-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(duplicateComplete.id, completedWithResult.id);
+    const actionRecords = expectCode(await api(`/api/todos/v1/actions?date=${currentTasks.today}&timeZone=Asia%2FShanghai`, { token: tokenA }));
+    assert.equal(actionRecords.list.filter(item => item.taskId === startedTask.id).length, 1);
+    const restoredTask = expectCode(await api('/api/todos/v1/status', {
+      method: 'PATCH', token: tokenA,
+      body: { id: startedTask.id, action: 'RESTORE', version: completedWithResult.version, operationId: `restore-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(restoredTask.status, 'pending');
+    const restoredActions = expectCode(await api(`/api/todos/v1/actions?date=${currentTasks.today}&timeZone=Asia%2FShanghai`, { token: tokenA }));
+    assert.equal(restoredActions.list.some(item => item.taskId === startedTask.id), false);
+
+    const incompleteArchive = await api(`/api/todos/v1/projects/${project.id}/archive`, {
+      method: 'POST', token: tokenA, body: {}
+    });
+    expectCode(incompleteArchive, 409);
+
     const card = expectCode(await api('/api/cards/v1/create', {
       method: 'POST',
       token: tokenA,
@@ -673,15 +778,19 @@ async function run() {
     assert.equal(exported.inquiries.length, 2);
     assert.equal(exported.inquiryEvidence.length, 3);
     assert.ok(exported.inquiries.some(item => item.inquiry_type === 'PHYSICAL_HEALTH'));
-    assert.ok(exported.inquiryEvidence.some(item => item.health_observation.severity === 10));
+    assert.ok(exported.inquiryEvidence.some(item => item.source_type === 'WELLBEING'));
+    assert.ok(exported.wellbeingRecords.some(item => item.observation.severity === 10));
     assert.equal(exported.inquirySyntheses.length, 0);
+    assert.ok(exported.todoProjects.some(item => item.id === project.id));
+    assert.ok(exported.todoRecurrenceRules.some(item => item.id === repeatTask.recurrenceRuleId));
+    assert.ok(exported.todoEvents.some(item => item.todo_id === startedTask.id));
     const redactedExport = expectCode(await api('/api/export/v1/all?redacted=true', { token: tokenA }));
     assert.deepEqual(redactedExport.account, {});
     assert.ok(redactedExport.friends.every(item => Object.keys(item.contact).length === 0));
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo-title-only-idempotency', 'todo-undated-start', 'todo-project-identity', 'todo-recurrence-idempotency', 'todo-recurrence-scope', 'todo-action-record-undo', 'todo-project-archive-safety', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();

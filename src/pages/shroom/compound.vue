@@ -55,6 +55,7 @@
 						<button class="action" :class="{ selected: composerMode === 'blocker' }" :disabled="working" @tap="openComposer('blocker')"><text>我卡住了</text><text>换一种推进方式</text></button>
 						<button class="action" :class="{ selected: composerMode === 'result' }" :disabled="working" @tap="openComposer('result')"><text>记录结果</text><text>留下真实发生的事</text></button>
 					</view>
+					<button class="task-bridge" @tap="createTaskFromCurrent"><text>把这一步安排到待办</text><text>创建后仍可从任务返回这段推进　›</text></button>
 				</view>
 
 				<view v-if="composerMode === 'blocker'" class="composer-card">
@@ -474,6 +475,18 @@ export default {
 		openDirections() { uni.navigateTo({ url: '/pages/shroom/life-os-plan?select=1' }); },
 		openReview() { uni.navigateTo({ url: '/pages/shroom/life-os-weekly' }); },
 		openPrinciples() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
+		createTaskFromCurrent() {
+			if (!this.current) return;
+			uni.setStorageSync('todoPrefill', {
+				title: this.current.currentStep,
+				description: `要做到：${this.current.desiredOutcome}\n\n本次只推进：${this.current.currentStep}`,
+				compoundItemId: this.current.itemId,
+				sourceType: 'COMPOUND',
+				sourceRefId: this.current.id,
+				sourceCompoundThreadId: this.current.id
+			});
+			uni.navigateTo({ url: '/pages/todo/list' });
+		},
 		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack(); else uni.switchTab({ url: '/pages/diary/index' }); }
 	}
 };
@@ -512,6 +525,7 @@ textarea { box-sizing: border-box; width: 100%; min-height: 112rpx; padding: 20r
 .resume-meta { display: flex; justify-content: space-between; gap: 18rpx; color: #9fb1a2; font-size: 15rpx; letter-spacing: 1rpx; }.resume-label { display: block; margin-top: 34rpx; color: #9eafa1; font-size: 17rpx; }.resume-title { display: block; margin-top: 8rpx; font-family: Georgia, 'Songti SC', serif; font-size: 38rpx; font-weight: 720; line-height: 1.25; }.resume-outcome { display: block; margin-top: 15rpx; color: #c4cec6; font-size: 19rpx; line-height: 1.6; }
 .continuity { margin-top: 28rpx; border-top: 1rpx solid rgba(255,255,255,.12); }.continuity-row { display: flex; padding: 20rpx 0; flex-direction: column; gap: 8rpx; border-bottom: 1rpx solid rgba(255,255,255,.1); }.continuity-label { color: #91a294; font-size: 15rpx; }.continuity-row > text:last-child { font-size: 20rpx; line-height: 1.5; overflow-wrap: anywhere; }.continuity-row.next > text:last-child { color: #e8f3df; font-weight: 680; }.continuity-row.blocked > text:last-child { color: #efcf9e; }
 .main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; margin-top: 24rpx; }.action { display: flex; min-height: 100rpx; padding: 18rpx; flex-direction: column; align-items: flex-start; justify-content: center; gap: 7rpx; border: 1rpx solid rgba(255,255,255,.13); border-radius: 22rpx; color: #fff; text-align: left; }.action.continue { grid-column: 1 / -1; background: #dff0ce; color: #18251d; }.action.selected { background: rgba(255,255,255,.12); }.action > text:first-child { font-size: 21rpx; font-weight: 720; }.action > text:last-child { color: #96a79a; font-size: 15rpx; }.action.continue > text:last-child { color: #647462; }
+.task-bridge { display: flex; width: 100%; margin-top: 13rpx; padding: 16rpx 5rpx 2rpx; align-items: center; justify-content: space-between; color: #d7dfd5; text-align: left; }.task-bridge text:first-child { font-size: 18rpx; font-weight: 680; }.task-bridge text:last-child { color: #8f9d91; font-size: 15rpx; }
 .composer-card textarea { margin-top: 22rpx; }.input-tools { display: flex; gap: 12rpx; margin-top: 16rpx; }.input-tools button { display: flex; min-height: 64rpx; padding: 0 23rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #edf3e8; color: #4f6253; font-size: 17rpx; }.input-tools button.recording { background: #9e423d; color: #fff; }
 .upload-progress { display: flex; align-items: center; gap: 13rpx; margin-top: 17rpx; }.upload-progress > view { height: 8rpx; flex: 1; overflow: hidden; border-radius: 999rpx; background: #e3e9df; }.upload-progress > view > view { height: 100%; border-radius: inherit; background: #668166; }.upload-progress > text { color: #718075; font-size: 15rpx; }.attachment-row { display: flex; align-items: center; gap: 9rpx; margin-top: 16rpx; }.attachment-row image { width: 68rpx; height: 68rpx; border-radius: 14rpx; }.attachment-row text { color: #6c786f; font-size: 16rpx; }.voice-note { display: block; margin-top: 14rpx; color: #617064; font-size: 16rpx; }
 .state-options, .close-options { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 20rpx; }.state-options button, .close-options button { display: flex; min-height: 52rpx; padding: 0 18rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #eef3e9; color: #627066; font-size: 16rpx; }.state-options button.active, .close-options button.active { background: #243329; color: #fff; }.close-options > text { display: flex; align-items: center; color: #78827a; font-size: 16rpx; }

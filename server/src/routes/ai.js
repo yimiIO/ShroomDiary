@@ -417,7 +417,7 @@ router.post('/diary-flow/:taskId/todos', asyncRoute(async (req, res) => {
   if (!indexes.length) return fail(res, 400, '请至少选择一项待办');
   const created = await db.transaction(async client => {
     const analysisResult = await client.query(
-      `SELECT id, todo_candidates FROM diary_analysis
+      `SELECT id, diary_id, todo_candidates FROM diary_analysis
        WHERE id = $1 AND user_id = $2 AND status = 'done' FOR UPDATE`,
       [req.params.taskId, req.user.id]
     );
@@ -435,9 +435,23 @@ router.post('/diary-flow/:taskId/todos', asyncRoute(async (req, res) => {
         ? candidate.tags.slice(0, 20).map(item => text(item, 80)).filter(Boolean) : [];
       const todoId = crypto.randomUUID();
       await client.query(
-        `INSERT INTO todos (id, user_id, content, deadline, tags, status)
-         VALUES ($1, $2, $3, $4, $5::jsonb, 'pending')`,
-        [todoId, req.user.id, title, dueDate, JSON.stringify(tags)]
+        `INSERT INTO todos
+          (id, user_id, content, description, deadline, tags, status,
+           source_type, source_ref_id, source_diary_id)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'pending', 'DIARY_AI', $7, $8)`,
+        [todoId, req.user.id, title, text(candidate.source, 2000), dueDate,
+          JSON.stringify(tags), analysisResult.rows[0].id, analysisResult.rows[0].diary_id]
+      );
+      await client.query(
+        `INSERT INTO todo_events
+          (id, user_id, todo_id, event_type, payload, source_diary_id, idempotency_key)
+         VALUES ($1,$2,$3,'CREATED',$4::jsonb,$5,$6),
+                ($7,$2,$3,'DIARY_LINKED',$8::jsonb,$5,$9)
+         ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
+        [crypto.randomUUID(), req.user.id, todoId, JSON.stringify({ source: 'DIARY_AI' }),
+          analysisResult.rows[0].diary_id, `analysis:${analysisResult.rows[0].id}:todo:${index}:create`,
+          crypto.randomUUID(), JSON.stringify({ relation: 'SOURCE' }),
+          `analysis:${analysisResult.rows[0].id}:todo:${index}:diary-link`]
       );
       const friendId = text(candidate.friendId, 96);
       if (friendId) {

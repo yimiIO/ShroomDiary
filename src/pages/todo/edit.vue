@@ -1,435 +1,77 @@
 <template>
-	<view class="todo-edit-page">
-		<!-- 状态栏占位 -->
+	<view class="edit-page">
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-
-		<!-- 导航栏 -->
-		<view class="navbar" :style="{ paddingTop: (customBarHeightRpx - statusBarHeight * 2 + 40) + 'rpx' }">
-			<text class="nav-back" @click="goBack">取消</text>
-			<text class="nav-title">{{ todoId ? '编辑待办' : '新建待办' }}</text>
-			<button class="nav-save" data-testid="save-todo" :disabled="saving" @tap="saveTodo">
-				{{ saving ? '保存中…' : '保存' }}
-			</button>
-		</view>
-
-		<scroll-view class="content-scroll" scroll-y>
-			<!-- 待办内容 -->
-			<view class="form-section">
-				<view class="section-title">待办内容</view>
-				<textarea
-					class="input-textarea"
-					v-model="todoForm.content"
-					placeholder="输入待办事项..."
-					:maxlength="500"
-					auto-height
-				/>
-				<view class="char-count">{{ todoForm.content.length }}/500</view>
-			</view>
-
-			<!-- 截止日期（可选） -->
-			<view class="form-section">
-				<view class="section-title">
-					截止日期
-					<text class="optional-label">（可选）</text>
-				</view>
-				<picker
-					mode="date"
-					:value="todoForm.deadline"
-					@change="onDeadlineChange"
-					:start="moment().format('YYYY-MM-DD')"
-				>
-					<view class="picker-item" :class="{ 'placeholder': !todoForm.deadline }">
-						<text class="picker-label">{{ todoForm.deadline || '选择截止日期（可选）' }}</text>
-						<text class="picker-arrow">›</text>
-					</view>
-				</picker>
-				<view class="section-hint" v-if="!todoForm.deadline">
-					<text class="hint-text">💡 设置截止日期可以帮助您更好地管理待办事项</text>
-				</view>
-			</view>
-
-			<!-- 标签 -->
-			<view class="form-section">
-				<view class="section-title">标签（可选）</view>
-				<view class="tags-selector">
-					<view
-						class="tag-item"
-						v-for="tag in availableTags"
-						:key="tag"
-						:class="{ 'selected': todoForm.tags.includes(tag) }"
-						@click="toggleTag(tag)"
-					>
-						#{{ tag }}
-					</view>
-					<view class="tag-input-wrapper">
-						<input
-							class="tag-input"
-							v-model="newTag"
-							placeholder="添加新标签"
-							@confirm="addNewTag"
-							confirm-type="done"
-						/>
+		<view class="navbar" :style="{ paddingTop: navPadding + 'rpx' }"><button @tap="goBack">取消</button><text>{{ todoId ? '调整待办' : '新建待办' }}</text><button data-testid="save-todo" :disabled="saving" @tap="save">{{ saving ? '保存中…' : '保存' }}</button></view>
+		<scroll-view class="form" scroll-y>
+			<view class="title-block"><text>要做什么？</text><textarea v-model="form.title" maxlength="500" auto-height placeholder="只写标题也可以保存" /></view>
+			<view class="description-block"><text>任务说明</text><textarea v-model="form.description" maxlength="5000" auto-height placeholder="具体动作、完成标准或这次不做什么（可选）" /></view>
+			<view class="settings">
+				<picker :range="projectOptions" range-key="name" :value="projectIndex" @change="form.projectId = projectOptions[$event.detail.value].id"><view class="setting"><text>项目</text><text>{{ selectedProject }}　›</text></view></picker>
+				<view class="setting date"><text>安排日期</text><picker mode="date" :value="form.scheduledDate || today" @change="form.scheduledDate = $event.detail.value"><text>{{ form.scheduledDate || '未设置' }}</text></picker><button v-if="form.scheduledDate" @tap="form.scheduledDate = ''">清除</button></view>
+				<view class="setting date"><text>截止日期</text><picker mode="date" :value="form.deadline || today" @change="form.deadline = $event.detail.value"><text>{{ form.deadline || '未设置' }}</text></picker><button v-if="form.deadline" @tap="form.deadline = ''">清除</button></view>
+				<picker :range="directionOptions" range-key="name" :value="directionIndex" @change="form.compoundItemId = directionOptions[$event.detail.value].id"><view class="setting"><text>复利方向</text><text>{{ selectedDirection }}　›</text></view></picker>
+				<view v-if="task && task.recurrence" class="repeat-editor">
+					<text>修改范围</text><view class="scope-buttons"><button :class="{ active: repeatScope === 'INSTANCE' }" @tap="repeatScope = 'INSTANCE'">仅本次</button><button :class="{ active: repeatScope === 'FUTURE' }" @tap="repeatScope = 'FUTURE'">本次及以后</button></view>
+					<text class="scope-note">{{ repeatScope === 'INSTANCE' ? '修改当前这一次，不影响其他日期。' : '过去已完成的记录保留，从这一次开始使用新安排。' }}</text>
+					<view v-if="repeatScope === 'FUTURE'" class="repeat-fields">
+						<picker :range="repeatLabels" :value="repeatIndex" @change="chooseRepeat"><view class="setting"><text>重复方式</text><text>{{ repeatLabels[repeatIndex] }}　›</text></view></picker>
+						<view class="setting"><text>新安排从</text><picker mode="date" :value="recurrence.startsOn" @change="recurrence.startsOn = $event.detail.value"><text>{{ recurrence.startsOn }}</text></picker></view>
+						<view v-if="recurrence.frequency === 'WEEKLY'" class="week-days"><button v-for="day in weekDayOptions" :key="day.value" :class="{ active: recurrence.weekDays.includes(day.value) }" @tap="toggleWeekday(day.value)">{{ day.label }}</button></view>
+						<view v-if="recurrence.frequency === 'MONTHLY'" class="setting"><text>每月日期</text><input v-model.number="recurrence.monthDay" type="number" maxlength="2" /></view>
+						<view class="setting date"><text>结束日期</text><picker mode="date" :value="recurrence.endsOn || recurrence.startsOn" @change="recurrence.endsOn = $event.detail.value"><text>{{ recurrence.endsOn || '不设置' }}</text></picker><button v-if="recurrence.endsOn" @tap="recurrence.endsOn = ''">清除</button></view>
 					</view>
 				</view>
 			</view>
+			<view v-if="task && task.sourceType !== 'MANUAL'" class="source"><text>来源</text><text>{{ sourceLabel }}</text><text>来源只用于返回上下文，不会创建另一条待办。</text></view>
+			<view class="bottom-space"></view>
 		</scroll-view>
 	</view>
 </template>
 
 <script>
-import moment from '@/common/moment.js';
-import { todoDetail, todoCreate, todoUpdate } from '@/api/todo';
-
+import { todoCreate, todoDetail, todoOptions, todoUpdate } from '@/api/todo';
 export default {
-	data() {
-		return {
-			statusBarHeight: 0,
-			customBarHeight: 0,
-			todoId: null,
-			newTag: '',
-			saving: false,
-			todoForm: {
-				content: '',
-				deadline: '', // 截止日期，可选
-				tags: []
-			},
-			availableTags: ['工作', '生活', '学习', '健康', '购物', '旅行', '重要', '紧急']
-		};
-	},
+	data() { return { statusBarHeight: 0, customBarHeight: 0, todoId: '', task: null, saving: false, createRequestId: `todo-${Date.now()}-${Math.random().toString(16).slice(2)}`, today: this.localToday(), timeZone: this.localTimeZone(), projects: [], directions: [], repeatScope: 'INSTANCE', repeatIndex: 1, repeatLabels: ['每天', '每周', '每月'], weekDayOptions: [{ value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' }, { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' }], recurrence: { frequency: 'DAILY', startsOn: this.localToday(), endsOn: '', weekDays: [], monthDay: Number(this.localToday().slice(8, 10)) }, form: { title: '', description: '', projectId: '', scheduledDate: '', deadline: '', compoundItemId: '' } }; },
 	computed: {
-		customBarHeightRpx() {
-			return this.customBarHeight * 2;
-		}
+		navPadding() { return Math.max(20, (this.customBarHeight - this.statusBarHeight) * 2 + 10); },
+		projectOptions() { return [{ id: '', name: '不属于项目' }, ...this.projects]; },
+		directionOptions() { return [{ id: '', name: '不关联' }, ...this.directions]; },
+		projectIndex() { return Math.max(0, this.projectOptions.findIndex(item => item.id === this.form.projectId)); },
+		directionIndex() { return Math.max(0, this.directionOptions.findIndex(item => item.id === this.form.compoundItemId)); },
+		selectedProject() { const item = this.projectOptions[this.projectIndex]; return item ? item.name : '不属于项目'; },
+		selectedDirection() { const item = this.directionOptions[this.directionIndex]; return item ? item.name : '不关联'; },
+		sourceLabel() { return { DIARY_AI: '日记 AI 建议', COMPOUND: '复利系统', PROJECT: '项目' }[this.task && this.task.sourceType] || '其他'; }
 	},
-	onLoad(options) {
-		// 获取状态栏高度和自定义导航栏高度
-		const systemInfo = uni.getSystemInfoSync();
-		this.statusBarHeight = systemInfo.statusBarHeight || 0;
-
-		// #ifdef MP-WEIXIN
-		// eslint-disable-next-line
-		const custom = wx.getMenuButtonBoundingClientRect();
-		if (custom) {
-			this.customBarHeight = custom.top - this.statusBarHeight + custom.height + 8;
-		} else {
-			this.customBarHeight = this.statusBarHeight + 44;
-		}
-		// #endif
-
-		// #ifndef MP-WEIXIN
-		this.customBarHeight = this.statusBarHeight + 44;
-		// #endif
-
-		if (options.id) {
-			this.todoId = options.id;
-			this.loadTodo(options.id);
-		}
-	},
+	onLoad(options) { const info = uni.getSystemInfoSync(); this.statusBarHeight = info.statusBarHeight || 0; this.customBarHeight = this.statusBarHeight + 44; this.todoId = options.id || ''; this.form.projectId = options.projectId || ''; this.initialize(); },
 	methods: {
-		// 加载待办
-		async loadTodo(id) {
-			try {
-				uni.showLoading({ title: '加载中...' });
-				const res = await this.$http.get(todoDetail, { id });
-
-				if (res.code === 200 && res.data) {
-					const todo = res.data;
-					this.todoForm = {
-						content: todo.content || '',
-						deadline: todo.deadline || '',
-						tags: todo.tags || []
-					};
-				} else {
-					uni.showToast({
-						title: res.message || '加载失败',
-						icon: 'none'
-					});
-				}
-			} catch (error) {
-				console.error('加载待办失败', error);
-				uni.showToast({
-					title: '加载失败',
-					icon: 'none'
-				});
-			} finally {
-				uni.hideLoading();
-			}
-		},
-
-		// 截止日期选择
-		onDeadlineChange(e) {
-			this.todoForm.deadline = e.detail.value;
-		},
-
-		// 切换标签
-		toggleTag(tag) {
-			const index = this.todoForm.tags.indexOf(tag);
-			if (index > -1) {
-				this.todoForm.tags.splice(index, 1);
-			} else {
-				this.todoForm.tags.push(tag);
-			}
-		},
-
-		// 添加新标签
-		addNewTag() {
-			if (this.newTag.trim() && !this.availableTags.includes(this.newTag.trim())) {
-				this.availableTags.push(this.newTag.trim());
-				this.todoForm.tags.push(this.newTag.trim());
-				this.newTag = '';
-			}
-		},
-
-		// 保存待办
-		async saveTodo() {
-			if (this.saving) return;
-			if (!this.todoForm.content.trim()) {
-				uni.showToast({
-					title: '请输入待办内容',
-					icon: 'none'
-				});
-				return;
-			}
-
-			this.saving = true;
-			uni.showLoading({ title: '保存中...' });
-
-			try {
-				const todoData = {
-					content: this.todoForm.content.trim(),
-					deadline: this.todoForm.deadline || null,
-					tags: this.todoForm.tags,
-					status: 'pending'
-				};
-
-				let res;
-				if (this.todoId) {
-					// 更新待办
-					res = await this.$http.put(`${todoUpdate}?id=${this.todoId}`, todoData);
-				} else {
-					// 创建待办
-					res = await this.$http.post(todoCreate, todoData);
-				}
-
-				if (res.code === 200) {
-					uni.hideLoading();
-					uni.showToast({
-						title: '保存成功',
-						icon: 'success'
-					});
-					setTimeout(() => {
-						uni.navigateBack();
-					}, 1500);
-				} else {
-					uni.hideLoading();
-					uni.showToast({
-						title: res.message || '保存失败',
-						icon: 'none'
-					});
-				}
-			} catch (error) {
-				console.error('保存待办失败', error);
-				uni.showToast({
-					title: typeof error === 'string' ? error : '保存失败，请重试',
-					icon: 'none'
-				});
-			} finally {
-				this.saving = false;
-				uni.hideLoading();
-			}
-		},
-
-		// 返回
-		goBack() {
-			if (this.todoForm.content.trim()) {
-				uni.showModal({
-					title: '提示',
-					content: '有未保存的内容，确定要离开吗？',
-					success: (res) => {
-						if (res.confirm) {
-							uni.navigateBack();
-						}
-					}
-				});
-			} else {
-				uni.navigateBack();
-			}
-		}
+		localToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; },
+		localTimeZone() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; } catch (_) { return 'Asia/Shanghai'; } },
+		async initialize() { try { const options = await this.$http.get(todoOptions); const data = options.data || {}; this.projects = data.projects || []; this.directions = data.directions || []; if (this.todoId) await this.load(); } catch (e) { uni.showToast({ title: '设置加载失败', icon: 'none' }); } },
+		async load() { const res = await this.$http.get(todoDetail, { id: this.todoId, timeZone: this.timeZone }); if (res.code !== 200) throw new Error(res.message); this.task = res.data; this.form = { title: res.data.title, description: res.data.description || '', projectId: res.data.projectId || '', scheduledDate: res.data.scheduledDate || '', deadline: res.data.deadline || '', compoundItemId: res.data.compoundItemId || '' }; if (res.data.recurrence) { this.repeatIndex = Math.max(0, ['DAILY', 'WEEKLY', 'MONTHLY'].indexOf(res.data.recurrence.frequency)); this.recurrence = { frequency: res.data.recurrence.frequency, startsOn: res.data.occurrenceDate || res.data.scheduledDate || this.today, endsOn: res.data.recurrence.endsOn || '', weekDays: res.data.recurrence.weekDays || [], monthDay: res.data.recurrence.monthDay || Number((res.data.occurrenceDate || this.today).slice(8, 10)) }; } },
+		chooseRepeat(e) { this.repeatIndex = Number(e.detail.value); this.recurrence.frequency = ['DAILY', 'WEEKLY', 'MONTHLY'][this.repeatIndex]; if (this.recurrence.frequency === 'WEEKLY' && !this.recurrence.weekDays.length) this.recurrence.weekDays = [((new Date(`${this.recurrence.startsOn}T00:00:00`).getDay() + 6) % 7) + 1]; },
+		toggleWeekday(value) { const days = this.recurrence.weekDays; this.recurrence.weekDays = days.includes(value) ? days.filter(day => day !== value) : [...days, value].sort(); },
+		async save() { if (this.saving || !this.form.title.trim()) return uni.showToast({ title: '写下要做什么', icon: 'none' }); this.saving = true; try { const payload = { ...this.form, title: this.form.title.trim(), timeZone: this.timeZone, version: this.task ? this.task.version : null, clientRequestId: this.createRequestId }; let res; if (this.todoId && this.task.recurrence && this.repeatScope === 'FUTURE') { res = await this.$http.put(`/todos/v1/recurrences/${this.task.recurrenceRuleId}`, { ...payload, currentTaskId: this.task.id, effectiveOn: this.task.occurrenceDate || this.task.scheduledDate || this.today, recurrence: this.recurrence, version: this.task.recurrence.version, operationId: `repeat-${this.createRequestId}` }); } else { res = this.todoId ? await this.$http.put(`${todoUpdate}?id=${this.todoId}`, payload) : await this.$http.post(todoCreate, payload); } if (res.code !== 200) throw new Error(res.message); uni.showToast({ title: '已保存', icon: 'success' }); setTimeout(() => uni.navigateBack(), 450); } catch (e) { uni.showToast({ title: e.message || '保存失败', icon: 'none' }); } finally { this.saving = false; } },
+		goBack() { uni.navigateBack(); }
 	}
 };
 </script>
 
 <style lang="scss" scoped>
-button {
-	margin: 0;
-	padding: 0;
-	line-height: 1;
-	background: transparent;
-	border: 0;
-}
-
-button::after { border: 0; }
-
-.todo-edit-page {
-	min-height: 100vh;
-	background-color: #F5F5F5;
-}
-
-.status-bar {
-	background-color: #fff;
-}
-
-.navbar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 40rpx 20rpx;
-	background-color: #fff;
-	border-bottom: 1rpx solid #eee;
-	position: sticky;
-	top: 0;
-	z-index: 100;
-
-	.nav-back {
-		font-size: 28rpx;
-		color: #666;
-		width: 60rpx;
-	}
-
-	.nav-title {
-		font-size: 32rpx;
-		font-weight: 600;
-		color: #333;
-		flex: 1;
-		text-align: center;
-	}
-
-	.nav-save {
-		font-size: 28rpx;
-		color: #000;
-		font-weight: 600;
-		width: 60rpx;
-		text-align: right;
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		white-space: nowrap;
-
-		&[disabled] { opacity: .45; }
-	}
-}
-
-.content-scroll {
-	height: calc(100vh - 240rpx);
-	padding-bottom: 40rpx;
-}
-
-.form-section {
-	background: #fff;
-	margin-bottom: 20rpx;
-	padding: 30rpx 40rpx;
-
-	.section-title {
-		font-size: 32rpx;
-		font-weight: 600;
-		color: #333;
-		margin-bottom: 24rpx;
-
-		.optional-label {
-			font-size: 24rpx;
-			font-weight: 400;
-			color: #999;
-			margin-left: 8rpx;
-		}
-	}
-
-	.section-hint {
-		margin-top: 16rpx;
-
-		.hint-text {
-			font-size: 24rpx;
-			color: #999;
-			line-height: 1.5;
-		}
-	}
-
-	.input-textarea {
-		width: 100%;
-		max-width: 100%;
-		box-sizing: border-box;
-		overflow-x: hidden;
-		word-break: break-word;
-		overflow-wrap: anywhere;
-		min-height: 200rpx;
-		padding: 20rpx;
-		border: 1rpx solid #eee;
-		border-radius: 12rpx;
-		font-size: 28rpx;
-		line-height: 1.6;
-		color: #333;
-		background-color: #fafafa;
-	}
-
-	.char-count {
-		text-align: right;
-		font-size: 24rpx;
-		color: #999;
-		margin-top: 12rpx;
-	}
-
-	.picker-item {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 20rpx;
-		background-color: #fafafa;
-		border: 1rpx solid #eee;
-		border-radius: 12rpx;
-
-		.picker-label {
-			font-size: 28rpx;
-			color: #333;
-		}
-
-		&.placeholder .picker-label {
-			color: #999;
-		}
-
-		.picker-arrow {
-			font-size: 32rpx;
-			color: #999;
-		}
-	}
-}
-
-.tags-selector {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 16rpx;
-
-	.tag-item {
-		padding: 12rpx 24rpx;
-		border: 2rpx solid #eee;
-		border-radius: 24rpx;
-		font-size: 26rpx;
-		color: #666;
-		background-color: #fafafa;
-
-		&.selected {
-			border-color: #000;
-			background-color: #000;
-			color: #fff;
-		}
-	}
-
-	.tag-input-wrapper {
-		.tag-input {
-			padding: 12rpx 24rpx;
-			border: 2rpx solid #eee;
-			border-radius: 24rpx;
-			font-size: 26rpx;
-			background-color: #fafafa;
-		}
-	}
-}
+button { margin: 0; padding: 0; border: 0; background: transparent; line-height: 1; } button::after { border: 0; }
+.edit-page { min-height: 100vh; background: #f3f1e9; color: #28342c; }
+.navbar { display: flex; align-items: center; padding: 0 30rpx 20rpx; }
+.navbar text { flex: 1; text-align: center; font: 700 31rpx/1.2 Georgia, 'Songti SC', serif; }
+.navbar button { min-width: 72rpx; color: #627066; font-size: 22rpx; } .navbar button:last-child { color: #3e543f; font-weight: 700; text-align: right; }
+.form { height: calc(100vh - 150rpx - env(safe-area-inset-top)); }
+.title-block, .description-block, .settings, .source { margin: 16rpx 30rpx; padding: 25rpx; border: 1rpx solid rgba(40,53,43,.08); border-radius: 24rpx; background: rgba(255,253,247,.76); }
+.title-block > text, .description-block > text, .source > text:first-child { color: #768078; font-size: 19rpx; font-weight: 700; letter-spacing: 1rpx; }
+textarea { width: 100%; max-width: 100%; min-height: 90rpx; margin-top: 17rpx; box-sizing: border-box; color: #28342c; font-size: 28rpx; line-height: 1.55; overflow-wrap: anywhere; }
+.description-block textarea { min-height: 140rpx; font-size: 23rpx; }
+.setting { display: flex; align-items: center; min-height: 76rpx; border-bottom: 1rpx solid rgba(40,53,43,.08); color: #5e6961; font-size: 22rpx; }
+.setting:last-child { border-bottom: 0; } .setting > text:first-child { flex: 1; color: #39463d; }
+.setting.date picker { margin-left: auto; } .setting.date button { margin-left: 14rpx; color: #9b5b55; font-size: 18rpx; }
+.repeat-editor { padding: 20rpx 0; border-bottom: 1rpx solid rgba(40,53,43,.08); } .repeat-editor > text:first-child { color: #39463d; font-size: 22rpx; } .scope-buttons { display: flex; gap: 10rpx; margin-top: 16rpx; } .scope-buttons button { flex: 1; padding: 15rpx; border-radius: 16rpx; background: #eeeee7; color: #677269; font-size: 20rpx; } .scope-buttons button.active { background: #dfe8bd; color: #34442e; font-weight: 700; } .scope-note { display: block; margin-top: 12rpx; color: #848d86; font-size: 18rpx; line-height: 1.5; } .repeat-fields { margin-top: 14rpx; padding: 0 16rpx; border-radius: 18rpx; background: #f3f3ed; } .repeat-fields input { width: 90rpx; text-align: right; } .week-days { display: flex; justify-content: space-between; padding: 15rpx 0; } .week-days button { display: flex; width: 48rpx; height: 48rpx; align-items: center; justify-content: center; border-radius: 50%; background: #fff; color: #69736b; font-size: 18rpx; } .week-days button.active { background: #52643d; color: #fff; }
+.source { display: flex; flex-direction: column; gap: 10rpx; } .source > text:nth-child(2) { font-size: 23rpx; } .source > text:last-child { color: #7d867f; font-size: 19rpx; line-height: 1.45; }
+.bottom-space { height: 80rpx; }
+@media (min-width: 900px) { .edit-page { width: 720px; min-height: 760px; margin: 40px auto; border-radius: 28px; } }
 </style>

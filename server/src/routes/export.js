@@ -26,11 +26,15 @@ router.get('/all', asyncRoute(async (req, res) => {
   const redacted = ['1', 'true', 'yes'].includes(String(req.query.redacted || '').toLowerCase());
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
     lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses, friendSettings,
-    compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, aiUsage,
+    compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, wellbeingRecords, aiUsage,
     lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews,
-    compoundThreads, compoundEvents, compoundReviews] = await Promise.all([
+    compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
-    db.query('SELECT id, content, deadline, tags, status, completed_at, created_at, updated_at FROM todos WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query(`SELECT id, content, description, project_id, scheduled_date, deadline, tags, status,
+      recurrence_rule_id, occurrence_date, compound_item_id, source_type, source_ref_id,
+      source_diary_id, source_compound_thread_id, started_at, completed_at, cancelled_at,
+      result_text, result_media_ids, position, version, created_at, updated_at
+      FROM todos WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at`, [req.user.id]),
     db.query('SELECT id, seed_sentence, my_understanding, usage_items, tags, visibility, copied_from_id, collection_slug, editorial_source, source_diary_id, source_analysis_id, last_reviewed_at, created_at, updated_at FROM cards WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, card_id, context, action, feeling, result, reflection, created_at FROM card_practices WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, source_id, name, category, relationship, description, tags, contact, relation_score, trust_score, value_score, energy_score, first_contact, last_interaction, source_created_at, source_updated_at, created_at, updated_at FROM friends WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at', [req.user.id]),
@@ -55,6 +59,9 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query('SELECT id, question, context, inquiry_type, observation_started_on, personal_baseline, health_consent_at, status, current_synthesis, synthesis_version, evidence_revision, last_reviewed_at, created_at, updated_at FROM inquiries WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, inquiry_id, diary_id, source_type, source_label, excerpt, note, relation, health_observation, created_at, updated_at FROM inquiry_evidence WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT inquiry_id, version, result, evidence_refs, invalidated_at, invalidated_reason, created_at FROM inquiry_syntheses WHERE user_id = $1 ORDER BY inquiry_id, version', [req.user.id]),
+    db.query(`SELECT id, diary_id, source_type, status, recorded_on, source_label, source_excerpt,
+      observation, ai_allowed, confirmed_at, created_at, updated_at
+      FROM wellbeing_records WHERE user_id = $1 ORDER BY recorded_on, created_at`, [req.user.id]),
     db.query(`SELECT feature, diary_id, analysis_id, conversation_id, task_id, observer_id, inquiry_id,
       request_label, provider, model, prompt_tokens, cache_hit_tokens, cache_miss_tokens,
       completion_tokens, total_tokens, cost_usd, cost_cny, price_snapshot, created_at
@@ -67,7 +74,14 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query('SELECT id, week_start, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM life_os_weekly_reviews WHERE user_id = $1 ORDER BY week_start, created_at', [req.user.id]),
     db.query('SELECT id, item_id, progress_mode, desired_outcome, context_summary, last_completed, current_step, blocker_summary, status, is_primary, started_at, last_activity_at, paused_at, ended_at, created_at, updated_at FROM compound_threads WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, thread_id, kind, status, actor, input_text, summary, payload, media_ids, source_diary_id, source_link_id, source_valid, created_at, updated_at FROM compound_events WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
-    db.query('SELECT id, scope_start, scope_end, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM compound_reviews WHERE user_id = $1 ORDER BY scope_end, created_at', [req.user.id])
+    db.query('SELECT id, scope_start, scope_end, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM compound_reviews WHERE user_id = $1 ORDER BY scope_end, created_at', [req.user.id]),
+    db.query('SELECT id, name, goal, status, position, version, completed_at, archived_at, created_at, updated_at FROM todo_projects WHERE user_id = $1 ORDER BY position, created_at', [req.user.id]),
+    db.query(`SELECT id, title, description, project_id, compound_item_id, frequency, starts_on,
+      ends_on, week_days, month_day, time_zone, status, last_generated_through, version,
+      created_at, updated_at FROM todo_recurrence_rules WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
+    db.query(`SELECT id, todo_id, event_type, payload, event_date, source_diary_id,
+      source_compound_thread_id, visible_in_diary, valid, created_at, invalidated_at
+      FROM todo_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id])
   ]);
   const replacements = friends.rows.map((item, index) => ({ from: item.name, to: `人物${index + 1}` }))
     .filter(item => item.from).concat([
@@ -105,12 +119,16 @@ router.get('/all', asyncRoute(async (req, res) => {
     inquiries: inquiries.rows,
     inquiryEvidence: inquiryEvidence.rows,
     inquirySyntheses: inquirySyntheses.rows,
+    wellbeingRecords: wellbeingRecords.rows,
     aiUsage: aiUsage.rows,
     compoundSettings: compoundSettings.rows[0] || null,
     compoundCheckins: compoundCheckins.rows,
     compoundThreads: compoundThreads.rows,
     compoundEvents: compoundEvents.rows,
-    compoundReviews: compoundReviews.rows
+    compoundReviews: compoundReviews.rows,
+    todoProjects: todoProjects.rows,
+    todoRecurrenceRules: todoRecurrenceRules.rows,
+    todoEvents: todoEvents.rows
   };
   if (!redacted) return ok(res, payload);
   const clean = redactValue(payload, replacements);

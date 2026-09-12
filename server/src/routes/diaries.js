@@ -201,7 +201,7 @@ router.get('/index', asyncRoute(async (req, res) => {
   const values = [req.user.id, pageSize, offset];
   const dateClause = date ? `AND (occurred_at AT TIME ZONE 'Asia/Shanghai')::date = $4::date` : '';
   if (date) values.push(date);
-  const [items, total] = await Promise.all([
+  const [items, total, actions] = await Promise.all([
     db.query(
       `SELECT ${selectFields} FROM diaries
         WHERE user_id = $1 AND deleted_at IS NULL ${dateClause}
@@ -212,9 +212,30 @@ router.get('/index', asyncRoute(async (req, res) => {
       `SELECT count(*)::int AS total FROM diaries
         WHERE user_id = $1 AND deleted_at IS NULL ${date ? `AND (occurred_at AT TIME ZONE 'Asia/Shanghai')::date = $2::date` : ''}`,
       date ? [req.user.id, date] : [req.user.id]
-    )
+    ),
+    date ? db.query(
+      `SELECT e.id, e.todo_id, e.event_date, e.created_at, e.payload,
+        t.content, t.result_text, p.name AS project_name
+       FROM todo_events e
+       JOIN todos t ON t.id = e.todo_id AND t.user_id = e.user_id AND t.deleted_at IS NULL
+       LEFT JOIN todo_projects p ON p.id = t.project_id
+       WHERE e.user_id = $1 AND e.event_type = 'COMPLETED' AND e.visible_in_diary
+         AND e.valid AND e.event_date = $2::date
+       ORDER BY e.created_at DESC`,
+      [req.user.id, date]
+    ) : Promise.resolve({ rows: [] })
   ]);
-  return ok(res, { list: items.rows.map(mapDiary), total: total.rows[0].total, page, pageSize });
+  return ok(res, {
+    list: items.rows.map(mapDiary), total: total.rows[0].total, page, pageSize,
+    actionRecords: actions.rows.map(row => ({
+      id: row.id,
+      taskId: row.todo_id,
+      title: row.content,
+      result: row.result_text || row.payload?.result || '',
+      projectName: row.project_name || '',
+      completedAt: row.created_at
+    }))
+  });
 }));
 
 router.get('/view', asyncRoute(async (req, res) => {

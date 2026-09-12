@@ -1,38 +1,32 @@
-/**
- * @des 待办相关接口
- * @author shroom-app
- * @date 2024/01/15
- */
-
-// 获取待办列表
-// GET /api/rf-todo/v1/todo/index?page=1&pageSize=20&status=pending
+/** Shroom 待办与项目行动层 */
 const todoList = '/todos/v1/index';
-
-// 获取待办详情
-// GET /api/rf-todo/v1/todo/view?id=1
+const todoHome = '/todos/v1/home';
 const todoDetail = '/todos/v1/view';
-
-// 创建待办
-// POST /api/rf-todo/v1/todo/create
+const todoOptions = '/todos/v1/options';
 const todoCreate = '/todos/v1/create';
-
-// 更新待办
-// PUT /api/rf-todo/v1/todo/update?id=1
 const todoUpdate = '/todos/v1/update';
-
-// 删除待办
-// DELETE /api/rf-todo/v1/todo/delete?id=1
 const todoDelete = '/todos/v1/delete';
-
-// 完成待办（会自动添加到当天日程）
-// POST /api/rf-todo/v1/todo/complete?id=1
 const todoComplete = '/todos/v1/complete';
+const todoStatus = '/todos/v1/status';
+const todoBulk = '/todos/v1/bulk';
+const todoReorder = '/todos/v1/reorder';
+const todoActions = '/todos/v1/actions';
+const todoExport = '/todos/v1/export';
+const todoProjects = '/todos/v1/projects';
 
 export {
-	todoList,
-	todoDetail,
+	todoActions,
+	todoBulk,
+	todoComplete,
 	todoCreate,
-	todoUpdate,
 	todoDelete,
-	todoComplete
+	todoDetail,
+	todoExport,
+	todoHome,
+	todoList,
+	todoOptions,
+	todoProjects,
+	todoReorder,
+	todoStatus,
+	todoUpdate
 };
