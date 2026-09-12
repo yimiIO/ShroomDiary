@@ -209,6 +209,14 @@
 			}
 		},
 		{
+			"path": "pages/shroom/wellbeing",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": "身心记录",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
 			"path": "pages/shroom/inquiry",
 			"style": {
 				"navigationBarTitleText": "问题线索",

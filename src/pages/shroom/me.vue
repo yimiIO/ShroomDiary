@@ -70,6 +70,14 @@
 							</view>
 							<text class="menu-arrow">›</text>
 						</view>
+						<view class="menu-item" @tap="openWellbeing">
+							<view class="menu-icon green">◌</view>
+							<view class="menu-copy">
+								<text class="menu-title">身心记录</text>
+								<text class="menu-description">{{ wellbeingDescription }}</text>
+							</view>
+							<text class="menu-arrow">›</text>
+						</view>
 						<view class="menu-item" @tap="openInquiries">
 							<view class="menu-icon green">?</view>
 							<view class="menu-copy">
@@ -155,6 +163,7 @@ import { diaryStats } from '@/api/diary';
 import { lifeOsConfig } from '@/api/shroom-system';
 import { compoundHome } from '@/api/compound-system';
 import { inquirySummary } from '@/api/inquiry';
+import { wellbeingSummary } from '@/api/wellbeing';
 
 export default {
 	data() {
@@ -163,6 +172,7 @@ export default {
 			journalStats: null,
 			lifeOs: null,
 			inquiryOverview: null,
+			wellbeingOverview: null,
 			compoundOverview: null
 		};
 	},
@@ -202,6 +212,14 @@ export default {
 			if (!this.inquiryOverview || !this.inquiryOverview.openCount) return '留下问题，让日记慢慢提供线索';
 			const due = Number(this.inquiryOverview.reviewDueCount || 0);
 			return `${this.inquiryOverview.openCount} 个正在想${due ? ` · ${due} 个适合再看看` : ''}`;
+		},
+		wellbeingDescription() {
+			if (!this.hasLogin) return '心理、身体、睡眠与生活变化';
+			if (!this.wellbeingOverview) return '正在整理你的长期变化';
+			const pending = Number(this.wellbeingOverview.pendingCount || 0);
+			const confirmed = Number(this.wellbeingOverview.confirmedCount || 0);
+			if (pending) return `${pending} 条等待确认 · ${confirmed} 条已沉淀`;
+			return confirmed ? `${confirmed} 条独立记录` : '心理、身体、睡眠与生活变化';
 		}
 	},
 	onLoad() {
@@ -213,6 +231,7 @@ export default {
 			this.loadDiaryStats();
 			this.loadLifeOs();
 			this.loadInquiries();
+			this.loadWellbeing();
 			this.loadCompoundOverview();
 		}
 	},
@@ -241,6 +260,10 @@ export default {
 				this.inquiryOverview = null;
 			}
 		},
+		async loadWellbeing() {
+			try { const response = await this.$http.get(wellbeingSummary); this.wellbeingOverview = response.data || null; }
+			catch (error) { this.wellbeingOverview = null; }
+		},
 		async loadCompoundOverview() {
 			try {
 				const response = await this.$http.get(compoundHome);
@@ -260,6 +283,9 @@ export default {
 		},
 		openInquiries() {
 			uni.navigateTo({ url: '/pages/shroom/inquiries' });
+		},
+		openWellbeing() {
+			uni.navigateTo({ url: '/pages/shroom/wellbeing' });
 		},
 		openFriends() {
 			uni.navigateTo({ url: '/pages/shroom/friends' });

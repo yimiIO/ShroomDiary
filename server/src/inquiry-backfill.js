@@ -104,6 +104,20 @@ async function storeHistoricalCandidates(client, { userId, modelVersion, candida
          VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
         [id, diaryId, userId]
       );
+      if (isHealthInquiry(candidate.inquiryType) && Object.keys(candidate.healthObservation || {}).length) {
+        await client.query(
+          `INSERT INTO wellbeing_records
+            (id, user_id, diary_id, source_type, status, recorded_on, source_label,
+             source_excerpt, observation, ai_allowed)
+           SELECT $1, $2, d.id, 'MIGRATED', 'PENDING',
+                  (d.occurred_at AT TIME ZONE 'Asia/Shanghai')::date,
+                  to_char(d.occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') || ' 的日记',
+                  d.content, $4::jsonb, false
+             FROM diaries d WHERE d.id = $3 AND d.user_id = $2 AND d.deleted_at IS NULL
+           ON CONFLICT (user_id, diary_id) WHERE diary_id IS NOT NULL DO NOTHING`,
+          [crypto.randomUUID(), userId, diaryId, JSON.stringify(candidate.healthObservation)]
+        );
+      }
     }
     inserted += 1;
   }

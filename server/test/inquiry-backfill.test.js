@@ -141,5 +141,8 @@ test('historical storage persists health type and observations with each owned d
   assert.match(calls[0].sql, /inquiry_type, health_observation/u);
   assert.equal(calls[0].values[8], 'PHYSICAL_HEALTH');
   assert.deepEqual(JSON.parse(calls[0].values[9]), { physicalSymptoms: ['疲劳'] });
-  assert.deepEqual(calls.slice(1).map(call => call.values[1]), ['diary-a', 'diary-b']);
+  const diaryLinks = calls.filter(call => /INSERT INTO inquiry_candidate_diaries/u.test(call.sql));
+  const wellbeingRecords = calls.filter(call => /INSERT INTO wellbeing_records/u.test(call.sql));
+  assert.deepEqual(diaryLinks.map(call => call.values[1]), ['diary-a', 'diary-b']);
+  assert.deepEqual(wellbeingRecords.map(call => call.values[2]), ['diary-a', 'diary-b']);
 });

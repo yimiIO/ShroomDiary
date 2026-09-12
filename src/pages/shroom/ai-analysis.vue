@@ -68,15 +68,29 @@
 					<view><text>{{ formatCost(analysis.costSummary) }}</text><text>预计花费 · 最终以 DeepSeek 账单为准</text></view>
 				</view>
 
+				<view class="wellbeing-section" v-if="wellbeingRecord">
+					<view class="wellbeing-heading"><text>这篇留下了身心变化</text><text>与原有日记分析同一次提取，没有增加一次模型调用。确认后才成为长期记录。</text></view>
+					<view class="wellbeing-body"><text>{{ healthObservationText(wellbeingRecord.observation) }}</text><text v-if="wellbeingRecord.sourceExcerpt">“{{ wellbeingRecord.sourceExcerpt }}”</text></view>
+					<view v-if="wellbeingDetails.length" class="wellbeing-details">
+						<view v-for="(item, index) in wellbeingDetails" :key="index"><text>{{ item.label }}</text><text>{{ item.text }}</text><text v-if="item.uncertain" class="uncertain-mark">原文不确定</text></view>
+					</view>
+					<view v-if="wellbeingRecord.redFlags && wellbeingRecord.redFlags.length" class="wellbeing-alert">
+						<text>需要优先关注的原文信号</text><view v-for="(item, index) in wellbeingRecord.redFlags" :key="index"><text>{{ item.signal }}</text><text>{{ item.action }}</text></view><text>这是安全提醒，不是医学诊断。</text>
+					</view>
+					<view v-if="wellbeingRecord.missingInformation && wellbeingRecord.missingInformation.length" class="wellbeing-missing"><text>以后如果顺手，可以补充</text><text v-for="(item, index) in wellbeingRecord.missingInformation" :key="index">· {{ item }}</text></view>
+					<view v-if="wellbeingRecord.healthInquiryLinks && wellbeingRecord.healthInquiryLinks.length" class="wellbeing-links"><text>这条记录可能与正在观察的问题有关</text><view v-for="item in wellbeingRecord.healthInquiryLinks" :key="item.inquiryId"><text>{{ item.reason }}</text><button :disabled="processingWellbeing || item.linked" @tap="linkWellbeing(item)">{{ item.linked ? '已关联' : '确认并关联' }}</button></view></view>
+					<view v-if="wellbeingRecord.status === 'PENDING'" class="wellbeing-actions"><button :disabled="processingWellbeing" @tap="updateWellbeing('dismiss')">不是身心记录</button><button :disabled="processingWellbeing" @tap="updateWellbeing('confirm')">确认这条观察</button></view>
+					<button v-else class="wellbeing-open" @tap="openWellbeing">✓ 已保存到身心记录 · 查看</button>
+				</view>
+
 				<view class="inquiry-section" v-if="inquiryCandidates.length">
 					<view class="inquiry-heading"><text>这篇留下了还没想明白的事吗？</text><text>这只是 AI 提出的候选。只有你确认后，才会成为持续观察的问题。</text></view>
 					<view class="inquiry-candidate" v-for="item in inquiryCandidates" :key="item.id">
 						<text class="inquiry-mark">?</text>
-						<view class="inquiry-copy"><text v-if="item.inquiryType !== 'GENERAL'" class="health-candidate-label">{{ inquiryTypeLabel(item.inquiryType) }} · 这条记录可能与你正在观察的问题有关</text><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
-							<text v-if="healthObservationText(item.healthObservation)" class="health-candidate-observation">{{ healthObservationText(item.healthObservation) }}</text>
+						<view class="inquiry-copy"><text v-if="item.inquiryType !== 'GENERAL'" class="health-candidate-label">{{ inquiryTypeLabel(item.inquiryType) }} · 回看时可引用独立身心记录</text><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
 							<view class="inquiry-actions" v-if="item.status === 'PENDING'">
 								<button class="inquiry-ignore" :disabled="processingInquiryId === item.id" @tap="ignoreInquiryCandidate(item)">忽略</button>
-								<button class="inquiry-accept" :disabled="processingInquiryId === item.id" @tap="acceptInquiryCandidate(item)">{{ item.suggestedInquiryId ? '关联到健康困惑' : (item.inquiryType === 'PHYSICAL_HEALTH' ? '确认这条身体观察' : '开始观察') }}</button>
+								<button class="inquiry-accept" :disabled="processingInquiryId === item.id" @tap="acceptInquiryCandidate(item)">{{ item.suggestedInquiryId ? '关联已有问题' : '开始观察问题' }}</button>
 							</view>
 							<button class="inquiry-open" v-else-if="item.acceptedInquiryId" @tap="openInquiry(item.acceptedInquiryId)">✓ 已开始观察 · 查看问题</button>
 						</view>
@@ -149,10 +163,11 @@
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
+import { wellbeingDetail, wellbeingInquiryLink } from '@/api/wellbeing';
 
 export default {
 	components: { HealthConsentSheet },
-		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
+		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
@@ -167,7 +182,17 @@ export default {
 		enabledObservers() { return this.configuredObservers.filter(item => item.enabled); },
 		taskObserverCount() { return (this.analysis && this.analysis.observers && this.analysis.observers.length) || this.enabledObserverCount || 0; },
 		selectedCount() { return this.candidates.filter(item => item.selected && !item.createdTodoId).length; },
-		selectedCardCount() { return this.cardMatches.filter(item => item.selected && !this.isCardBound(item.cardId)).length; }
+		selectedCardCount() { return this.cardMatches.filter(item => item.selected && !this.isCardBound(item.cardId)).length; },
+		wellbeingDetails() {
+			const extraction = this.wellbeingRecord && this.wellbeingRecord.extraction || {};
+			const result = [];
+			const add = (items, label, value) => (Array.isArray(items) ? items : []).forEach(item => result.push({ label, text: value(item), uncertain: item.certainty === 'UNCERTAIN' }));
+			add(extraction.psychologicalObservations, '心理', item => item.observation);
+			add(extraction.physicalObservations, '身体', item => [item.symptom, item.bodyAreas && item.bodyAreas.join('、'), item.severity !== null && item.severity !== undefined ? `程度 ${item.severity}/10` : ''].filter(Boolean).join(' · '));
+			add(extraction.lifestyleFactors, '生活', item => item.factor);
+			add(extraction.environmentFactors, '环境', item => item.observation);
+			return result.slice(0, 16);
+		}
 	},
 	onLoad(options) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.diaryId = options.diaryId || ''; this.autoStart = options.autoStart === '1'; this.load(); },
 	onUnload() { this.stopPolling(); this.resolveHealthConsent(false); },
@@ -181,7 +206,7 @@ export default {
 				if (this.autoStart && this.analysisEnabled && (!existing.data || !['pending', 'running'].includes(existing.data.status))) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
-		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
+		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
 		async startAnalysis() {
 			if (!this.analysisEnabled) return;
 			this.stopPolling();
@@ -261,6 +286,31 @@ export default {
 			} catch (error) { console.error('确认未解之问候选失败', error); }
 				finally { this.processingInquiryId = ''; }
 			},
+			async updateWellbeing(action) {
+				if (!this.wellbeingRecord || this.processingWellbeing) return;
+				this.processingWellbeing = true;
+				try {
+					const res = await this.$http.patch(wellbeingDetail(this.wellbeingRecord.id), { action });
+					this.wellbeingRecord = action === 'dismiss' ? null : res.data;
+					uni.showToast({ title: action === 'confirm' ? '已保存到身心记录' : '已忽略', icon: action === 'confirm' ? 'success' : 'none' });
+				} catch (error) { console.error('更新身心记录失败', error); }
+				finally { this.processingWellbeing = false; }
+			},
+			async linkWellbeing(link) {
+				if (!link || !link.inquiryId || !this.wellbeingRecord || this.processingWellbeing) return;
+				this.processingWellbeing = true;
+				try {
+					if (this.wellbeingRecord.status === 'PENDING') {
+						const confirmed = await this.$http.patch(wellbeingDetail(this.wellbeingRecord.id), { action: 'confirm' });
+						this.wellbeingRecord = confirmed.data;
+					}
+					await this.$http.post(wellbeingInquiryLink(this.wellbeingRecord.id, link.inquiryId), {});
+					const currentLink = (this.wellbeingRecord.healthInquiryLinks || []).find(item => item.inquiryId === link.inquiryId) || link;
+					this.$set(currentLink, 'linked', true);
+					uni.showToast({ title: '已关联到长期问题', icon: 'success' });
+				} catch (error) { console.error('关联身心记录失败', error); }
+				finally { this.processingWellbeing = false; }
+			},
 			confirmHealthConsent(inquiryType) {
 				this.healthConsentType = inquiryType;
 				this.healthConsentVisible = true;
@@ -293,6 +343,7 @@ export default {
 			finally { this.processingInquiryId = ''; }
 		},
 		openInquiry(inquiryId) { if (inquiryId) uni.navigateTo({ url: `/pages/shroom/inquiry?id=${inquiryId}` }); },
+		openWellbeing() { uni.navigateTo({ url: '/pages/shroom/wellbeing' }); },
 		async changeLifeOsLinkType(link, recordType) {
 			if (!link || link.recordType === recordType) return;
 			try { await this.$http.patch(lifeOsPlanLink(link.id), { recordType }); link.recordType = recordType; link.userConfirmed = true; uni.showToast({ title: '记录类型已纠正', icon: 'success' }); }
@@ -366,6 +417,36 @@ button::after { border: 0; }
 .cost-card > view:last-child { text-align: right; }
 .cost-card > view:first-child text:first-child, .cost-card > view:last-child text:first-child { font-size: 20rpx; font-weight: 690; color: #3f5042; }
 .cost-card > view:first-child text:last-child, .cost-card > view:last-child text:last-child { font-size: 16rpx; color: #829083; }
+.wellbeing-section { margin-top: 24rpx; padding: 28rpx; border: 1rpx solid rgba(79,96,48,.13); border-radius: 28rpx; background: #e5ecd3; color: #172019; }
+.wellbeing-heading { display: flex; flex-direction: column; }
+.wellbeing-heading text:first-child { font-size: 26rpx; font-weight: 720; }
+.wellbeing-heading text:last-child { margin-top: 8rpx; color: #6b7563; font-size: 18rpx; line-height: 1.55; }
+.wellbeing-body { margin-top: 20rpx; padding-top: 20rpx; border-top: 1rpx solid rgba(23,32,25,.08); display: flex; flex-direction: column; }
+.wellbeing-body text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 24rpx; line-height: 1.6; }
+.wellbeing-body text:last-child { display: -webkit-box; margin-top: 10rpx; color: #747d72; font-size: 17rpx; line-height: 1.55; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.wellbeing-details { display: flex; flex-direction: column; gap: 10rpx; margin-top: 17rpx; }
+.wellbeing-details > view { display: flex; align-items: flex-start; gap: 10rpx; font-size: 18rpx; line-height: 1.5; }
+.wellbeing-details > view > text:first-child { flex: 0 0 auto; padding: 5rpx 9rpx; border-radius: 10rpx; background: rgba(255,255,255,.55); color: #657052; font-size: 14rpx; }
+.wellbeing-details > view > text:nth-child(2) { min-width: 0; flex: 1; }
+.uncertain-mark { flex: 0 0 auto; color: #956744; font-size: 14rpx; }
+.wellbeing-alert { margin-top: 18rpx; padding: 18rpx; border-radius: 18rpx; background: #f3ded7; display: flex; flex-direction: column; }
+.wellbeing-alert > text:first-child { color: #81483e; font-size: 18rpx; font-weight: 700; }
+.wellbeing-alert > view { display: flex; flex-direction: column; gap: 6rpx; margin-top: 13rpx; }
+.wellbeing-alert > view text:first-child { color: #65362f; font-size: 20rpx; font-weight: 650; }
+.wellbeing-alert > view text:last-child, .wellbeing-alert > text:last-child { color: #855e56; font-size: 16rpx; line-height: 1.55; }
+.wellbeing-alert > text:last-child { margin-top: 13rpx; }
+.wellbeing-missing { margin-top: 18rpx; padding: 17rpx; border-radius: 17rpx; background: rgba(255,255,255,.46); display: flex; flex-direction: column; gap: 7rpx; color: #697362; font-size: 17rpx; line-height: 1.5; }
+.wellbeing-missing text:first-child { color: #4f5e48; font-weight: 700; }
+.wellbeing-links { margin-top: 18rpx; padding-top: 18rpx; border-top: 1rpx solid rgba(23,32,25,.08); }
+.wellbeing-links > text { color: #536044; font-size: 18rpx; font-weight: 700; }
+.wellbeing-links > view { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 12rpx; }
+.wellbeing-links > view > text { min-width: 0; flex: 1; color: #687263; font-size: 17rpx; line-height: 1.5; }
+.wellbeing-links button { flex: 0 0 auto; min-height: 52rpx; padding: 0 16rpx; border-radius: 27rpx; background: #172019; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15rpx; }
+.wellbeing-links button[disabled] { opacity: .45; }
+.wellbeing-actions { display: flex; justify-content: flex-end; gap: 11rpx; margin-top: 20rpx; }
+.wellbeing-actions button, .wellbeing-open { min-height: 58rpx; padding: 0 19rpx; border: 1rpx solid rgba(23,32,25,.15); border-radius: 30rpx; display: flex; align-items: center; justify-content: center; color: #667064; font-size: 17rpx; }
+.wellbeing-actions button:last-child { border-color: #172019; background: #172019; color: white; font-weight: 700; }
+.wellbeing-open { align-self: flex-start; margin-top: 18rpx; border-color: transparent; background: rgba(255,255,255,.55); color: #52613c; }
 .inquiry-section { margin-top: 24rpx; padding: 30rpx; border-radius: 31rpx; background: #172019; color: #fff; }
 .inquiry-heading { display: flex; flex-direction: column; gap: 8rpx; }
 .inquiry-heading text:first-child { font-size: 27rpx; font-weight: 720; line-height: 1.45; }

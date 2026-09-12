@@ -221,36 +221,57 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   assert.doesNotMatch(route, /req\.body\.userId/);
 });
 
-test('health observation extends inquiries without changing diary save or bottom navigation', () => {
+test('wellbeing records provide independent evidence while inquiries only organize reasoning', () => {
   const edit = source('src/pages/diary/edit.vue');
   const list = source('src/pages/shroom/inquiries.vue');
   const detail = source('src/pages/shroom/inquiry.vue');
   const analysis = source('src/pages/shroom/ai-analysis.vue');
+  const wellbeing = source('src/pages/shroom/wellbeing.vue');
+  const home = source('src/pages/diary/index.vue');
+  const me = source('src/pages/shroom/me.vue');
   const consent = source('src/components/HealthConsentSheet.vue');
   const pages = source('src/pages.json');
   const routes = source('server/src/routes/inquiries.js');
+  const wellbeingRoutes = source('server/src/routes/wellbeing.js');
+  const prompt = source('server/src/ai-prompts.js');
+  const migration = source('server/sql/024_wellbeing_records.sql');
 
-  for (const label of ['普通困惑', '心理困惑', '身体健康']) assert.match(list, new RegExp(label));
+  assert.match(wellbeing, /身心记录提供证据/);
+  for (const label of ['心理', '身体', '睡眠', '习惯', '测量', '检查']) assert.match(wellbeing, new RegExp(label));
+  assert.match(me, /openWellbeing/);
+  assert.match(home, /wellbeing-glimpse/);
+  assert.match(list, /身心记录[\s\S]*提供证据/);
+  assert.doesNotMatch(list, /typeFilters/);
   assert.match(list, /HealthConsentSheet/);
   assert.match(analysis, /HealthConsentSheet/);
+  assert.match(analysis, /与你是否创建未解之问无关/);
   assert.doesNotMatch(list, /uni\.showModal\(/);
   assert.doesNotMatch(analysis, /uni\.showModal\([\s\S]*?健康观察/);
-  assert.match(consent, /为什么需要确认|这条候选涉及/);
+  assert.match(consent, /不复制、移动或改写原始记录/);
+  assert.match(consent, /不会影响原始身心记录/);
   assert.match(consent, /不是医学诊断/);
-  assert.match(consent, /不会进入发现或自动公开/);
-  assert.match(detail, /健康时间线/);
+  assert.match(detail, /引用的身心记录/);
+  assert.match(detail, /从身心记录引用证据/);
+  assert.doesNotMatch(detail, /healthObservationPayload|更新健康线索|健康时间线/);
   assert.match(detail, /当前线索/);
   assert.match(detail, /原因假设/);
   assert.match(detail, /缺失信息/);
   assert.match(detail, /下一步记录什么最有价值/);
   assert.match(detail, /导出就医摘要/);
   assert.match(detail, /不是医学诊断/);
-  assert.match(analysis, /这条记录可能与你正在观察的问题有关/);
-  assert.match(analysis, /确认这条身体观察/);
+  assert.match(analysis, /确认这条观察/);
   assert.match(routes, /health-summary/);
+  assert.match(wellbeingRoutes, /wellbeing_records/);
+  assert.match(wellbeingRoutes, /wellbeing_record_id/);
+  assert.match(prompt, /独立的事实层/);
+  assert.match(prompt, /不承载原始身心记录/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS wellbeing_records/);
+  assert.match(migration, /wellbeing_record_id uuid REFERENCES wellbeing_records\(id\) ON DELETE SET NULL/);
+  assert.match(migration, /source_type = 'WELLBEING'/);
   assert.doesNotMatch(edit, /healthObservationPayload|健康表单|症状严重程度/);
   const tabBar = JSON.parse(pages).tabBar.list;
   assert.equal(tabBar.length, 4);
+  assert.ok(JSON.parse(pages).pages.some(page => page.path === 'pages/shroom/wellbeing'));
 });
 
 test('public cards form a horizontal deck and open an ownership-aware detail', () => {

@@ -68,7 +68,7 @@ const HEALTH_INQUIRY_REVIEW_PROMPT = `你是 Shroom 的健康长期观察助手�
 必须遵守：
 1. 只使用提供的个人基线和证据；不补造症状、检查结果或病史。
 2. 所有输出称为“观察、线索、相关因素、原因假设”，不得把相关性写成因果，不得给出确定疾病诊断。
-3. 每个重要判断只能引用输入中存在的 evidence key，同时列出支持和反对证据。证据不足就明确写入 missingInformation。
+3. 输入包含 previousState、newEvidence 和少量 referenceEvidence。优先用新增观察修订旧状态，不要仅换一种说法重写全部内容。每个新增重要判断只能引用输入中存在的 evidence key，同时列出支持和反对证据。证据不足就明确写入 missingInformation。
 4. 区分个人平时状态与后来变化，区分偶发记录与持续模式。
 5. 不提供药物名称、剂量或替代就医的治疗方案。nextObservations 只建议下一步记录什么最有信息价值。
 6. careSignals 只用于提示可能需要及时就医的已记录信号；不得输出“无需就医”“可以放心”等保证。没有依据时返回空数组。
@@ -79,6 +79,8 @@ JSON 结构：
 {
   "summary":"目前最可靠的观察性理解",
   "baselineComparison":"相对个人平时状态发生了什么变化",
+  "confirmedFacts":[{"statement":"原始记录能直接确认的事实，不包含疾病或因果推断","evidenceRefs":["E-..."]}],
+  "pendingObservations":[{"statement":"仍不确定或存在矛盾的观察","evidenceRefs":["E-..."]}],
   "currentClues":[{"statement":"当前线索","evidenceRefs":["E1"]}],
   "correlations":[{"observation":"共同变化","factors":["相关因素"],"evidenceRefs":["E1"],"caution":"为什么还不能证明因果"}],
   "hypotheses":[{"statement":"可被修订的原因假设","confidence":"emerging|medium|strong","supportingEvidenceRefs":["E1"],"challengingEvidenceRefs":["E2"]}],
@@ -88,15 +90,24 @@ JSON 结构：
   "statusSuggestion":"OPEN|PAUSED|RESOLVED"
 }`;
 
-function normalizeHealthInquiryReview(value, evidence) {
+function normalizeHealthInquiryReview(value, evidence, options = {}) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  const allowed = new Set(evidence.map(item => item.key));
+  const allowed = new Set([
+    ...evidence.map(item => item.key),
+    ...(Array.isArray(options.allowedEvidenceKeys) ? options.allowedEvidenceKeys : [])
+  ]);
   const refs = item => uniqueAllowedRefs(item, allowed);
   const statusSuggestion = ['OPEN', 'PAUSED', 'RESOLVED'].includes(input.statusSuggestion)
     ? input.statusSuggestion : 'OPEN';
   return {
     summary: text(input.summary, 3000),
     baselineComparison: text(input.baselineComparison, 1500),
+    confirmedFacts: (Array.isArray(input.confirmedFacts) ? input.confirmedFacts : []).slice(0, 16)
+      .map(item => ({ statement: text(item?.statement, 800), evidenceRefs: refs(item?.evidenceRefs) }))
+      .filter(item => item.statement && item.evidenceRefs.length),
+    pendingObservations: (Array.isArray(input.pendingObservations) ? input.pendingObservations : []).slice(0, 16)
+      .map(item => ({ statement: text(item?.statement, 800), evidenceRefs: refs(item?.evidenceRefs) }))
+      .filter(item => item.statement && item.evidenceRefs.length),
     currentClues: (Array.isArray(input.currentClues) ? input.currentClues : []).slice(0, 12)
       .map(item => ({ statement: text(item?.statement, 800), evidenceRefs: refs(item?.evidenceRefs) }))
       .filter(item => item.statement && item.evidenceRefs.length),

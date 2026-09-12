@@ -2,17 +2,17 @@
 	<view v-if="visible" class="consent-mask" @tap="cancel" @touchmove.stop.prevent>
 		<view class="consent-sheet" role="dialog" aria-modal="true" @tap.stop>
 			<view class="consent-handle"></view>
-			<view class="consent-kicker">PRIVATE OBSERVATION</view>
+			<view class="consent-kicker">PRIVATE EVIDENCE LINK</view>
 			<text class="consent-title">{{ title }}</text>
 			<text class="consent-reason">{{ reason }}</text>
 
 			<view class="consent-privacy">
-				<view class="privacy-row"><text class="privacy-mark">01</text><text>只保存在你的账户，不会进入发现或自动公开</text></view>
-				<view class="privacy-row"><text class="privacy-mark">02</text><text>只有你主动点击“重新看看”，已确认线索才会发送给当前 AI 服务</text></view>
-				<view class="privacy-row"><text class="privacy-mark">03</text><text>你可以随时暂停或结束观察，原日记不会被改写</text></view>
+				<view class="privacy-row"><text class="privacy-mark">01</text><text>问题只引用身心记录，不复制、移动或改写原始记录</text></view>
+				<view class="privacy-row"><text class="privacy-mark">02</text><text>只有你主动点击“重新看看”，已引用且允许 AI 读取的记录才会发送给当前服务</text></view>
+				<view class="privacy-row"><text class="privacy-mark">03</text><text>暂停、解决或归档问题，都不会影响原始身心记录</text></view>
 			</view>
 
-			<text class="consent-note">不想把它作为{{ typeName }}记录也没关系，可以先取消，之后按普通困惑重新留下。</text>
+			<text class="consent-note">这只是选择问题的推理方式，不会把“身心记录”变成未解之问的子模块，也不是医学诊断。</text>
 			<view class="consent-actions">
 				<button class="consent-cancel" @tap.stop="cancel">先不开始</button>
 				<button class="consent-confirm" @tap.stop="confirm">确认，开始观察</button>
@@ -31,11 +31,11 @@ export default {
 	computed: {
 		isPhysical() { return this.inquiryType === 'PHYSICAL_HEALTH'; },
 		typeName() { return this.isPhysical ? '身体健康观察' : '心理观察'; },
-		title() { return this.isPhysical ? '确认开始身体健康观察' : '确认开始心理观察'; },
+		title() { return this.isPhysical ? '允许问题引用身体记录？' : '允许问题引用心理记录？'; },
 		reason() {
 			return this.isPhysical
-				? '这条候选涉及你的身体变化，所以会用更严格的隐私方式保存。它只是长期观察线索，不是医学诊断。'
-				: '这条候选涉及情绪、压力或认知变化，所以会按“心理困惑”保存。它只是理解自己的长期观察，不是对你的医学或人格判断。';
+				? '这个问题需要跨时间比较身体变化。确认后，它可以引用你选择的身心记录作为证据；记录本身仍独立保存。'
+				: '这个问题需要跨时间比较心理感受、压力或认知变化。确认后，它可以引用你选择的身心记录作为证据；记录本身仍独立保存。';
 		}
 	},
 	methods: {

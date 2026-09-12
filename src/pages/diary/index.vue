@@ -96,6 +96,12 @@
 				</view>
 			</scroll-view>
 		</view>
+
+		<view class="wellbeing-glimpse" v-if="wellbeingOverview && wellbeingOverview.records && wellbeingOverview.records.length" @tap="openWellbeing">
+			<view class="wellbeing-glimpse-top"><view><text>BODY & MIND</text><text>{{ wellbeingCardTitle }}</text></view><text>›</text></view>
+			<text class="wellbeing-glimpse-copy">{{ wellbeingRecordPreview(wellbeingOverview.records[0]) }}</text>
+			<view class="wellbeing-glimpse-meta"><text>{{ wellbeingOverview.records[0].recordedOn }}</text><text v-if="wellbeingOverview.records[0].status === 'PENDING'">等待你确认</text><text v-else>已沉淀为独立记录</text></view>
+		</view>
 			</view>
 
 		<!-- 日记详情卡片 -->
@@ -183,6 +189,7 @@
 import moment from '@/common/moment.js';
 import { diaryCalendar, diaryList } from '@/api/diary';
 import { todoList } from '@/api/todo';
+import { wellbeingSummary } from '@/api/wellbeing';
 import diaryTime from '@/utils/diary-time.js';
 import diaryPreviewUtils from '@/utils/diary-preview.js';
 
@@ -210,6 +217,7 @@ export default {
 			visitorCount: 0,
 			showFullCalendarView: false,
 			pendingTodoCount: 0, // 待完成待办数量
+			wellbeingOverview: null,
 			// 默认图片URL
 			defaultImageUrl: 'https://images.unsplash.com/photo-1493612276216-ee3925520721?w=800&h=600&fit=crop'
 		};
@@ -243,6 +251,10 @@ export default {
 				// 如果日记没有 hour 和 minute 属性，或者 hour 为 null，则认为是整篇日记
 				return isFullDayDiary(diary);
 			});
+		},
+		wellbeingCardTitle() {
+			const records = this.wellbeingOverview && this.wellbeingOverview.records || [];
+			return records.some(item => item.status === 'PENDING') ? '这一天有变化待确认' : '这一天留下的身心变化';
 		}
 	},
 	onLoad() {
@@ -274,6 +286,7 @@ export default {
 		this.loadDiaries();
 		this.loadCalendarDates(this.selectedMonth);
 		this.loadPendingTodoCount();
+		this.loadWellbeingOverview();
 	},
 	methods: {
 		// 初始化日期选择器
@@ -317,6 +330,7 @@ export default {
 			this.selectedDate = date;
 			this.initDates();
 			this.loadDiaries();
+			this.loadWellbeingOverview();
 			if (previousMonth !== this.selectedMonth && this.calendarDisplayMonth !== this.selectedMonth) {
 				this.loadCalendarDates(this.selectedMonth);
 			}
@@ -610,6 +624,32 @@ export default {
 			}
 		},
 
+		async loadWellbeingOverview() {
+			if (!this.$mStore.getters.hasLogin) { this.wellbeingOverview = null; return; }
+			const requestedDate = this.selectedDate;
+			try {
+				const res = await this.$http.get(wellbeingSummary, { date: requestedDate });
+				if (requestedDate === this.selectedDate) this.wellbeingOverview = res.data || null;
+			} catch (error) { this.wellbeingOverview = null; }
+		},
+
+		wellbeingRecordPreview(item) {
+			const value = item && item.observation || {};
+			const parts = [];
+			const add = values => { if (Array.isArray(values) && values.length) parts.push(values.join('、')); };
+			add(value.psychologicalFeelings);
+			add(value.physicalSymptoms);
+			if (value.sleep && value.sleep.note) parts.push(value.sleep.note);
+			if (value.sleep && value.sleep.hours !== null && value.sleep.hours !== undefined) parts.push(`睡眠 ${value.sleep.hours} 小时`);
+			add(value.behaviors); add(value.measurements); add(value.testResults);
+			return parts.join(' · ') || item.sourceExcerpt || '查看这条身心记录';
+		},
+
+		openWellbeing() {
+			if (!this.requireLogin()) return;
+			uni.navigateTo({ url: '/pages/shroom/wellbeing' });
+		},
+
 		// 跳转到待办列表
 		goToTodoList(e) {
 			if (e) {
@@ -893,6 +933,23 @@ export default {
 		}
 	}
 }
+
+.wellbeing-glimpse {
+	margin: 0 40rpx 28rpx;
+	padding: 25rpx 27rpx;
+	border: 1rpx solid rgba(23, 32, 25, .08);
+	border-radius: 25rpx;
+	background: #e5ecd4;
+	box-shadow: 0 10rpx 30rpx rgba(50, 67, 49, .07);
+}
+
+.wellbeing-glimpse-top { display: flex; align-items: flex-start; justify-content: space-between; }
+.wellbeing-glimpse-top > view { display: flex; flex-direction: column; }
+.wellbeing-glimpse-top > view text:first-child { color: #788554; font-size: 14rpx; font-weight: 750; letter-spacing: 2rpx; }
+.wellbeing-glimpse-top > view text:last-child { margin-top: 6rpx; font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; }
+.wellbeing-glimpse-top > text { font-size: 29rpx; }
+.wellbeing-glimpse-copy { display: -webkit-box; margin-top: 15rpx; overflow: hidden; color: #4f594e; font-size: 20rpx; line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.wellbeing-glimpse-meta { display: flex; justify-content: space-between; margin-top: 16rpx; color: #7b8378; font-size: 16rpx; }
 
 // 今天整篇日记横向列表
 .full-day-diaries-container {

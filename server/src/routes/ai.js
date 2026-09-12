@@ -18,6 +18,8 @@ const { ENTITY_PROMPT, FOLLOWUP_PROMPT, VERSION, VIEW_PROMPTS } = require('../ai
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 const { activeObserverSnapshot, listObservers } = require('../observer-store');
 const { publicObserver, resolvedObserver } = require('../observer-presets');
+const { findDiaryWellbeingRecord, syncDiaryWellbeingRecord } = require('../wellbeing-records');
+const { hasDiaryHealthExtraction, legacyHealthObservation, normalizeDiaryHealthExtraction } = require('../diary-health');
 
 const router = express.Router();
 router.use(requireUser);
@@ -61,13 +63,15 @@ function mapAnalysis(row) {
 
 async function mapAnalysisWithCandidates(row, userId, queryable = db) {
   const analysis = mapAnalysis(row);
-  const [inquiryCandidates, lifeOsLinks] = row.status === 'done'
+  const [inquiryCandidates, lifeOsLinks, wellbeingRecord] = row.status === 'done'
     ? await Promise.all([
       listDiaryCandidates(queryable, userId, row.diary_id),
-      listDiaryLifeOsLinks(queryable, userId, row.diary_id)
+      listDiaryLifeOsLinks(queryable, userId, row.diary_id),
+      findDiaryWellbeingRecord(queryable, userId, row.diary_id)
     ])
-    : [[], []];
+    : [[], [], null];
   analysis.inquiryCandidates = inquiryCandidates;
+  analysis.wellbeingRecord = wellbeingRecord;
   analysis.lifeOsLinks = lifeOsLinks;
   analysis.compoundLinks = lifeOsLinks;
   return analysis;
@@ -79,7 +83,9 @@ const analysisFields = `id, diary_id, engine_version, five_views, observer_snaps
 
 async function ownedDiary(userId, diaryId) {
   const result = await db.query(
-    `SELECT id, content, mood, linked_cards, occurred_at, content_version FROM diaries
+    `SELECT id, content, mood, linked_cards, occurred_at, content_version,
+            to_char(occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS diary_date
+       FROM diaries
       WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL AND ai_allowed`,
     [userId, diaryId]
   );
@@ -227,6 +233,20 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       followup.inquiryCandidates,
       existingInquiries
     );
+    const legacyHealthCandidate = inquiryCandidates.find(item => item.healthObservation
+      && Object.keys(item.healthObservation).length);
+    const healthExtraction = normalizeDiaryHealthExtraction(
+      followup.healthExtraction || followup.health_extraction || {},
+      { diaryContent: diary.content, existingInquiries }
+    );
+    const wellbeingCandidate = (hasDiaryHealthExtraction(healthExtraction) ? {
+      extraction: healthExtraction,
+      observation: legacyHealthObservation(healthExtraction)
+    } : null) || followup.wellbeingObservation || followup.wellbeingRecord
+      || (legacyHealthCandidate ? {
+        sourceExcerpt: diary.content,
+        observation: legacyHealthCandidate.healthObservation
+      } : null);
     const lifeOsLinks = normalizeLifeOsLinks(followup.compoundLinks || followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
@@ -245,6 +265,13 @@ async function executeAnalysis(userId, analysisId, diaryId) {
         diaryId,
         modelVersion: VERSION,
         candidates: inquiryCandidates
+      });
+      await syncDiaryWellbeingRecord(client, {
+        userId,
+        diary,
+        modelVersion: VERSION,
+        candidate: wellbeingCandidate,
+        existingInquiries
       });
       await syncDiaryLifeOsLinks(client, {
         userId,
