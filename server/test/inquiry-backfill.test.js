@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   buildDiaryBatches,
-  normalizeHistoricalCandidates
+  normalizeHistoricalCandidates,
+  storeHistoricalCandidates
 } = require('../src/inquiry-backfill');
 
 test('historical diary batches stay bounded without losing diary ownership', () => {
@@ -55,4 +56,90 @@ test('historical candidates reject low-confidence and duplicate questions', () =
   ], ['diary-a', 'diary-b'], []);
 
   assert.equal(result.length, 1);
+});
+
+test('historical candidates preserve bounded health type and observations', () => {
+  const result = normalizeHistoricalCandidates([
+    {
+      question: '我的睡眠和精力变化是否长期相关',
+      context: '需要继续记录作息与白天状态。',
+      confidence: 0.88,
+      inquiryType: 'PHYSICAL_HEALTH',
+      healthObservation: {
+        physicalSymptoms: ['疲劳', '疲劳'],
+        sleep: { hours: 30, quality: 9 },
+        measurements: ['未记录']
+      },
+      sourceDiaryIds: ['diary-a']
+    },
+    {
+      question: '这个类型不合法',
+      confidence: 0.8,
+      inquiryType: 'DIAGNOSIS',
+      healthObservation: { physicalSymptoms: ['不应保留'] },
+      sourceDiaryIds: ['diary-b']
+    }
+  ], ['diary-a', 'diary-b'], []);
+
+  assert.equal(result[0].inquiryType, 'PHYSICAL_HEALTH');
+  assert.deepEqual(result[0].healthObservation.physicalSymptoms, ['疲劳']);
+  assert.equal(result[0].healthObservation.sleep.hours, 24);
+  assert.equal(result[0].healthObservation.sleep.quality, 5);
+  assert.equal(result[1].inquiryType, 'GENERAL');
+  assert.deepEqual(result[1].healthObservation, {});
+});
+
+test('historical candidates only suggest an existing inquiry of the same type', () => {
+  const result = normalizeHistoricalCandidates([
+    {
+      question: '这条心理观察是否已有问题',
+      confidence: 0.82,
+      inquiryType: 'PSYCHOLOGICAL',
+      sourceDiaryIds: ['diary-a'],
+      existingInquiryId: 'general-inquiry'
+    },
+    {
+      question: '这条身体观察是否已有问题',
+      confidence: 0.84,
+      inquiryType: 'PHYSICAL_HEALTH',
+      sourceDiaryIds: ['diary-b'],
+      existingInquiryId: 'health-inquiry'
+    }
+  ], ['diary-a', 'diary-b'], [
+    { id: 'general-inquiry', inquiryType: 'GENERAL' },
+    { id: 'health-inquiry', inquiryType: 'PHYSICAL_HEALTH' }
+  ]);
+
+  assert.equal(result[0].suggestedInquiryId, null);
+  assert.equal(result[1].suggestedInquiryId, 'health-inquiry');
+});
+
+test('historical storage persists health type and observations with each owned diary link', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, values) {
+      calls.push({ sql, values });
+      return { rowCount: 1, rows: [{ id: values[0] }] };
+    }
+  };
+
+  const inserted = await storeHistoricalCandidates(client, {
+    userId: 'user-a',
+    modelVersion: 'review-v1',
+    candidates: [{
+      question: '我的睡眠与白天精力如何一起变化？',
+      context: '需要继续观察。',
+      confidence: 0.9,
+      inquiryType: 'PHYSICAL_HEALTH',
+      healthObservation: { physicalSymptoms: ['疲劳'] },
+      sourceDiaryIds: ['diary-a', 'diary-b'],
+      suggestedInquiryId: null
+    }]
+  });
+
+  assert.equal(inserted, 1);
+  assert.match(calls[0].sql, /inquiry_type, health_observation/u);
+  assert.equal(calls[0].values[8], 'PHYSICAL_HEALTH');
+  assert.deepEqual(JSON.parse(calls[0].values[9]), { physicalSymptoms: ['疲劳'] });
+  assert.deepEqual(calls.slice(1).map(call => call.values[1]), ['diary-a', 'diary-b']);
 });

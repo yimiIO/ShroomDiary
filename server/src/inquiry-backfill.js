@@ -2,6 +2,11 @@
 
 const crypto = require('node:crypto');
 const { candidateFingerprint, normalizeQuestion } = require('./inquiry-candidates');
+const {
+  isHealthInquiry,
+  normalizeHealthObservation,
+  normalizeInquiryType
+} = require('./inquiry-health');
 
 function bounded(value, limit) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -31,9 +36,14 @@ function buildDiaryBatches(diaries, options = {}) {
   return batches;
 }
 
-function normalizeHistoricalCandidates(value, allowedDiaryIds = [], allowedInquiryIds = []) {
+function normalizeHistoricalCandidates(value, allowedDiaryIds = [], allowedInquiries = []) {
   const allowedDiaries = new Set(allowedDiaryIds.map(String));
-  const allowedInquiries = new Set(allowedInquiryIds.map(String));
+  const allowedInquiryTypes = new Map(allowedInquiries.map(item => {
+    if (item && typeof item === 'object') {
+      return [String(item.id), normalizeInquiryType(item.inquiryType || item.inquiry_type)];
+    }
+    return [String(item), null];
+  }));
   const seen = new Set();
   const result = [];
   for (const item of Array.isArray(value) ? value : []) {
@@ -45,12 +55,19 @@ function normalizeHistoricalCandidates(value, allowedDiaryIds = [], allowedInqui
       .map(String).filter(id => allowedDiaries.has(id)))];
     if (!question || seen.has(key) || !Number.isFinite(confidence) || confidence < 0.65 || !sourceDiaryIds.length) continue;
     const suggested = String(item.existingInquiryId || '');
+    const inquiryType = normalizeInquiryType(item.inquiryType);
+    const suggestedType = allowedInquiryTypes.get(suggested);
     result.push({
       question,
       context: bounded(item.context || item.reason, 2000),
       confidence: Math.max(0, Math.min(1, confidence)),
       sourceDiaryIds,
-      suggestedInquiryId: allowedInquiries.has(suggested) ? suggested : null
+      inquiryType,
+      healthObservation: isHealthInquiry(inquiryType)
+        ? normalizeHealthObservation(item.healthObservation)
+        : {},
+      suggestedInquiryId: allowedInquiryTypes.has(suggested)
+        && (suggestedType === null || suggestedType === inquiryType) ? suggested : null
     });
     seen.add(key);
     if (result.length >= 20) break;
@@ -73,11 +90,12 @@ async function storeHistoricalCandidates(client, { userId, modelVersion, candida
     const result = await client.query(
       `INSERT INTO inquiry_candidates
         (id, user_id, question, context, source, confidence, fingerprint,
-         suggested_inquiry_id, model_version)
-       VALUES ($1, $2, $3, $4, 'HISTORICAL_BACKFILL', $5, $6, $7, $8)
+         suggested_inquiry_id, model_version, inquiry_type, health_observation)
+       VALUES ($1, $2, $3, $4, 'HISTORICAL_BACKFILL', $5, $6, $7, $8, $9, $10::jsonb)
        ON CONFLICT (user_id, fingerprint) DO NOTHING RETURNING id`,
       [id, userId, candidate.question, candidate.context, candidate.confidence, fingerprint,
-        candidate.suggestedInquiryId, modelVersion]
+        candidate.suggestedInquiryId, modelVersion, normalizeInquiryType(candidate.inquiryType),
+        JSON.stringify(candidate.healthObservation || {})]
     );
     if (!result.rowCount) continue;
     for (const diaryId of candidate.sourceDiaryIds) {
