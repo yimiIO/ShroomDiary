@@ -41,6 +41,15 @@ test('wellbeing categories keep facts separate from questions and diagnoses', ()
   assert.equal(Object.hasOwn(mapped, 'question'), false);
 });
 
+test('wellbeing dates keep their Shanghai calendar day', () => {
+  const mapped = mapWellbeingRecord({
+    id: 'record-date', status: 'PENDING', source_type: 'MIGRATED',
+    recorded_on: new Date('2026-09-09T16:00:00.000Z'),
+    observation: { sleep: { hours: 6 } }, ai_allowed: false
+  });
+  assert.equal(mapped.recordedOn, '2026-09-10');
+});
+
 test('structured diary health stays in the same wellbeing candidate with uncertainty and links', () => {
   const inquiryId = '11111111-1111-4111-8111-111111111111';
   const diary = '今天头痛，好像和只睡了四小时有关。';

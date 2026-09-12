@@ -81,12 +81,15 @@ function mapWellbeingRecord(row) {
     ? row.extraction : {};
   const extraction = { ...emptyDiaryHealthExtraction(), ...rawExtraction };
   const linkedInquiryIds = new Set((Array.isArray(row.linked_inquiry_ids) ? row.linked_inquiry_ids : []).map(String));
+  const recordedOn = row.recorded_on instanceof Date
+    ? row.recorded_on.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })
+    : row.recorded_on;
   return {
     id: row.id,
     diaryId: row.diary_id || null,
     sourceType: row.source_type,
     status: WELLBEING_STATUSES.includes(row.status) ? row.status : 'PENDING',
-    recordedOn: row.recorded_on instanceof Date ? row.recorded_on.toISOString().slice(0, 10) : row.recorded_on,
+    recordedOn,
     sourceLabel: row.source_label || '',
     sourceExcerpt: row.source_excerpt || '',
     observation,
