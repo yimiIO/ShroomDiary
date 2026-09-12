@@ -252,7 +252,10 @@ test('wellbeing records provide independent evidence while inquiries only organi
   assert.match(consent, /不是医学诊断/);
   assert.match(detail, /引用的身心记录/);
   assert.match(detail, /从身心记录引用证据/);
-  assert.doesNotMatch(detail, /healthObservationPayload|更新健康线索|健康时间线/);
+  assert.doesNotMatch(detail, /healthObservationPayload|健康时间线/);
+  assert.match(detail, /更新健康线索/);
+  assert.match(detail, /INCREMENTAL/);
+  assert.match(detail, /用全部线索重新分析/);
   assert.match(detail, /当前线索/);
   assert.match(detail, /原因假设/);
   assert.match(detail, /缺失信息/);
@@ -265,6 +268,14 @@ test('wellbeing records provide independent evidence while inquiries only organi
   assert.match(wellbeingRoutes, /wellbeing_record_id/);
   assert.match(prompt, /独立的事实层/);
   assert.match(prompt, /不承载原始身心记录/);
+  assert.match(prompt, /healthExtraction/);
+  assert.match(prompt, /psychologicalObservations/);
+  assert.match(prompt, /physicalObservations/);
+  assert.match(prompt, /lifestyleFactors/);
+  assert.match(prompt, /environmentFactors/);
+  assert.match(prompt, /healthInquiryLinks/);
+  assert.match(prompt, /missingInformation/);
+  assert.match(prompt, /redFlags/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS wellbeing_records/);
   assert.match(migration, /wellbeing_record_id uuid REFERENCES wellbeing_records\(id\) ON DELETE SET NULL/);
   assert.match(migration, /source_type = 'WELLBEING'/);

@@ -52,10 +52,10 @@
 						<text class="finding-label">相对个人基线</text><text class="finding-copy">{{ inquiry.currentSynthesis.baselineComparison }}</text>
 					</view>
 					<view v-if="isHealth && inquiry.currentSynthesis.confirmedFacts && inquiry.currentSynthesis.confirmedFacts.length" class="finding-block fact-block">
-						<text class="finding-label">已有记录能确认的事实</text><text v-for="(item, index) in inquiry.currentSynthesis.confirmedFacts" :key="'fact-' + index" class="unknown-item">· {{ item.statement }} <text class="evidence-refs">{{ refsLabel(item.evidenceRefs) }}</text></text>
+						<text class="finding-label">已有记录能确认的事实</text><text v-for="(item, index) in inquiry.currentSynthesis.confirmedFacts" :key="index" class="unknown-item">· {{ item.statement }} <text class="evidence-refs">{{ refsLabel(item.evidenceRefs) }}</text></text>
 					</view>
 					<view v-if="isHealth && inquiry.currentSynthesis.pendingObservations && inquiry.currentSynthesis.pendingObservations.length" class="finding-block pending-block">
-						<text class="finding-label">还不能当作事实</text><text v-for="(item, index) in inquiry.currentSynthesis.pendingObservations" :key="'pending-' + index" class="unknown-item">· {{ item.statement }} <text class="evidence-refs">{{ refsLabel(item.evidenceRefs) }}</text></text>
+						<text class="finding-label">还不能当作事实</text><text v-for="(item, index) in inquiry.currentSynthesis.pendingObservations" :key="index" class="unknown-item">· {{ item.statement }} <text class="evidence-refs">{{ refsLabel(item.evidenceRefs) }}</text></text>
 					</view>
 					<view v-if="isHealth && inquiry.currentSynthesis.currentClues && inquiry.currentSynthesis.currentClues.length" class="finding-block">
 						<text class="finding-label">当前线索</text><text v-for="(item, index) in inquiry.currentSynthesis.currentClues" :key="index" class="unknown-item">· {{ item.statement }} <text class="evidence-refs">{{ refsLabel(item.evidenceRefs) }}</text></text>

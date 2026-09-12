@@ -41,6 +41,24 @@ test('wellbeing categories keep facts separate from questions and diagnoses', ()
   assert.equal(Object.hasOwn(mapped, 'question'), false);
 });
 
+test('structured diary health stays in the same wellbeing candidate with uncertainty and links', () => {
+  const inquiryId = '11111111-1111-4111-8111-111111111111';
+  const diary = '今天头痛，好像和只睡了四小时有关。';
+  const candidate = normalizeWellbeingCandidate({
+    extraction: {
+      physicalObservations: [{ symptom: '头痛', evidenceExcerpt: '今天头痛', certainty: 'EXPLICIT' }],
+      lifestyleFactors: [{ factor: '只睡了四小时', category: 'SLEEP', evidenceExcerpt: '好像和只睡了四小时有关', certainty: 'EXPLICIT' }],
+      healthInquiryLinks: [{ inquiryId, reason: '可能相关', evidenceExcerpt: '今天头痛', confidence: 0.8 }],
+      missingInformation: ['缺少持续时间']
+    }
+  }, diary, [{ id: inquiryId, inquiryType: 'PHYSICAL_HEALTH' }]);
+
+  assert.deepEqual(candidate.categories, ['PHYSICAL', 'SLEEP']);
+  assert.equal(candidate.extraction.lifestyleFactors[0].certainty, 'UNCERTAIN');
+  assert.equal(candidate.extraction.healthInquiryLinks[0].inquiryId, inquiryId);
+  assert.deepEqual(candidate.extraction.missingInformation, ['缺少持续时间']);
+});
+
 test('confirmed wellbeing records are never overwritten by a later diary analysis', async () => {
   const calls = [];
   const client = {

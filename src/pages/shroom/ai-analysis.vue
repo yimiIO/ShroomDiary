@@ -69,7 +69,7 @@
 				</view>
 
 				<view class="wellbeing-section" v-if="wellbeingRecord">
-					<view class="wellbeing-heading"><text>这篇留下了身心变化</text><text>与原有日记分析同一次提取，没有增加一次模型调用。确认后才成为长期记录。</text></view>
+					<view class="wellbeing-heading"><text>这篇留下了身心变化</text><text>与原有日记分析同一次提取，没有增加一次模型调用；它与你是否创建未解之问无关，确认后才成为长期记录。</text></view>
 					<view class="wellbeing-body"><text>{{ healthObservationText(wellbeingRecord.observation) }}</text><text v-if="wellbeingRecord.sourceExcerpt">“{{ wellbeingRecord.sourceExcerpt }}”</text></view>
 					<view v-if="wellbeingDetails.length" class="wellbeing-details">
 						<view v-for="(item, index) in wellbeingDetails" :key="index"><text>{{ item.label }}</text><text>{{ item.text }}</text><text v-if="item.uncertain" class="uncertain-mark">原文不确定</text></view>
