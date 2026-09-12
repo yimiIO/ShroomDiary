@@ -254,7 +254,8 @@ export default {
 		},
 		wellbeingCardTitle() {
 			const records = this.wellbeingOverview && this.wellbeingOverview.records || [];
-			return records.some(item => item.status === 'PENDING') ? '这一天有变化待确认' : '这一天留下的身心变化';
+			const period = records[0] && records[0].recordedOn !== this.selectedDate ? '最近' : '这一天';
+			return records.some(item => item.status === 'PENDING') ? `${period}有变化待确认` : `${period}留下的身心变化`;
 		}
 	},
 	onLoad() {

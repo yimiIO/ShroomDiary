@@ -47,8 +47,11 @@ router.get('/summary', asyncRoute(async (req, res) => {
     ),
     db.query(
       `SELECT * FROM wellbeing_records
-        WHERE user_id = $1 AND recorded_on = $2 AND status IN ('PENDING', 'CONFIRMED')
-        ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END, updated_at DESC LIMIT 3`,
+        WHERE user_id = $1 AND status IN ('PENDING', 'CONFIRMED')
+          AND (recorded_on = $2::date OR (
+            $2::date = current_date AND recorded_on BETWEEN current_date - 6 AND current_date
+          ))
+        ORDER BY recorded_on DESC, CASE status WHEN 'PENDING' THEN 0 ELSE 1 END, updated_at DESC LIMIT 3`,
       [req.user.id, selectedDate]
     )
   ]);
