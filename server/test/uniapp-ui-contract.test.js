@@ -49,6 +49,9 @@ test('todo execution layer has current views, projects, recurrence and reversibl
   assert.match(list, /selectionMode/);
   assert.match(row, /已过截止日期/);
   assert.match(detail, /记录结果并完成/);
+  assert.match(detail, /添加结果照片/);
+  assert.match(detail, /补充完成结果/);
+  assert.match(detail, /resultMediaIds/);
   assert.match(detail, /不会伪造或修改你的日记正文/);
   assert.match(detail, /恢复为未完成/);
   assert.match(project, /项目还有|未完成|归档项目/);
@@ -58,6 +61,7 @@ test('todo execution layer has current views, projects, recurrence and reversibl
   assert.match(route, /generateActiveRules/);
   assert.match(route, /ON CONFLICT \(user_id, recurrence_rule_id, occurrence_date\)/);
   assert.match(route, /这条待办已在其他页面更新/);
+  assert.match(route, /router\.patch\('\/result'/);
   assert.match(migration, /todo_recurrence_rules/);
   assert.match(migration, /todo_events/);
   assert.match(diary, /actionRecords/);

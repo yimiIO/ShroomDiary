@@ -8,6 +8,7 @@ const todoUpdate = '/todos/v1/update';
 const todoDelete = '/todos/v1/delete';
 const todoComplete = '/todos/v1/complete';
 const todoStatus = '/todos/v1/status';
+const todoResult = '/todos/v1/result';
 const todoBulk = '/todos/v1/bulk';
 const todoReorder = '/todos/v1/reorder';
 const todoActions = '/todos/v1/actions';
@@ -27,6 +28,7 @@ export {
 	todoOptions,
 	todoProjects,
 	todoReorder,
+	todoResult,
 	todoStatus,
 	todoUpdate
 };

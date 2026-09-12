@@ -2,8 +2,10 @@
 
 const crypto = require('node:crypto');
 const express = require('express');
+const config = require('../config');
 const db = require('../db');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
+const { createMediaSignature } = require('../security');
 const {
   addDays,
   dateOnly,
@@ -126,6 +128,12 @@ function taskSource(body) {
 
 function clientRequestId(value) {
   return text(value, 100) || null;
+}
+
+function signedMediaUrl(mediaId) {
+  const expires = Math.floor(Date.now() / 1000) + 3600;
+  const signature = createMediaSignature(mediaId, expires);
+  return `${config.publicOrigin}/api/media/v1/${mediaId}?expires=${expires}&signature=${signature}`;
 }
 
 async function assertOwned(client, table, id, userId, message) {
@@ -341,6 +349,17 @@ router.get('/view', asyncRoute(async (req, res) => {
     )
   ]);
   const task = mapTask(row, today);
+  if (task.resultMediaIds.length) {
+    const media = await db.query(
+      `SELECT id, mime_type FROM media_assets WHERE user_id=$1 AND id=ANY($2::uuid[])`,
+      [req.user.id, task.resultMediaIds]
+    );
+    const mediaById = new Map(media.rows.map(item => [item.id, item]));
+    task.resultMedia = task.resultMediaIds.map(id => mediaById.get(id)).filter(Boolean)
+      .map(item => ({ id: item.id, mimeType: item.mime_type, url: signedMediaUrl(item.id) }));
+  } else {
+    task.resultMedia = [];
+  }
   const linkedDiaryIds = [...new Set(events.rows.map(item => item.source_diary_id).filter(Boolean))];
   let linkedDiaries = [];
   if (linkedDiaryIds.length) {
@@ -540,6 +559,44 @@ router.patch('/status', asyncRoute(async (req, res) => {
   if (result.conflict) return fail(res, 409, '这条待办已在其他页面更新，请刷新后再操作', mapTask(result.row, today));
   if (result.invalid) return fail(res, 400, result.invalid);
   return ok(res, mapTask(result.row, today), result.unchanged ? '状态没有变化' : '待办状态已更新');
+}));
+
+router.patch('/result', asyncRoute(async (req, res) => {
+  const timeZone = normalizeTimeZone(req.body.timeZone);
+  const today = todayInTimeZone(timeZone);
+  const operationId = clientRequestId(req.body.operationId);
+  const result = await db.transaction(async client => {
+    const current = await taskRow(client, req.body.id || req.query.id, req.user.id, true);
+    if (!current) return { missing: true };
+    if (current.status !== 'completed') return { invalid: '只能为已完成的待办补充结果' };
+    if (operationId) {
+      const duplicate = await client.query(
+        'SELECT id FROM todo_events WHERE user_id=$1 AND idempotency_key=$2',
+        [req.user.id, `todo:${current.id}:result:${operationId}`]
+      );
+      if (duplicate.rowCount) return { row: current, unchanged: true };
+    }
+    if (req.body.version && Number(req.body.version) !== current.version) return { conflict: true, row: current };
+    const resultText = text(req.body.result, 5000);
+    const mediaIds = await ownedMediaIds(client, req.body.resultMediaIds, req.user.id);
+    await client.query(
+      `UPDATE todos SET result_text=$3, result_media_ids=$4::jsonb,
+        version=version+1, updated_at=now() WHERE id=$1 AND user_id=$2`,
+      [current.id, req.user.id, resultText, JSON.stringify(mediaIds)]
+    );
+    await insertEvent(client, {
+      userId: req.user.id,
+      todoId: current.id,
+      eventType: 'RESULT_UPDATED',
+      payload: { result: resultText, resultMediaIds: mediaIds },
+      idempotencyKey: operationId ? `todo:${current.id}:result:${operationId}` : null
+    });
+    return { row: await taskRow(client, current.id, req.user.id) };
+  });
+  if (result.missing) return fail(res, 404, '待办不存在');
+  if (result.conflict) return fail(res, 409, '这条待办已在其他页面更新，请刷新后再操作', mapTask(result.row, today));
+  if (result.invalid) return fail(res, 400, result.invalid);
+  return ok(res, mapTask(result.row, today), result.unchanged ? '完成结果没有变化' : '完成结果已更新');
 }));
 
 router.post('/complete', asyncRoute(async (req, res) => {

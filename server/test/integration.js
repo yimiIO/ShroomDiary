@@ -681,20 +681,37 @@ async function run() {
 
     const completedWithResult = expectCode(await api('/api/todos/v1/status', {
       method: 'PATCH', token: tokenA,
-      body: { id: startedTask.id, action: 'COMPLETE', version: startedTask.version, result: 'produced an integration result', operationId: `complete-${suffix}`, timeZone: 'Asia/Shanghai' }
+      body: { id: startedTask.id, action: 'COMPLETE', version: startedTask.version, result: 'produced an integration result', resultMediaIds: [media.id], operationId: `complete-${suffix}`, timeZone: 'Asia/Shanghai' }
     }));
     assert.equal(completedWithResult.status, 'completed');
     assert.equal(completedWithResult.result, 'produced an integration result');
+    assert.deepEqual(completedWithResult.resultMediaIds, [media.id]);
+    const completedDetail = expectCode(await api(`/api/todos/v1/view?id=${startedTask.id}`, { token: tokenA }));
+    assert.equal(completedDetail.resultMedia[0].id, media.id);
+    const taskMediaResponse = await fetch(completedDetail.resultMedia[0].url);
+    assert.equal(taskMediaResponse.status, 200);
     const duplicateComplete = expectCode(await api('/api/todos/v1/status', {
       method: 'PATCH', token: tokenA,
       body: { id: startedTask.id, action: 'COMPLETE', version: startedTask.version, result: 'duplicate', operationId: `complete-${suffix}`, timeZone: 'Asia/Shanghai' }
     }));
     assert.equal(duplicateComplete.id, completedWithResult.id);
+    const updatedResult = expectCode(await api('/api/todos/v1/result', {
+      method: 'PATCH', token: tokenA,
+      body: { id: startedTask.id, version: completedWithResult.version, result: 'result supplemented later', resultMediaIds: [media.id], operationId: `result-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(updatedResult.result, 'result supplemented later');
+    assert.deepEqual(updatedResult.resultMediaIds, [media.id]);
+    const duplicateResult = expectCode(await api('/api/todos/v1/result', {
+      method: 'PATCH', token: tokenA,
+      body: { id: startedTask.id, version: completedWithResult.version, result: 'must not overwrite', resultMediaIds: [], operationId: `result-${suffix}`, timeZone: 'Asia/Shanghai' }
+    }));
+    assert.equal(duplicateResult.result, 'result supplemented later');
     const actionRecords = expectCode(await api(`/api/todos/v1/actions?date=${currentTasks.today}&timeZone=Asia%2FShanghai`, { token: tokenA }));
     assert.equal(actionRecords.list.filter(item => item.taskId === startedTask.id).length, 1);
+    assert.equal(actionRecords.list.find(item => item.taskId === startedTask.id).result, 'result supplemented later');
     const restoredTask = expectCode(await api('/api/todos/v1/status', {
       method: 'PATCH', token: tokenA,
-      body: { id: startedTask.id, action: 'RESTORE', version: completedWithResult.version, operationId: `restore-${suffix}`, timeZone: 'Asia/Shanghai' }
+      body: { id: startedTask.id, action: 'RESTORE', version: updatedResult.version, operationId: `restore-${suffix}`, timeZone: 'Asia/Shanghai' }
     }));
     assert.equal(restoredTask.status, 'pending');
     const restoredActions = expectCode(await api(`/api/todos/v1/actions?date=${currentTasks.today}&timeZone=Asia%2FShanghai`, { token: tokenA }));
@@ -790,7 +807,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo-title-only-idempotency', 'todo-undated-start', 'todo-project-identity', 'todo-recurrence-idempotency', 'todo-recurrence-scope', 'todo-action-record-undo', 'todo-project-archive-safety', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo-title-only-idempotency', 'todo-undated-start', 'todo-project-identity', 'todo-recurrence-idempotency', 'todo-recurrence-scope', 'todo-result-media-and-supplement', 'todo-action-record-undo', 'todo-project-archive-safety', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();
