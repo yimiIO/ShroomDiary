@@ -474,6 +474,31 @@ async function run() {
     assert.equal(lifeOsHistory.total, 1);
     assert.equal(lifeOsHistory.list[0].origin, 'ai_assisted');
 
+    const lifeOsPlan = expectCode(await api('/api/life-os/v1/plan/home', { token: tokenA }));
+    assert.equal(lifeOsPlan.counts.total, 20);
+    assert.equal(lifeOsPlan.sections.length, 5);
+    const lifeOsPlanAgain = expectCode(await api('/api/life-os/v1/plan/home', { token: tokenA }));
+    assert.deepEqual(lifeOsPlanAgain.sections.flatMap(section => section.items.map(item => item.id)), lifeOsPlan.sections.flatMap(section => section.items.map(item => item.id)));
+    const otherLifeOsPlan = expectCode(await api('/api/life-os/v1/plan/home', { token: sessionB.access_token }));
+    assert.equal(otherLifeOsPlan.counts.total, 20);
+    assert.notEqual(otherLifeOsPlan.sections[0].items[0].id, lifeOsPlan.sections[0].items[0].id);
+    const focus = expectCode(await api('/api/life-os/v1/plan/focus', {
+      method: 'PUT', token: tokenA, body: { itemKeys: ['01', '03'] }
+    }));
+    assert.deepEqual(focus.map(item => item.stableKey).sort(), ['01', '03']);
+    const editedLifeOsItem = expectCode(await api('/api/life-os/v1/plan/items/01', {
+      method: 'PATCH', token: tokenA, body: { currentNextStep: '完成一次可核对的小行动' }
+    }));
+    assert.equal(editedLifeOsItem.currentNextStep, '完成一次可核对的小行动');
+    const lifeOsItem = expectCode(await api('/api/life-os/v1/plan/items/01', { token: tokenA }));
+    assert.equal(lifeOsItem.item.currentNextStep, '完成一次可核对的小行动');
+    const otherLifeOsItem = expectCode(await api('/api/life-os/v1/plan/items/01', { token: sessionB.access_token }));
+    assert.equal(otherLifeOsItem.item.currentNextStep, '');
+    const portableLifeOs = expectCode(await api('/api/life-os/v1/plan/export', { token: tokenA }));
+    assert.equal(portableLifeOs.json.format, 'shroom-life-os-v1');
+    assert.equal(portableLifeOs.json.sections.flatMap(section => section.items).length, 20);
+    assert.match(portableLifeOs.markdown, /# 我的人生 OS · 长期事项/);
+
     const aiStatus = expectCode(await api('/api/ai/v1/status', { token: tokenA }));
     if (!aiStatus.enabled) {
       expectCode(await api('/api/ai/v1/analyze', {
@@ -578,6 +603,8 @@ async function run() {
     assert.equal(exported.diaries.length, 2);
     assert.equal(exported.friends.length, 3);
     assert.equal(exported.lifeOs.version, 1);
+    assert.equal(exported.lifeOsItems.length, 20);
+    assert.equal(exported.lifeOsWeekFocus.length, 2);
     assert.equal(exported.inquiries.length, 2);
     assert.equal(exported.inquiryEvidence.length, 3);
     assert.ok(exported.inquiries.some(item => item.inquiry_type === 'PHYSICAL_HEALTH'));
@@ -589,7 +616,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();

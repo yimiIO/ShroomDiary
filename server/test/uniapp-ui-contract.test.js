@@ -76,6 +76,37 @@ test('life OS is reviewed as confirmed clauses and cards are not actions', () =>
   assert.match(me, /带到下一次相似时刻的理解/);
 });
 
+test('life OS long-term layer is lightweight, evidence-linked and user-confirmed', () => {
+  const home = source('src/pages/diary/index.vue');
+  const plan = source('src/pages/shroom/life-os-plan.vue');
+  const item = source('src/pages/shroom/life-os-item.vue');
+  const weekly = source('src/pages/shroom/life-os-weekly.vue');
+  const analysis = source('src/pages/shroom/ai-analysis.vue');
+  const prompt = source('server/src/ai-prompts.js');
+  const defaults = source('server/src/life-os-long-term.js');
+  const pages = JSON.parse(source('src/pages.json'));
+
+  assert.match(home, /life-os-entry/);
+  assert.match(plan, /本周关注/);
+  assert.match(plan, /20 COMPOUNDING THREADS/);
+  assert.match(plan, /最近关联记录/);
+  assert.match(plan, /判断原则与版本/);
+  assert.match(plan, /导出 JSON/);
+  assert.match(item, /这里没有“永久完成”/);
+  assert.match(item, /取消关联/);
+  assert.match(item, /原文已变更/);
+  assert.match(weekly, /可编辑草稿/);
+  assert.match(weekly, /不会创建待办或正式原则/);
+  assert.match(analysis, /普通关联已自动保存为“AI 关联”/);
+  assert.match(prompt, /最多 3 条/);
+  assert.match(prompt, /不是 ACTION/);
+  assert.equal((defaults.match(/\['\d{2}',/g) || []).length, 20);
+  assert.equal(pages.tabBar.list.length, 4);
+  assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-plan'));
+  assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-item'));
+  assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
+});
+
 test('personal compound system is account-gated and keeps four cadences separate', () => {
   const me = source('src/pages/shroom/me.vue');
   const compound = source('src/pages/shroom/compound.vue');

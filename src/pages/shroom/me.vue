@@ -274,7 +274,7 @@ export default {
 			uni.navigateTo({ url: '/pages/todo/list' });
 		},
 		openLifeOs() {
-			uni.navigateTo({ url: '/pages/shroom/life-os' });
+			uni.navigateTo({ url: '/pages/shroom/life-os-plan' });
 		},
 		openObservers() {
 			uni.navigateTo({ url: '/pages/shroom/observers' });

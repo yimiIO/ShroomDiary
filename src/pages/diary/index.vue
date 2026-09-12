@@ -48,6 +48,12 @@
 			</view>
 		</view>
 
+		<view class="life-os-entry" @tap="openLifeOsPlan">
+			<view class="life-os-symbol"><text>OS</text></view>
+			<view class="life-os-entry-copy"><text>人生 OS</text><text>{{ lifeOsEntryDescription }}</text></view>
+			<text class="life-os-arrow">›</text>
+		</view>
+
 		<view class="inquiry-shelf" v-if="$mStore.getters.hasLogin">
 			<view class="inquiry-shelf-heading">
 				<view><text class="inquiry-kicker">LIVING QUESTIONS</text><text class="inquiry-title">正在想明白的事</text></view>
@@ -201,6 +207,7 @@ import moment from '@/common/moment.js';
 import { diaryCalendar, diaryList } from '@/api/diary';
 import { todoList } from '@/api/todo';
 import { inquirySummary } from '@/api/inquiry';
+import { lifeOsPlanHome } from '@/api/shroom-system';
 import diaryTime from '@/utils/diary-time.js';
 import diaryPreviewUtils from '@/utils/diary-preview.js';
 
@@ -229,6 +236,7 @@ export default {
 			showFullCalendarView: false,
 			pendingTodoCount: 0, // 待完成待办数量
 			inquiryOverview: null,
+			lifeOsOverview: null,
 			// 默认图片URL
 			defaultImageUrl: 'https://images.unsplash.com/photo-1493612276216-ee3925520721?w=800&h=600&fit=crop'
 		};
@@ -265,6 +273,10 @@ export default {
 		},
 		activeInquiries() {
 			return (this.inquiryOverview && Array.isArray(this.inquiryOverview.active)) ? this.inquiryOverview.active : [];
+		},
+		lifeOsEntryDescription() {
+			const count = this.lifeOsOverview && Array.isArray(this.lifeOsOverview.focus) ? this.lifeOsOverview.focus.length : 0;
+			return count ? `本周关注 ${count} 项 · 从日记积累真实进展` : '20 项长期事项 · 选择这周真正重要的 1–3 项';
 		}
 	},
 	onLoad() {
@@ -297,6 +309,7 @@ export default {
 		this.loadCalendarDates(this.selectedMonth);
 		this.loadPendingTodoCount();
 		this.loadInquiryOverview();
+		this.loadLifeOsOverview();
 	},
 	methods: {
 		// 初始化日期选择器
@@ -647,6 +660,17 @@ export default {
 			}
 		},
 
+		async loadLifeOsOverview() {
+			if (!this.$mStore.getters.hasLogin) { this.lifeOsOverview = null; return; }
+			try { const res = await this.$http.get(lifeOsPlanHome); this.lifeOsOverview = res.data || null; }
+			catch (error) { console.error('加载人生 OS 概览失败', error); this.lifeOsOverview = null; }
+		},
+
+		openLifeOsPlan() {
+			if (!this.requireLogin()) return;
+			uni.navigateTo({ url: '/pages/shroom/life-os-plan' });
+		},
+
 		openInquiries() {
 			if (!this.requireLogin()) return;
 			uni.navigateTo({ url: '/pages/shroom/inquiries' });
@@ -944,6 +968,24 @@ export default {
 	display: block;
 	padding: 0 40rpx 34rpx;
 }
+
+.life-os-entry {
+	display: flex;
+	align-items: center;
+	gap: 18rpx;
+	margin: 0 40rpx 30rpx;
+	padding: 21rpx 23rpx;
+	border: 1rpx solid rgba(23, 32, 25, .07);
+	border-radius: 27rpx;
+	background: #172019;
+	color: #fff;
+}
+.life-os-symbol { display: flex; width: 57rpx; height: 57rpx; flex: 0 0 57rpx; align-items: center; justify-content: center; border-radius: 18rpx; background: #dce9b9; color: #263027; }
+.life-os-symbol text { font-size: 17rpx; font-weight: 800; letter-spacing: 1rpx; }
+.life-os-entry-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.life-os-entry-copy text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 24rpx; font-weight: 690; }
+.life-os-entry-copy text:last-child { color: #aebbae; font-size: 17rpx; line-height: 1.45; }
+.life-os-arrow { color: #91a092; font-size: 32rpx; }
 
 .inquiry-shelf-heading {
 	display: flex;

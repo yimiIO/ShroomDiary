@@ -81,9 +81,21 @@
 							<button class="inquiry-open" v-else-if="item.acceptedInquiryId" @tap="openInquiry(item.acceptedInquiryId)">✓ 已开始观察 · 查看问题</button>
 						</view>
 					</view>
-				</view>
+					</view>
 
-				<view class="card-section" v-if="cardSuggestion">
+					<view class="life-os-links" v-if="lifeOsLinks.length">
+						<view class="life-os-links-head"><view><text>与人生 OS 的 {{ lifeOsLinks.length }} 项有关</text><text>普通关联已自动保存为“AI 关联”，你可以取消或纠正它是什么记录。</text></view><text @tap="openLifeOsPlan">进入 OS　›</text></view>
+						<view v-for="link in lifeOsLinks" :key="link.id" class="life-os-link">
+							<view class="life-os-link-title" @tap="openLifeOsItem(link)"><text>{{ link.itemKey }} · {{ link.itemName }}</text><text>AI 关联　›</text></view>
+							<text class="life-os-evidence">“{{ link.evidenceExcerpt }}”</text>
+							<text class="life-os-summary" v-if="link.summary">{{ link.summary }}</text>
+							<view class="life-os-types"><button v-for="type in lifeOsRecordTypes" :key="type.value" :class="{ active: link.recordType === type.value }" @tap="changeLifeOsLinkType(link, type.value)">{{ type.label }}</button></view>
+							<view class="life-os-next" v-if="link.suggestedNextStep"><text>可选下一步</text><text>{{ link.suggestedNextStep }}</text></view>
+							<button class="life-os-unlink" @tap="removeLifeOsLink(link)">取消关联</button>
+						</view>
+					</view>
+
+					<view class="card-section" v-if="cardSuggestion">
 					<view class="card-heading">
 						<view><text>从经历到菇卡</text><text>AI 只提出建议，由你决定是否沉淀或关联。</text></view>
 						<text>{{ cardSuggestion.shouldCreate ? '建议沉淀' : '不必新建' }}</text>
@@ -128,11 +140,11 @@
 </template>
 
 <script>
-import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask } from '@/api/shroom-system';
+import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 
 export default {
-		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false }; },
+		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], lifeOsLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
@@ -161,7 +173,7 @@ export default {
 				if (this.autoStart && this.analysisEnabled && (!existing.data || !['pending', 'running'].includes(existing.data.status))) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
-		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; },
+		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.lifeOsLinks = Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []; },
 		async startAnalysis() {
 			if (!this.analysisEnabled) return;
 			this.stopPolling();
@@ -270,6 +282,16 @@ export default {
 			finally { this.processingInquiryId = ''; }
 		},
 		openInquiry(inquiryId) { if (inquiryId) uni.navigateTo({ url: `/pages/shroom/inquiry?id=${inquiryId}` }); },
+		async changeLifeOsLinkType(link, recordType) {
+			if (!link || link.recordType === recordType) return;
+			try { await this.$http.patch(lifeOsPlanLink(link.id), { recordType }); link.recordType = recordType; link.userConfirmed = true; uni.showToast({ title: '记录类型已纠正', icon: 'success' }); }
+			catch (error) { console.error('纠正人生 OS 关联失败', error); }
+		},
+		removeLifeOsLink(link) {
+			uni.showModal({ title: '取消这条关联？', content: '不会删除日记或长期事项。', confirmText: '取消关联', success: async result => { if (!result.confirm) return; try { await this.$http.delete(lifeOsPlanLink(link.id)); this.lifeOsLinks = this.lifeOsLinks.filter(item => item.id !== link.id); } catch (error) { console.error('取消人生 OS 关联失败', error); } } });
+		},
+		openLifeOsItem(link) { if (link && link.itemKey) uni.navigateTo({ url: `/pages/shroom/life-os-item?key=${link.itemKey}` }); },
+		openLifeOsPlan() { uni.navigateTo({ url: '/pages/shroom/life-os-plan' }); },
 		viewCreatedCard() { if (this.cardSuggestion && this.cardSuggestion.createdCardId) uni.navigateTo({ url: `/pages/common/cards/detail?id=${this.cardSuggestion.createdCardId}` }); },
 		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果，并产生新的 AI 用量。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
 		openObservers() { uni.navigateTo({ url: '/pages/shroom/observers' }); },
@@ -350,6 +372,17 @@ button::after { border: 0; }
 .inquiry-accept { background: #e5efd9; color: #172019; font-weight: 700; }
 .inquiry-open { align-self: flex-start; margin-top: 18rpx; background: rgba(229,239,217,.13); color: #e0eadc; }
 .inquiry-ignore[disabled], .inquiry-accept[disabled] { opacity: .45; }
+.life-os-links { margin-top: 24rpx; padding: 30rpx; border-radius: 31rpx; background: #e4eccd; color: #1e2820; }
+.life-os-links-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
+.life-os-links-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.life-os-links-head > view text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 26rpx; font-weight: 700; }
+.life-os-links-head > view text:last-child { color: #637060; font-size: 17rpx; line-height: 1.5; }
+.life-os-links-head > text { flex: 0 0 auto; color: #596a59; font-size: 16rpx; }
+.life-os-link { margin-top: 21rpx; padding-top: 20rpx; border-top: 1rpx solid rgba(23,32,25,.1); }
+.life-os-link-title { display: flex; justify-content: space-between; gap: 14rpx; }.life-os-link-title text:first-child { font-size: 20rpx; font-weight: 700; }.life-os-link-title text:last-child { color: #6c786b; font-size: 15rpx; }
+.life-os-evidence { display: block; margin-top: 12rpx; font-family: Georgia, 'Songti SC', serif; font-size: 20rpx; line-height: 1.55; }.life-os-summary { display: block; margin-top: 8rpx; color: #657064; font-size: 17rpx; line-height: 1.5; }
+.life-os-types { display: flex; flex-wrap: wrap; gap: 7rpx; margin-top: 15rpx; }.life-os-types button { padding: 9rpx 13rpx; border-radius: 999rpx; background: rgba(255,255,255,.58); color: #687467; font-size: 15rpx; }.life-os-types button.active { background: #172019; color: #fff; }
+.life-os-next { display: flex; margin-top: 14rpx; padding: 13rpx 15rpx; flex-direction: column; gap: 6rpx; border-radius: 15rpx; background: rgba(255,255,255,.55); }.life-os-next text:first-child { color: #748071; font-size: 14rpx; font-weight: 700; }.life-os-next text:last-child { font-size: 17rpx; line-height: 1.5; }.life-os-unlink { margin-top: 14rpx; color: #8b6258; font-size: 15rpx; }
 .view-heading { display: flex; align-items: center; gap: 20rpx; padding-bottom: 26rpx; border-bottom: 1rpx solid #e8ede6; }
 .view-heading > text { font-size: 47rpx; font-weight: 760; color: #d4ded0; }
 .view-heading > view { display: flex; flex-direction: column; gap: 6rpx; }

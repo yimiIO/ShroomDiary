@@ -26,7 +26,8 @@ router.get('/all', asyncRoute(async (req, res) => {
   const redacted = ['1', 'true', 'yes'].includes(String(req.query.redacted || '').toLowerCase());
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
     lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses, friendSettings,
-    compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, aiUsage] = await Promise.all([
+    compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, aiUsage,
+    lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
     db.query('SELECT id, content, deadline, tags, status, completed_at, created_at, updated_at FROM todos WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, seed_sentence, my_understanding, usage_items, tags, visibility, copied_from_id, collection_slug, editorial_source, source_diary_id, source_analysis_id, last_reviewed_at, created_at, updated_at FROM cards WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
@@ -56,7 +57,13 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query(`SELECT feature, diary_id, analysis_id, conversation_id, task_id, observer_id, inquiry_id,
       request_label, provider, model, prompt_tokens, cache_hit_tokens, cache_miss_tokens,
       completion_tokens, total_tokens, cost_usd, cost_cny, price_snapshot, created_at
-      FROM ai_usage_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id])
+      FROM ai_usage_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
+    db.query('SELECT id, stable_key, original_number, section, name, description, minimum_action, current_next_step, priority, status, template_version, created_at, updated_at FROM life_os_items WHERE user_id = $1 ORDER BY priority, original_number', [req.user.id]),
+    db.query('SELECT week_start, item_id, position, created_at FROM life_os_week_focus WHERE user_id = $1 ORDER BY week_start, position', [req.user.id]),
+    db.query('SELECT id, item_id, diary_id, analysis_id, record_type, evidence_excerpt, summary, suggested_next_step, origin, user_confirmed, status, source_version, source_valid, created_at, updated_at FROM life_os_item_links WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT id, item_id, ref_type, ref_id, label, external_url, created_at, updated_at FROM life_os_item_refs WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT id, item_id, change_type, snapshot, created_at FROM life_os_item_history WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT id, week_start, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM life_os_weekly_reviews WHERE user_id = $1 ORDER BY week_start, created_at', [req.user.id])
   ]);
   const replacements = friends.rows.map((item, index) => ({ from: item.name, to: `人物${index + 1}` }))
     .filter(item => item.from).concat([
@@ -82,6 +89,12 @@ router.get('/all', asyncRoute(async (req, res) => {
     lifeOsVersions: lifeOsVersions.rows,
     lifeOsClauses: lifeOsClauses.rows,
     lifeOsReviewProposals: lifeOsProposals.rows,
+    lifeOsItems: lifeOsItems.rows,
+    lifeOsWeekFocus: lifeOsWeekFocus.rows,
+    lifeOsItemLinks: lifeOsItemLinks.rows,
+    lifeOsItemRefs: lifeOsItemRefs.rows,
+    lifeOsItemHistory: lifeOsItemHistory.rows,
+    lifeOsWeeklyReviews: lifeOsWeeklyReviews.rows,
     monthlyRelationshipReviews: reviews.rows,
     diaryAnalysis: analyses.rows,
     observers: observers.rows,

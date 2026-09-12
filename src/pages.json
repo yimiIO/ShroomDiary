@@ -108,6 +108,36 @@
 			}
 		},
 		{
+			"path": "pages/shroom/life-os-plan",
+			"style": {
+				"navigationBarTitleText": "人生 OS",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/life-os-item",
+			"style": {
+				"navigationBarTitleText": "长期事项",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/life-os-weekly",
+			"style": {
+				"navigationBarTitleText": "每周复盘",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/compound",
 			"style": {
 				"navigationBarTitleText": "复利系统",

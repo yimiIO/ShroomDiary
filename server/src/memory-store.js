@@ -69,6 +69,16 @@ async function invalidateDiaryDerivatives(client, userId, diaryId, reason) {
       )`,
     [userId, diaryId]
   );
+  await client.query(
+    `DELETE FROM life_os_item_links
+      WHERE user_id = $1 AND diary_id = $2 AND origin = 'AI' AND user_confirmed = false`,
+    [userId, diaryId]
+  );
+  await client.query(
+    `UPDATE life_os_item_links SET source_valid = false, status = 'INVALID_SOURCE', updated_at = now()
+      WHERE user_id = $1 AND diary_id = $2 AND user_confirmed = true`,
+    [userId, diaryId]
+  );
 }
 
 async function adoptUnconfiguredTasks(client) {

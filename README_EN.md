@@ -23,7 +23,7 @@ Today, deliberate journaling is Shroom's primary memory interface. Over time, Sh
 - **Longitudinal health observation** inside living questions, connecting mental states, physical changes, sleep, behavior, environment, measurements, tests, and journal photos against a personal baseline. It exports a clinician-ready summary while treating every output as a revisable clue—not a diagnosis.
 - **Five observer seats** available to every new user, plus user-defined observers that can be edited and switched.
 - **Shroom Cards** for reusable understandings, reminders, or perspectives derived from concrete experience. They are not tasks or slogans.
-- **Life OS** as a small, evolving set of cross-context decision principles. AI proposes evidence-backed drafts; only the user can publish a revision.
+- **Life OS** connecting 20 editable long-horizon commitments to journal evidence, weekly focus, and review. More abstract cross-context decision principles remain evidence-backed drafts until the user publishes a revision.
 - **Relationships and tasks** that turn diary evidence into versioned relationship events, commitments, and actionable follow-ups.
 - **Controllable AI** with per-entry AI permission and model, token, price-snapshot, and estimated CNY cost records.
 - **Lightweight social discovery** through public cards, resonance, favorites, references, and practice—without making private journals public.
@@ -33,7 +33,7 @@ Today, deliberate journaling is Shroom's primary memory interface. Over time, Sh
 
 Shroom is not a medical diagnostic product and does not make final decisions for its users. Emotion assessments, relationship interpretations, and Life OS suggestions are inspectable hypotheses. Shroom does not silently collect browser history, automatically rewrite a person's principles after one analysis, or publish private content without confirmation.
 
-See [docs/PRODUCT.md](./docs/PRODUCT.md) for the full product model, [docs/INQUIRIES.md](./docs/INQUIRIES.md) for the living-question lifecycle, [docs/LIFE_OS.md](./docs/LIFE_OS.md) for the boundary between cards and Life OS, and [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md) for the memory architecture.
+See [docs/PRODUCT.md](./docs/PRODUCT.md) for the full product model, [docs/INQUIRIES.md](./docs/INQUIRIES.md) for the living-question lifecycle, [docs/LIFE_OS.md](./docs/LIFE_OS.md) for the boundary between cards and Life OS, [docs/LIFE_OS_LONG_TERM.md](./docs/LIFE_OS_LONG_TERM.md) for the long-term items module, and [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md) for the memory architecture.
 
 ## Architecture
 

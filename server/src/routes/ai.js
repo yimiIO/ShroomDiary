@@ -8,6 +8,12 @@ const { callJson, isAiConfigured } = require('../ai-engine');
 const { usageSummary } = require('../ai-usage');
 const { normalizeCardSuggestion } = require('../card-suggestions');
 const { listDiaryCandidates, normalizeInquiryCandidates, syncDiaryCandidates } = require('../inquiry-candidates');
+const {
+  ensureDefaultLifeOsItems,
+  listDiaryLifeOsLinks,
+  normalizeLifeOsLinks,
+  syncDiaryLifeOsLinks
+} = require('../life-os-long-term');
 const { ENTITY_PROMPT, FOLLOWUP_PROMPT, VERSION, VIEW_PROMPTS } = require('../ai-prompts');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 const { activeObserverSnapshot, listObservers } = require('../observer-store');
@@ -55,9 +61,14 @@ function mapAnalysis(row) {
 
 async function mapAnalysisWithCandidates(row, userId, queryable = db) {
   const analysis = mapAnalysis(row);
-  analysis.inquiryCandidates = row.status === 'done'
-    ? await listDiaryCandidates(queryable, userId, row.diary_id)
-    : [];
+  const [inquiryCandidates, lifeOsLinks] = row.status === 'done'
+    ? await Promise.all([
+      listDiaryCandidates(queryable, userId, row.diary_id),
+      listDiaryLifeOsLinks(queryable, userId, row.diary_id)
+    ])
+    : [[], []];
+  analysis.inquiryCandidates = inquiryCandidates;
+  analysis.lifeOsLinks = lifeOsLinks;
   return analysis;
 }
 
@@ -67,7 +78,7 @@ const analysisFields = `id, diary_id, engine_version, five_views, observer_snaps
 
 async function ownedDiary(userId, diaryId) {
   const result = await db.query(
-    `SELECT id, content, mood, linked_cards, occurred_at FROM diaries
+    `SELECT id, content, mood, linked_cards, occurred_at, content_version FROM diaries
       WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL AND ai_allowed`,
     [userId, diaryId]
   );
@@ -105,7 +116,8 @@ async function currentInquiries(userId) {
     id: row.id,
     question: row.question,
     context: text(row.context, 800),
-    status: row.status
+    status: row.status,
+    inquiryType: row.inquiryType
   }));
 }
 
@@ -153,13 +165,20 @@ async function executeAnalysis(userId, analysisId, diaryId) {
     [analysisId, userId]
   );
   try {
+    await ensureDefaultLifeOsItems(db, userId);
     const diary = await ownedDiary(userId, diaryId);
     if (!diary) throw Object.assign(new Error('日记不存在'), { code: 'SHROOM_AI_INPUT' });
-    const [os, cards, stored, existingInquiries] = await Promise.all([
+    const [os, cards, stored, existingInquiries, lifeOsItemsResult] = await Promise.all([
       lifeOs(userId),
       cardHistory(userId, diary.linked_cards),
       db.query('SELECT observer_snapshot FROM diary_analysis WHERE id = $1 AND user_id = $2', [analysisId, userId]),
-      currentInquiries(userId)
+      currentInquiries(userId),
+      db.query(
+        `SELECT id, stable_key AS "stableKey", section, name, minimum_action AS "minimumAction",
+                current_next_step AS "currentNextStep", status
+           FROM life_os_items WHERE user_id = $1 ORDER BY priority, original_number`,
+        [userId]
+      )
     ]);
     let observers = Array.isArray(stored.rows[0]?.observer_snapshot) ? stored.rows[0].observer_snapshot : [];
     if (!observers.length) observers = await activeObserverSnapshot(userId);
@@ -195,7 +214,8 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       fiveViews,
       observations,
       existingCards: cards,
-      existingInquiries
+      existingInquiries,
+      lifeOsItems: lifeOsItemsResult.rows
     }, '行动与菇卡整理', {
       usageContext: { userId, feature: 'diary_observation_followup', diaryId, analysisId }
     });
@@ -206,6 +226,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       followup.inquiryCandidates,
       existingInquiries
     );
+    const lifeOsLinks = normalizeLifeOsLinks(followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
     return db.transaction(async client => {
@@ -223,6 +244,13 @@ async function executeAnalysis(userId, analysisId, diaryId) {
         diaryId,
         modelVersion: VERSION,
         candidates: inquiryCandidates
+      });
+      await syncDiaryLifeOsLinks(client, {
+        userId,
+        diary,
+        analysisId,
+        items: lifeOsItemsResult.rows,
+        links: lifeOsLinks
       });
       return mapAnalysisWithCandidates(result.rows[0], userId, client);
     });
