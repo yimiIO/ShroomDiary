@@ -86,8 +86,9 @@ test('compound directions stay secondary while Life OS remains a separate princi
   const defaults = source('server/src/life-os-long-term.js');
   const pages = JSON.parse(source('src/pages.json'));
 
-  assert.match(home, /life-os-entry/);
-	assert.match(home, /复利系统/);
+	assert.doesNotMatch(home, /life-os-entry/);
+	assert.doesNotMatch(home, /复利系统/);
+	assert.doesNotMatch(home, /compoundHome/);
 	assert.match(plan, /当前关注范围/);
 	assert.match(plan, /selectDirection\(item\)/);
 	assert.match(plan, /compoundStartItemKey/);
@@ -201,7 +202,8 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   const pages = source('src/pages.json');
   const route = source('server/src/routes/inquiries.js');
 
-  assert.match(home, /正在想明白的事/);
+  assert.doesNotMatch(home, /正在想明白的事/);
+  assert.doesNotMatch(home, /inquirySummary/);
   assert.match(edit, /关联问题/);
   assert.match(edit, /syncInquiryLinks/);
   assert.match(list, /有些答案，需要生活慢慢提供证据/);
