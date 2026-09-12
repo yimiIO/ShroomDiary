@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { isHealthInquiry, normalizeHealthObservation, normalizeInquiryType } = require('./inquiry-health');
 
 function bounded(value, limit) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -12,8 +13,11 @@ function normalizeQuestion(value) {
   return /[？?]$/u.test(question) ? question : `${question}？`;
 }
 
-function normalizeInquiryCandidates(value, existingInquiryIds = []) {
-  const allowedExisting = new Set(existingInquiryIds.map(String));
+function normalizeInquiryCandidates(value, existingInquiries = []) {
+  const allowedExisting = new Map(existingInquiries.map(item => {
+    if (item && typeof item === 'object') return [String(item.id), normalizeInquiryType(item.inquiryType || item.inquiry_type)];
+    return [String(item), null];
+  }));
   const input = Array.isArray(value) ? value : [];
   const seen = new Set();
   const candidates = [];
@@ -24,12 +28,17 @@ function normalizeInquiryCandidates(value, existingInquiryIds = []) {
     if (!question || seen.has(key)) continue;
     const confidence = Math.max(0, Math.min(1, Number(item.confidence)));
     if (!Number.isFinite(confidence) || confidence < 0.65) continue;
+    const inquiryType = normalizeInquiryType(item.inquiryType);
     const suggested = String(item.existingInquiryId || '');
+    const suggestedType = allowedExisting.get(suggested);
     candidates.push({
       question,
       context: bounded(item.context || item.reason, 2000),
       confidence,
-      suggestedInquiryId: allowedExisting.has(suggested) ? suggested : null
+      inquiryType,
+      healthObservation: isHealthInquiry(inquiryType) ? normalizeHealthObservation(item.healthObservation) : {},
+      suggestedInquiryId: allowedExisting.has(suggested) && (suggestedType === null || suggestedType === inquiryType)
+        ? suggested : null
     });
     seen.add(key);
     if (candidates.length >= 2) break;
@@ -51,6 +60,8 @@ function mapCandidate(row) {
     status: row.status,
     source: row.source,
     confidence: row.confidence === null ? null : Number(row.confidence),
+    inquiryType: normalizeInquiryType(row.inquiry_type),
+    healthObservation: row.health_observation || {},
     suggestedInquiryId: row.suggested_inquiry_id || null,
     acceptedInquiryId: row.accepted_inquiry_id || null,
     evidenceCount: Number(row.evidence_count || 0),
@@ -94,11 +105,12 @@ async function syncDiaryCandidates(client, { userId, diaryId, modelVersion, cand
     const inserted = await client.query(
       `INSERT INTO inquiry_candidates
         (id, user_id, question, context, source, confidence, fingerprint,
-         suggested_inquiry_id, model_version)
-       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', $5, $6, $7, $8)
+         suggested_inquiry_id, model_version, inquiry_type, health_observation)
+       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', $5, $6, $7, $8, $9, $10::jsonb)
        ON CONFLICT (user_id, fingerprint) DO NOTHING RETURNING id`,
       [id, userId, candidate.question, candidate.context, candidate.confidence, fingerprint,
-        candidate.suggestedInquiryId, modelVersion]
+        candidate.suggestedInquiryId, modelVersion, normalizeInquiryType(candidate.inquiryType),
+        JSON.stringify(candidate.healthObservation || {})]
     );
     if (!inserted.rowCount) continue;
     await client.query(

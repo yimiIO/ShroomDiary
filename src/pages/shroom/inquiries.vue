@@ -24,9 +24,21 @@
 					</button>
 					<view v-else class="create-form">
 						<text class="field-label">我想慢慢想明白</text>
+						<view class="type-row">
+							<button v-for="item in inquiryTypes" :key="item.value" class="type-chip" :class="{ active: draft.inquiryType === item.value }" @tap="draft.inquiryType = item.value">{{ item.label }}</button>
+						</view>
 						<textarea v-model="draft.question" class="question-input" maxlength="300" placeholder="例如：为什么我总在重要选择前否定自己？" :show-confirm-bar="false" />
 						<text class="field-label context-label">现在已知的背景（可选）</text>
 						<textarea v-model="draft.context" class="context-input" maxlength="5000" placeholder="它从什么时候开始？目前最困惑的地方是什么？" :show-confirm-bar="false" />
+						<view v-if="isHealthType(draft.inquiryType)" class="health-profile-fields">
+							<text class="health-form-note">先留下起点和你的平时状态，之后可随时修订。这里记录的是观察，不是诊断。</text>
+							<text class="field-label">观察从什么时候开始（可选）</text>
+							<picker mode="date" :value="draft.observationStartedOn" @change="draft.observationStartedOn = $event.detail.value">
+								<view class="date-picker-value">{{ draft.observationStartedOn || '选择日期' }} <text>›</text></view>
+							</picker>
+							<text class="field-label baseline-label">个人平时状态（可选）</text>
+							<textarea v-model="draft.personalBaseline" class="baseline-input" maxlength="3000" placeholder="例如：以前只在运动后明显，平时睡眠约 7 小时……" :show-confirm-bar="false" />
+						</view>
 						<view class="form-actions">
 							<button class="cancel-button" @tap="cancelCreate">取消</button>
 							<button class="save-button" :disabled="creatingInquiry || draft.question.trim().length < 4" @tap="createInquiry">{{ creatingInquiry ? '保存中' : '开始积累' }}</button>
@@ -46,6 +58,7 @@
 					<view class="candidate-card" v-for="item in pendingCandidates" :key="item.id">
 						<view class="candidate-mark"><text>?</text></view>
 						<view class="candidate-body">
+							<text v-if="item.inquiryType !== 'GENERAL'" class="candidate-type">{{ typeLabel(item.inquiryType) }}</text>
 							<text class="candidate-question">{{ item.question }}</text>
 							<text class="candidate-context" v-if="item.context">{{ item.context }}</text>
 							<text class="candidate-source">来自 {{ item.evidenceCount }} 篇日记{{ item.sourceDate ? ' · 最早 ' + item.sourceDate : '' }}</text>
@@ -60,11 +73,16 @@
 				<view class="status-tabs" v-if="!selectionMode">
 					<button v-for="item in tabs" :key="item.value" class="status-tab" :class="{ active: status === item.value }" @tap="changeStatus(item.value)">{{ item.label }}</button>
 				</view>
+				<scroll-view class="type-tabs" scroll-x :show-scrollbar="false">
+					<view class="type-tabs-inner">
+						<button v-for="item in typeFilters" :key="item.value" class="type-filter" :class="{ active: inquiryType === item.value }" @tap="changeType(item.value)">{{ item.label }}</button>
+					</view>
+				</scroll-view>
 
 				<view class="question-list" v-if="items.length">
 					<button v-for="item in items" :key="item.id" class="question-card" :class="{ selected: isSelected(item.id) }" @tap="openInquiry(item)">
 						<view class="card-topline">
-							<text class="card-state">{{ statusLabel(item.status) }}</text>
+							<text class="card-state">{{ statusLabel(item.status) }}</text><text class="card-type">{{ typeLabel(item.inquiryType) }}</text>
 							<view v-if="selectionMode" class="select-mark"><text v-if="isSelected(item.id)">✓</text></view>
 							<text v-else-if="item.reviewDue" class="review-due">适合再看看</text>
 						</view>
@@ -99,10 +117,22 @@ export default {
 			statusBarHeight: 0,
 			selectionMode: false,
 			status: 'OPEN',
+			inquiryType: 'ALL',
 			tabs: [
 				{ value: 'OPEN', label: '正在想' },
 				{ value: 'PAUSED', label: '先放一放' },
 				{ value: 'RESOLVED', label: '已经想明白' }
+			],
+			inquiryTypes: [
+				{ value: 'GENERAL', label: '普通困惑' },
+				{ value: 'PSYCHOLOGICAL', label: '心理困惑' },
+				{ value: 'PHYSICAL_HEALTH', label: '身体健康' }
+			],
+			typeFilters: [
+				{ value: 'ALL', label: '全部类型' },
+				{ value: 'GENERAL', label: '普通' },
+				{ value: 'PSYCHOLOGICAL', label: '心理' },
+				{ value: 'PHYSICAL_HEALTH', label: '身体健康' }
 			],
 			items: [],
 			pendingCandidates: [],
@@ -111,7 +141,7 @@ export default {
 			creating: false,
 			creatingInquiry: false,
 			loading: false,
-			draft: { question: '', context: '' }
+			draft: { question: '', context: '', inquiryType: 'GENERAL', observationStartedOn: '', personalBaseline: '' }
 		};
 	},
 	onLoad(options) {
@@ -135,9 +165,11 @@ export default {
 		},
 		async acceptCandidate(item) {
 			if (!item || !item.id || this.processingCandidateId) return;
+			const healthConsent = this.isHealthType(item.inquiryType) ? await this.confirmHealthConsent() : false;
+			if (this.isHealthType(item.inquiryType) && !healthConsent) return;
 			this.processingCandidateId = item.id;
 			try {
-				await this.$http.post(inquiryCandidateAccept(item.id), {});
+				await this.$http.post(inquiryCandidateAccept(item.id), { healthConsent });
 				this.pendingCandidates = this.pendingCandidates.filter(candidate => candidate.id !== item.id);
 				this.status = 'OPEN';
 				await this.loadItems();
@@ -164,7 +196,7 @@ export default {
 		async loadItems() {
 			this.loading = true;
 			try {
-				const res = await this.$http.get(inquiryList, { status: this.status, page: 1, pageSize: 50 });
+				const res = await this.$http.get(inquiryList, { status: this.status, type: this.inquiryType, page: 1, pageSize: 50 });
 				this.items = (res.data && res.data.list) || [];
 			} catch (error) {
 				console.error('加载未解之问失败', error);
@@ -176,6 +208,24 @@ export default {
 		changeStatus(value) {
 			this.status = value;
 			this.loadItems();
+		},
+		changeType(value) {
+			this.inquiryType = value;
+			this.loadItems();
+		},
+		typeLabel(value) {
+			return { GENERAL: '普通困惑', PSYCHOLOGICAL: '心理困惑', PHYSICAL_HEALTH: '身体健康' }[value] || '普通困惑';
+		},
+		isHealthType(value) { return value === 'PSYCHOLOGICAL' || value === 'PHYSICAL_HEALTH'; },
+		confirmHealthConsent() {
+			return new Promise(resolve => uni.showModal({
+				title: '确认记录健康观察',
+				content: '健康记录属于敏感个人信息，将仅保存在你的账户中。只有你主动发起 AI 回看时，已授权线索才会发送给当前 AI 服务；它不会进入发现。',
+				confirmText: '同意并继续',
+				cancelText: '暂不',
+				success: result => resolve(Boolean(result.confirm)),
+				fail: () => resolve(false)
+			}));
 		},
 		statusLabel(value) {
 			return { OPEN: '正在想', PAUSED: '先放一放', RESOLVED: '已经想明白' }[value] || '正在想';
@@ -196,7 +246,7 @@ export default {
 				uni.showToast({ title: '一篇日记最多关联 3 个问题', icon: 'none' });
 				return;
 			}
-			this.selected.push({ id: item.id, question: item.question, status: item.status });
+			this.selected.push({ id: item.id, question: item.question, status: item.status, inquiryType: item.inquiryType });
 		},
 		finishSelection() {
 			const channel = this.getOpenerEventChannel && this.getOpenerEventChannel();
@@ -205,13 +255,15 @@ export default {
 		},
 		cancelCreate() {
 			this.creating = false;
-			this.draft = { question: '', context: '' };
+			this.draft = { question: '', context: '', inquiryType: 'GENERAL', observationStartedOn: '', personalBaseline: '' };
 		},
 		async createInquiry() {
 			if (this.draft.question.trim().length < 4 || this.creatingInquiry) return;
+			const healthConsent = this.isHealthType(this.draft.inquiryType) ? await this.confirmHealthConsent() : false;
+			if (this.isHealthType(this.draft.inquiryType) && !healthConsent) return;
 			this.creatingInquiry = true;
 			try {
-				const res = await this.$http.post(inquiryList, this.draft);
+				const res = await this.$http.post(inquiryList, { ...this.draft, healthConsent });
 				const created = res.data;
 				this.cancelCreate();
 				this.items.unshift(created);
@@ -253,10 +305,18 @@ button::after { border: 0; }
 .create-hint { margin-top: 10rpx; color: #788078; font-size: 21rpx; }
 .create-form { padding: 30rpx; }
 .field-label { display: block; font-size: 22rpx; font-weight: 650; color: #485448; }
+.type-row { margin: 15rpx 0 22rpx; display: flex; flex-wrap: wrap; gap: 10rpx; }
+.type-chip { min-height: 58rpx; padding: 0 20rpx; border: 1rpx solid rgba(23,32,25,.12); border-radius: 30rpx; color: #687268; font-size: 20rpx; display: flex; align-items: center; justify-content: center; }
+.type-chip.active { border-color: #52622f; background: #52622f; color: white; }
 .context-label { margin-top: 28rpx; }
 .question-input, .context-input { display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin-top: 14rpx; padding: 22rpx; border-radius: 18rpx; background: #f5f5ed; font-size: 26rpx; line-height: 1.65; overflow-x: hidden; word-break: break-word; overflow-wrap: anywhere; }
 .question-input { height: 154rpx; }
 .context-input { height: 190rpx; }
+.health-profile-fields { margin-top: 24rpx; padding: 23rpx; border-radius: 20rpx; background: #eef2e4; }
+.health-form-note { display: block; margin-bottom: 22rpx; color: #65705e; font-size: 19rpx; line-height: 1.65; }
+.date-picker-value { height: 66rpx; margin-top: 12rpx; padding: 0 17rpx; border-radius: 15rpx; background: #fffdf8; color: #485148; font-size: 21rpx; display: flex; align-items: center; justify-content: space-between; }
+.baseline-label { margin-top: 21rpx; }
+.baseline-input { display: block; width: 100%; height: 140rpx; margin-top: 12rpx; padding: 17rpx; box-sizing: border-box; border-radius: 15rpx; background: #fffdf8; font-size: 22rpx; line-height: 1.6; overflow-x: hidden; word-break: break-word; }
 .form-actions { margin-top: 24rpx; display: flex; justify-content: flex-end; gap: 16rpx; }
 .cancel-button, .save-button { height: 64rpx; padding: 0 26rpx; border-radius: 34rpx; display: flex; align-items: center; justify-content: center; font-size: 23rpx; }
 .cancel-button { color: #657065; border: 1rpx solid rgba(23,32,25,.12); }
@@ -274,6 +334,7 @@ button::after { border: 0; }
 .candidate-body { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .candidate-question { font-family: Georgia, 'Songti SC', serif; font-size: 26rpx; line-height: 1.55; overflow-wrap: anywhere; }
 .candidate-context { margin-top: 10rpx; color: #bac4bb; font-size: 19rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.candidate-type { align-self: flex-start; margin-bottom: 10rpx; padding: 7rpx 12rpx; border-radius: 20rpx; background: rgba(184,202,125,.14); color: #cfe3a0; font-size: 16rpx; }
 .candidate-source { margin-top: 14rpx; color: #89968b; font-size: 17rpx; }
 .candidate-actions { margin-top: 20rpx; display: flex; justify-content: flex-end; gap: 12rpx; }
 .candidate-ignore, .candidate-accept { min-height: 60rpx; padding: 0 22rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; font-size: 19rpx; }
@@ -283,11 +344,16 @@ button::after { border: 0; }
 .status-tabs { margin: 34rpx 0 22rpx; display: flex; gap: 10rpx; }
 .status-tab { height: 60rpx; padding: 0 24rpx; border-radius: 30rpx; color: #748075; font-size: 22rpx; display: flex; align-items: center; justify-content: center; }
 .status-tab.active { background: #1f2921; color: white; }
+.type-tabs { width: 100%; white-space: nowrap; }
+.type-tabs-inner { display: inline-flex; gap: 9rpx; padding-bottom: 8rpx; }
+.type-filter { flex: 0 0 auto; height: 52rpx; padding: 0 18rpx; border-radius: 28rpx; border: 1rpx solid rgba(23,32,25,.1); color: #7a837b; font-size: 19rpx; display: flex; align-items: center; justify-content: center; }
+.type-filter.active { border-color: rgba(82,98,47,.35); background: #e1e9c4; color: #3e4b2d; }
 .question-list { margin-top: 26rpx; display: flex; flex-direction: column; gap: 18rpx; }
 .question-card { width: 100%; padding: 28rpx; border-radius: 28rpx; background: #fffdf7; border: 1rpx solid rgba(23,32,25,.08); text-align: left; display: flex; flex-direction: column; box-sizing: border-box; }
 .question-card.selected { border-color: #71833f; box-shadow: inset 0 0 0 2rpx rgba(113,131,63,.16); }
 .card-topline { display: flex; align-items: center; min-height: 34rpx; }
 .card-state, .review-due { font-size: 19rpx; letter-spacing: 1rpx; color: #708071; }
+.card-type { margin-left: 12rpx; padding: 6rpx 11rpx; border-radius: 18rpx; background: #eef1e3; color: #69735e; font-size: 16rpx; letter-spacing: 0; }
 .review-due { margin-left: auto; color: #855f32; }
 .select-mark { margin-left: auto; width: 34rpx; height: 34rpx; border: 1rpx solid rgba(23,32,25,.2); border-radius: 50%; color: white; background: #6f813d; display: flex; align-items: center; justify-content: center; font-size: 19rpx; }
 .question-text { margin-top: 17rpx; font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; line-height: 1.55; color: #242522; white-space: normal; }

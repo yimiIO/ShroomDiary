@@ -232,6 +232,31 @@ async function run() {
     await pool.query('DELETE FROM inquiries WHERE id = $1 AND user_id = $2', [acceptedCandidate.inquiryId, candidateOwner.rows[0].id]);
     await pool.query('DELETE FROM inquiry_candidates WHERE id = $1 AND user_id = $2', [candidateId, candidateOwner.rows[0].id]);
 
+    const healthCandidateId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO inquiry_candidates
+        (id, user_id, question, context, source, confidence, fingerprint, model_version, inquiry_type, health_observation)
+       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', 0.86, $5, 'integration', 'PHYSICAL_HEALTH', $6::jsonb)`,
+      [healthCandidateId, candidateOwner.rows[0].id, '为什么我最近手心出汗变多？',
+        '这只是身体变化候选，需要本人确认。', crypto.randomBytes(32).toString('hex'),
+        JSON.stringify({ physicalSymptoms: ['手心出汗'], bodyAreas: ['手'] })]
+    );
+    await pool.query(
+      'INSERT INTO inquiry_candidate_diaries (candidate_id, diary_id, user_id) VALUES ($1, $2, $3)',
+      [healthCandidateId, diary.id, candidateOwner.rows[0].id]
+    );
+    expectCode(await api(`/api/inquiries/v1/candidates/${healthCandidateId}/accept`, {
+      method: 'POST', token: tokenA, body: {}
+    }), 400);
+    const acceptedHealthCandidate = expectCode(await api(`/api/inquiries/v1/candidates/${healthCandidateId}/accept`, {
+      method: 'POST', token: tokenA, body: { healthConsent: true }
+    }));
+    const acceptedHealthInquiry = expectCode(await api(`/api/inquiries/v1/${acceptedHealthCandidate.inquiryId}`, { token: tokenA }));
+    assert.equal(acceptedHealthInquiry.inquiryType, 'PHYSICAL_HEALTH');
+    assert.deepEqual(acceptedHealthInquiry.evidence[0].healthObservation.physicalSymptoms, ['手心出汗']);
+    await pool.query('DELETE FROM inquiries WHERE id = $1 AND user_id = $2', [acceptedHealthCandidate.inquiryId, candidateOwner.rows[0].id]);
+    await pool.query('DELETE FROM inquiry_candidates WHERE id = $1 AND user_id = $2', [healthCandidateId, candidateOwner.rows[0].id]);
+
     const emptyInquirySummary = expectCode(await api('/api/inquiries/v1/summary', {
       token: sessionB.access_token
     }));
@@ -294,6 +319,53 @@ async function run() {
     }));
     inquiryDetail = expectCode(await api(`/api/inquiries/v1/${inquiry.id}`, { token: tokenA }));
     assert.equal(inquiryDetail.status, 'OPEN');
+
+    expectCode(await api('/api/inquiries/v1', {
+      method: 'POST', token: tokenA,
+      body: { question: '为什么我最近总是手心出汗？', inquiryType: 'PHYSICAL_HEALTH' }
+    }), 400);
+    const healthInquiry = expectCode(await api('/api/inquiries/v1', {
+      method: 'POST', token: tokenA,
+      body: {
+        question: '为什么我最近总是手心出汗？',
+        context: '先观察何时变重或减轻，不做疾病判断。',
+        inquiryType: 'PHYSICAL_HEALTH',
+        observationStartedOn: '2026-08-20',
+        personalBaseline: '以前只在运动后明显。',
+        healthConsent: true
+      }
+    }));
+    assert.equal(healthInquiry.inquiryType, 'PHYSICAL_HEALTH');
+    assert.equal(healthInquiry.healthConsent, true);
+    assert.match(healthInquiry.medicalDisclaimer, /不是医学诊断/);
+    expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}`, {
+      token: sessionB.access_token
+    }), 404);
+    const healthEvidence = expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}/evidence`, {
+      method: 'POST', token: tokenA,
+      body: {
+        excerpt: '开会前手心出汗明显，睡眠不足。',
+        relation: 'CONTEXT',
+        healthObservation: {
+          physicalSymptoms: ['手心出汗'], bodyAreas: ['手'], severity: 99,
+          duration: '约 20 分钟', sleep: { hours: 5.5, quality: 2 }
+        }
+      }
+    }));
+    assert.equal(healthEvidence.healthObservation.severity, 10);
+    assert.equal(healthEvidence.healthObservation.sleep.hours, 5.5);
+    const physicalList = expectCode(await api('/api/inquiries/v1?status=OPEN&type=PHYSICAL_HEALTH&page=1&pageSize=20', {
+      token: tokenA
+    }));
+    assert.equal(physicalList.total, 1);
+    assert.equal(physicalList.list[0].id, healthInquiry.id);
+    const healthSummary = expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}/health-summary`, { token: tokenA }));
+    assert.match(healthSummary.content, /健康时间线/);
+    assert.match(healthSummary.content, /不是医学诊断/);
+    expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}/health-summary`, {
+      token: sessionB.access_token
+    }), 404);
+    expectCode(await api(`/api/inquiries/v1/${inquiry.id}/health-summary`, { token: tokenA }), 404);
 
     const friend = expectCode(await api('/api/friends/v1/upsert', {
       method: 'POST',
@@ -506,8 +578,10 @@ async function run() {
     assert.equal(exported.diaries.length, 2);
     assert.equal(exported.friends.length, 3);
     assert.equal(exported.lifeOs.version, 1);
-    assert.equal(exported.inquiries.length, 1);
-    assert.equal(exported.inquiryEvidence.length, 2);
+    assert.equal(exported.inquiries.length, 2);
+    assert.equal(exported.inquiryEvidence.length, 3);
+    assert.ok(exported.inquiries.some(item => item.inquiry_type === 'PHYSICAL_HEALTH'));
+    assert.ok(exported.inquiryEvidence.some(item => item.health_observation.severity === 10));
     assert.equal(exported.inquirySyntheses.length, 0);
     const redactedExport = expectCode(await api('/api/export/v1/all?redacted=true', { token: tokenA }));
     assert.deepEqual(redactedExport.account, {});
@@ -515,7 +589,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();

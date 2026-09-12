@@ -7,6 +7,16 @@ const { callJson, isAiConfigured } = require('../ai-engine');
 const { usageSummary } = require('../ai-usage');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
 const { INQUIRY_REVIEW_PROMPT, normalizeInquiryReview } = require('../inquiry-review');
+const {
+  HEALTH_INQUIRY_REVIEW_PROMPT,
+  INQUIRY_TYPES,
+  MEDICAL_DISCLAIMER,
+  buildHealthSummary,
+  isHealthInquiry,
+  normalizeHealthInquiryReview,
+  normalizeHealthObservation,
+  normalizeInquiryType
+} = require('../inquiry-health');
 const { resetInquirySyntheses } = require('../inquiry-store');
 const { mapCandidate } = require('../inquiry-candidates');
 
@@ -20,6 +30,11 @@ function uuid(value) {
 
 function status(value, fallback = 'OPEN') {
   return ['OPEN', 'PAUSED', 'RESOLVED'].includes(value) ? value : fallback;
+}
+
+function dateOnly(value) {
+  const input = String(value || '');
+  return /^\d{4}-\d{2}-\d{2}$/u.test(input) ? input : null;
 }
 
 function mapInquiry(row, costSummary = undefined) {
@@ -37,6 +52,10 @@ function mapInquiry(row, costSummary = undefined) {
     id: row.id,
     question: row.question,
     context: row.context || '',
+    inquiryType: normalizeInquiryType(row.inquiry_type),
+    observationStartedOn: row.observation_started_on || null,
+    personalBaseline: row.personal_baseline || '',
+    healthConsent: Boolean(row.health_consent_at),
     status: row.status,
     currentSynthesis: row.current_synthesis || {},
     synthesisVersion: hasCurrentSynthesis ? Number(row.synthesis_version || 0) : 0,
@@ -49,6 +68,7 @@ function mapInquiry(row, costSummary = undefined) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+  if (isHealthInquiry(item.inquiryType)) item.medicalDisclaimer = MEDICAL_DISCLAIMER;
   if (costSummary !== undefined) item.costSummary = costSummary;
   return item;
 }
@@ -62,6 +82,8 @@ function mapEvidence(row) {
     excerpt: row.excerpt || '',
     note: row.note || '',
     relation: row.relation,
+    healthObservation: row.health_observation || {},
+    diaryImageCount: Number(row.diary_image_count || 0),
     sourceDate: row.source_date || null,
     aiAllowed: row.diary_id ? Boolean(row.ai_allowed) : true,
     createdAt: row.created_at,
@@ -148,7 +170,7 @@ router.get('/diary-links/:diaryId', asyncRoute(async (req, res) => {
   const diaryId = uuid(req.params.diaryId);
   if (!diaryId) return fail(res, 400, '日记不存在');
   const result = await db.query(
-    `SELECT i.id, i.question, i.status, e.id AS evidence_id
+    `SELECT i.id, i.question, i.status, i.inquiry_type, e.id AS evidence_id
        FROM inquiry_evidence e
        JOIN inquiries i ON i.id = e.inquiry_id AND i.user_id = $2
        JOIN diaries d ON d.id = e.diary_id AND d.user_id = $2 AND d.deleted_at IS NULL
@@ -156,7 +178,8 @@ router.get('/diary-links/:diaryId', asyncRoute(async (req, res) => {
     [diaryId, req.user.id]
   );
   return ok(res, result.rows.map(row => ({
-    id: row.id, question: row.question, status: row.status, evidenceId: row.evidence_id
+    id: row.id, question: row.question, status: row.status,
+    inquiryType: normalizeInquiryType(row.inquiry_type), evidenceId: row.evidence_id
   })));
 }));
 
@@ -236,21 +259,41 @@ router.put('/diary-links/:diaryId', asyncRoute(async (req, res) => {
 router.get('/', asyncRoute(async (req, res) => {
   const { page, pageSize, offset } = pageParams(req.query);
   const selectedStatus = req.query.status === 'ALL' ? null : status(req.query.status);
+  const selectedType = req.query.type === 'ALL' ? null
+    : (INQUIRY_TYPES.includes(req.query.type) ? req.query.type : null);
   const values = [req.user.id, pageSize, offset];
-  const statusClause = selectedStatus ? 'AND i.status = $4' : '';
-  if (selectedStatus) values.push(selectedStatus);
+  const itemClauses = [];
+  if (selectedStatus) {
+    values.push(selectedStatus);
+    itemClauses.push(`i.status = $${values.length}`);
+  }
+  if (selectedType) {
+    values.push(selectedType);
+    itemClauses.push(`i.inquiry_type = $${values.length}`);
+  }
+  const totalValues = [req.user.id];
+  const totalClauses = [];
+  if (selectedStatus) {
+    totalValues.push(selectedStatus);
+    totalClauses.push(`status = $${totalValues.length}`);
+  }
+  if (selectedType) {
+    totalValues.push(selectedType);
+    totalClauses.push(`inquiry_type = $${totalValues.length}`);
+  }
+  const itemWhere = itemClauses.length ? `AND ${itemClauses.join(' AND ')}` : '';
+  const totalWhere = totalClauses.length ? `AND ${totalClauses.join(' AND ')}` : '';
   const [items, total] = await Promise.all([
     db.query(
       `SELECT ${inquirySelect}
          FROM inquiries i ${inquiryEvidenceStatsJoin}
-        WHERE i.user_id = $1 ${statusClause}
+        WHERE i.user_id = $1 ${itemWhere}
         ORDER BY i.updated_at DESC LIMIT $2 OFFSET $3`,
       values
     ),
     db.query(
-      `SELECT count(*)::int AS total FROM inquiries
-        WHERE user_id = $1 ${selectedStatus ? 'AND status = $2' : ''}`,
-      selectedStatus ? [req.user.id, selectedStatus] : [req.user.id]
+      `SELECT count(*)::int AS total FROM inquiries WHERE user_id = $1 ${totalWhere}`,
+      totalValues
     )
   ]);
   return ok(res, { list: items.rows.map(row => mapInquiry(row)), total: total.rows[0].total, page, pageSize });
@@ -259,12 +302,20 @@ router.get('/', asyncRoute(async (req, res) => {
 router.post('/', asyncRoute(async (req, res) => {
   const question = text(req.body.question, 300);
   const context = text(req.body.context, 5000);
+  const inquiryType = normalizeInquiryType(req.body.inquiryType);
+  const observationStartedOn = dateOnly(req.body.observationStartedOn);
+  const personalBaseline = text(req.body.personalBaseline, 3000);
   if (question.length < 4) return fail(res, 400, '把这个问题再写具体一点');
+  if (isHealthInquiry(inquiryType) && req.body.healthConsent !== true) {
+    return fail(res, 400, '请先确认健康记录的处理方式');
+  }
   const id = crypto.randomUUID();
   const result = await db.query(
-    `INSERT INTO inquiries (id, user_id, question, context)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [id, req.user.id, question, context]
+    `INSERT INTO inquiries
+      (id, user_id, question, context, inquiry_type, observation_started_on, personal_baseline, health_consent_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN now() ELSE NULL END) RETURNING *`,
+    [id, req.user.id, question, context, inquiryType, observationStartedOn, personalBaseline,
+      isHealthInquiry(inquiryType)]
   );
   return ok(res, mapInquiry(result.rows[0]), '问题已留下，先让生活继续提供线索');
 }));
@@ -306,20 +357,30 @@ router.post('/candidates/:candidateId/accept', asyncRoute(async (req, res) => {
     if (candidate.status === 'ACCEPTED' && candidate.accepted_inquiry_id) {
       return { inquiryId: candidate.accepted_inquiry_id, created: false, alreadyAccepted: true };
     }
+    const candidateType = normalizeInquiryType(candidate.inquiry_type);
     let inquiryId = candidate.suggested_inquiry_id;
+    let existingHealthConsent = false;
     if (inquiryId) {
       const existing = await client.query(
-        `SELECT id FROM inquiries WHERE id = $1 AND user_id = $2 AND status <> 'RESOLVED'`,
-        [inquiryId, req.user.id]
+        `SELECT id, health_consent_at FROM inquiries
+          WHERE id = $1 AND user_id = $2 AND status <> 'RESOLVED' AND inquiry_type = $3`,
+        [inquiryId, req.user.id, candidateType]
       );
       if (!existing.rowCount) inquiryId = null;
+      else existingHealthConsent = Boolean(existing.rows[0].health_consent_at);
+    }
+    if (isHealthInquiry(candidateType) && !existingHealthConsent && req.body.healthConsent !== true) {
+      return { error: 'health_consent' };
     }
     let created = false;
     if (!inquiryId) {
       inquiryId = crypto.randomUUID();
       await client.query(
-        `INSERT INTO inquiries (id, user_id, question, context) VALUES ($1, $2, $3, $4)`,
-        [inquiryId, req.user.id, candidate.question, candidate.context]
+        `INSERT INTO inquiries
+          (id, user_id, question, context, inquiry_type, health_consent_at)
+         VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() ELSE NULL END)`,
+        [inquiryId, req.user.id, candidate.question, candidate.context, candidateType,
+          isHealthInquiry(candidateType)]
       );
       created = true;
     }
@@ -335,11 +396,12 @@ router.post('/candidates/:candidateId/accept', asyncRoute(async (req, res) => {
     for (const diary of diaries.rows) {
       const result = await client.query(
         `INSERT INTO inquiry_evidence
-          (id, user_id, inquiry_id, diary_id, source_type, source_label, excerpt)
-         VALUES ($1, $2, $3, $4, 'DIARY', $5, $6)
+          (id, user_id, inquiry_id, diary_id, source_type, source_label, excerpt, health_observation)
+         VALUES ($1, $2, $3, $4, 'DIARY', $5, $6, $7::jsonb)
          ON CONFLICT (inquiry_id, diary_id) WHERE diary_id IS NOT NULL DO NOTHING
          RETURNING id`,
-        [crypto.randomUUID(), req.user.id, inquiryId, diary.id, `${diary.source_date} 的日记`, text(diary.content, 5000)]
+        [crypto.randomUUID(), req.user.id, inquiryId, diary.id, `${diary.source_date} 的日记`,
+          text(diary.content, 5000), JSON.stringify(candidate.health_observation || {})]
       );
       changed += result.rowCount;
     }
@@ -358,6 +420,7 @@ router.post('/candidates/:candidateId/accept', asyncRoute(async (req, res) => {
   });
   if (accepted.error === 'missing') return fail(res, 404, '候选问题不存在');
   if (accepted.error === 'ignored') return fail(res, 400, '这个候选已经忽略');
+  if (accepted.error === 'health_consent') return fail(res, 400, '请先确认健康记录的处理方式');
   const message = accepted.alreadyAccepted
     ? '这个问题已经开始观察'
     : accepted.created ? '问题已留下，日记已成为第一条线索' : '日记已关联到已有问题';
@@ -386,6 +449,7 @@ router.get('/:id', asyncRoute(async (req, res) => {
       `SELECT e.*,
               CASE WHEN e.diary_id IS NOT NULL THEN d.content ELSE e.excerpt END AS excerpt,
               d.ai_allowed,
+              CASE WHEN jsonb_typeof(d.images) = 'array' THEN jsonb_array_length(d.images) ELSE 0 END AS diary_image_count,
               to_char(d.occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
          FROM inquiry_evidence e LEFT JOIN diaries d ON d.id = e.diary_id AND d.user_id = $2 AND d.deleted_at IS NULL
         WHERE e.inquiry_id = $1 AND e.user_id = $2 ORDER BY COALESCE(d.occurred_at, e.created_at) DESC`,
@@ -408,28 +472,70 @@ router.get('/:id', asyncRoute(async (req, res) => {
   });
 }));
 
+router.get('/:id/health-summary', asyncRoute(async (req, res) => {
+  const id = uuid(req.params.id);
+  if (!id) return fail(res, 404, '健康观察不存在');
+  const inquiry = await findInquiry(req.user.id, id);
+  if (!inquiry || !isHealthInquiry(inquiry.inquiry_type)) return fail(res, 404, '健康观察不存在');
+  const evidence = await db.query(
+    `SELECT e.created_at, e.health_observation,
+            CASE WHEN e.diary_id IS NOT NULL THEN d.content ELSE e.excerpt END AS excerpt,
+            CASE WHEN jsonb_typeof(d.images) = 'array' THEN jsonb_array_length(d.images) ELSE 0 END AS diary_image_count,
+            to_char(COALESCE(d.occurred_at, e.created_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
+       FROM inquiry_evidence e
+       LEFT JOIN diaries d ON d.id = e.diary_id AND d.user_id = $2 AND d.deleted_at IS NULL
+      WHERE e.inquiry_id = $1 AND e.user_id = $2
+      ORDER BY COALESCE(d.occurred_at, e.created_at) DESC LIMIT 100`,
+    [id, req.user.id]
+  );
+  const mapped = mapInquiry(inquiry);
+  return ok(res, {
+    filename: `Shroom-健康观察-${new Date().toISOString().slice(0, 10)}.txt`,
+    content: buildHealthSummary({ inquiry: mapped, evidence: evidence.rows })
+  });
+}));
+
 router.patch('/:id', asyncRoute(async (req, res) => {
   const id = uuid(req.params.id);
   if (!id) return fail(res, 404, '问题不存在');
   const question = req.body.question === undefined ? null : text(req.body.question, 300);
   const context = req.body.context === undefined ? null : text(req.body.context, 5000);
   const nextStatus = req.body.status === undefined ? null : status(req.body.status, null);
+  const nextType = req.body.inquiryType === undefined ? null : normalizeInquiryType(req.body.inquiryType, null);
+  const observationStartedOn = req.body.observationStartedOn === undefined
+    ? undefined : dateOnly(req.body.observationStartedOn);
+  const personalBaseline = req.body.personalBaseline === undefined
+    ? null : text(req.body.personalBaseline, 3000);
   if (question !== null && question.length < 4) return fail(res, 400, '把这个问题再写具体一点');
   if (req.body.status !== undefined && !nextStatus) return fail(res, 400, '问题状态不正确');
+  if (req.body.inquiryType !== undefined && !nextType) return fail(res, 400, '问题类型不正确');
   const result = await db.transaction(async client => {
     const existing = await client.query(
-      'SELECT id FROM inquiries WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      'SELECT id, inquiry_type, health_consent_at FROM inquiries WHERE id = $1 AND user_id = $2 FOR UPDATE',
       [id, req.user.id]
     );
     if (!existing.rowCount) return existing;
-    if (question !== null || context !== null) await resetInquirySyntheses(client, req.user.id, [id]);
+    const current = existing.rows[0];
+    const targetType = nextType || current.inquiry_type;
+    if (isHealthInquiry(targetType) && !current.health_consent_at && req.body.healthConsent !== true) {
+      return { error: 'health_consent', rowCount: 0 };
+    }
+    if (question !== null || context !== null || nextType !== null || personalBaseline !== null
+      || observationStartedOn !== undefined) await resetInquirySyntheses(client, req.user.id, [id]);
     return client.query(
       `UPDATE inquiries SET question = COALESCE($3, question), context = COALESCE($4, context),
-         status = COALESCE($5, status), updated_at = now()
+         status = COALESCE($5, status), inquiry_type = COALESCE($6, inquiry_type),
+         observation_started_on = CASE WHEN $7::boolean THEN $8::date ELSE observation_started_on END,
+         personal_baseline = COALESCE($9, personal_baseline),
+         health_consent_at = CASE WHEN health_consent_at IS NULL AND $10::boolean THEN now() ELSE health_consent_at END,
+         updated_at = now()
        WHERE id = $1 AND user_id = $2 RETURNING *`,
-      [id, req.user.id, question, context, nextStatus]
+      [id, req.user.id, question, context, nextStatus, nextType,
+        observationStartedOn !== undefined, observationStartedOn, personalBaseline,
+        isHealthInquiry(targetType) && req.body.healthConsent === true]
     );
   });
+  if (result.error === 'health_consent') return fail(res, 400, '请先确认健康记录的处理方式');
   if (!result.rowCount) return fail(res, 404, '问题不存在');
   return ok(res, mapInquiry(result.rows[0]), '问题已更新');
 }));
@@ -444,18 +550,21 @@ router.post('/:id/evidence', asyncRoute(async (req, res) => {
   const sourceLabel = text(req.body.sourceLabel, 240);
   const relation = ['SUPPORT', 'CHALLENGE', 'CONTEXT', 'UNKNOWN'].includes(req.body.relation)
     ? req.body.relation : 'CONTEXT';
+  const healthObservation = normalizeHealthObservation(req.body.healthObservation);
   if (!excerpt) return fail(res, 400, '先写下这条线索');
   const inserted = await db.transaction(async client => {
     const inquiry = await client.query(
-      `SELECT id FROM inquiries WHERE id = $1 AND user_id = $2 AND status <> 'RESOLVED' FOR UPDATE`,
+      `SELECT id, inquiry_type FROM inquiries
+        WHERE id = $1 AND user_id = $2 AND status <> 'RESOLVED' FOR UPDATE`,
       [inquiryId, req.user.id]
     );
     if (!inquiry.rowCount) return null;
     const result = await client.query(
       `INSERT INTO inquiry_evidence
-        (id, user_id, inquiry_id, source_type, source_label, excerpt, note, relation)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [crypto.randomUUID(), req.user.id, inquiryId, sourceType, sourceLabel, excerpt, note, relation]
+        (id, user_id, inquiry_id, source_type, source_label, excerpt, note, relation, health_observation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *`,
+      [crypto.randomUUID(), req.user.id, inquiryId, sourceType, sourceLabel, excerpt, note, relation,
+        JSON.stringify(isHealthInquiry(inquiry.rows[0].inquiry_type) ? healthObservation : {})]
     );
     await client.query(
       'UPDATE inquiries SET evidence_revision = evidence_revision + 1, updated_at = now() WHERE id = $1',
@@ -489,10 +598,12 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
   if (!inquiryId) return fail(res, 404, '问题不存在');
   const inquiry = await findInquiry(req.user.id, inquiryId);
   if (!inquiry) return fail(res, 404, '问题不存在');
+  const healthReview = isHealthInquiry(inquiry.inquiry_type);
+  if (healthReview && !inquiry.health_consent_at) return fail(res, 400, '请先确认健康记录的处理方式');
   const evidenceResult = await db.query(
     `SELECT e.id, e.source_type, e.source_label,
             CASE WHEN e.diary_id IS NOT NULL THEN d.content ELSE e.excerpt END AS excerpt,
-            e.note, e.relation,
+            e.note, e.relation, e.health_observation,
             to_char(COALESCE(d.occurred_at, e.created_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
        FROM inquiry_evidence e
        LEFT JOIN diaries d ON d.id = e.diary_id AND d.user_id = $2 AND d.deleted_at IS NULL
@@ -510,20 +621,27 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
     label: row.source_label,
     relationMarkedByUser: row.relation,
     content: text(row.excerpt, 1800),
-    userNote: text(row.note, 800)
+    userNote: text(row.note, 800),
+    healthObservation: healthReview ? normalizeHealthObservation(row.health_observation) : undefined
   }));
-  const raw = await callJson(INQUIRY_REVIEW_PROMPT, {
+  const raw = await callJson(healthReview ? HEALTH_INQUIRY_REVIEW_PROMPT : INQUIRY_REVIEW_PROMPT, {
     question: inquiry.question,
     context: inquiry.context,
+    ...(healthReview ? {
+      observationStartedOn: inquiry.observation_started_on || null,
+      personalBaseline: inquiry.personal_baseline || ''
+    } : {}),
     previousSynthesis: inquiry.current_synthesis || null,
     coverage: { totalEvidenceCount: Number(inquiry.evidence_count || 0), usableEvidenceCount: Number(inquiry.usable_evidence_count || 0), analyzedEvidenceCount: evidence.length },
     evidence
-  }, '未解之问复盘', {
+  }, healthReview ? '健康长期观察复盘' : '未解之问复盘', {
     temperature: 0.15,
     maxTokens: 4500,
-    usageContext: { userId: req.user.id, inquiryId, feature: 'inquiry_review' }
+    usageContext: { userId: req.user.id, inquiryId, feature: healthReview ? 'health_inquiry_review' : 'inquiry_review' }
   });
-  const synthesis = normalizeInquiryReview(raw, evidence);
+  const synthesis = healthReview
+    ? normalizeHealthInquiryReview(raw, evidence)
+    : normalizeInquiryReview(raw, evidence);
   if (!synthesis.summary) return fail(res, 503, '这次没有形成可靠的当前理解，请稍后重试');
   const saved = await db.transaction(async client => {
     const locked = await client.query(

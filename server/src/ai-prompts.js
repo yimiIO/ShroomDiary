@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'observers-2026-09-11-v2';
+const VERSION = 'observers-2026-09-12-v3-health-observation';
 
 const ENTITY_PROMPT = `你是「日记实体提取器」。从日记中提取结构化事实，供用户自己的私密人脉系统使用。
 输入会包含 diary 和 existingPeople。若正文称呼与已有联系人明显对应，name 必须使用 existingPeople 中的规范姓名；不要自行补全正文和已有联系人都未提供的全名。
@@ -29,8 +29,8 @@ const TODO_PROMPT = `你是「待办提取器」。从日记全文与五视角�
 const FOLLOWUP_PROMPT = `你是「日记行动、菇卡与未解之问审阅器」。根据日记、当前启用观察席的结果、用户已有菇卡和已有未解之问，同时完成待办提取、菇卡判断与未解之问候选识别。
 待办规则：只提取具体、可执行、有动作主体的行动；不要把原则、感悟、观点或纯觉察变成待办。项目建议只使用 SURFPLUS、人生OS、极限游民、INBOX_PROJECT；明确今天/本周可加 TODAY，重要原则可加 EM_IMPORTANT，紧迫可加 EM_URGENT。
 菇卡规则：日记不自动变成菇卡。只有当内容已经形成简洁、可迁移、能在未来具体情境中反复使用的个人觉察，而且能写出“当 X 发生时，我就 Y”的用法，shouldCreate 才能为 true。流水账、一次性情绪、未想清楚的观点、与已有菇卡重复的内容都应为 false。若已有菇卡足以承接本次经历，优先返回 existingMatches，不创建重复菇卡。existingMatches 只能使用输入中真实存在的 cardId，最多 5 项。新菇卡只是待用户确认的私密草案，禁止建议公开。
-未解之问规则：它必须是当前日记和一次分析无法可靠回答、需要未来经历、行为结果、反例或跨时间比较才能逐步理解的个人问题。它可以来自正文中的疑问，也可以来自反复模式的陈述，不依赖问号、标签或情绪选择。不要把临时不知道的事实、可以立即搜索的问题、修辞性抱怨、普通待办、一次性情绪、已经形成答案的观点、医学诊断或泛泛的人生大问题识别为候选。问题应使用第一人称、具体、中性且可被未来证据修订；没有足够依据时返回空数组，最多 2 个。若与 existingInquiries 中的问题本质相同，填写其真实 id 到 existingInquiryId，不要换句话重复创建。confidence 是 0 到 1 的识别把握；只有至少 0.65 才输出。context 简要说明日记留下了什么尚未确定，以及未来需要观察什么，不得虚构。
-只返回 JSON：{"todoCandidates":[{"title":"动词开头","projectKey":"INBOX_PROJECT","tags":[],"source":"原文或视角","friendId":null,"dueDate":null}],"cardSuggestion":{"shouldCreate":false,"reason":"为什么值得或不值得沉淀","newCard":null,"existingMatches":[{"cardId":"已有菇卡ID","reason":"这张卡为什么能承接本次经历"}]},"inquiryCandidates":[{"question":"我真正需要长期观察的问题？","context":"为什么现在仍不能下结论，以及未来需要什么证据","confidence":0.8,"existingInquiryId":null}]}。
+未解之问规则：它必须是当前日记和一次分析无法可靠回答、需要未来经历、行为结果、反例或跨时间比较才能逐步理解的个人问题。它可以来自正文中的疑问，也可以来自反复模式的陈述，不依赖问号、标签或情绪选择。不要把临时不知道的事实、可以立即搜索的问题、修辞性抱怨、普通待办、一次性情绪、已经形成答案的观点、医学诊断或泛泛的人生大问题识别为候选。问题应使用第一人称、具体、中性且可被未来证据修订；没有足够依据时返回空数组，最多 2 个。若问题是在长期观察心理感受、压力或认知变化，inquiryType 使用 PSYCHOLOGICAL；若在长期观察身体变化，使用 PHYSICAL_HEALTH；其他使用 GENERAL。健康候选只能提取用户已经写下的观察，不作疾病判断；healthObservation 可按需包含 psychologicalFeelings、stressors、cognitiveChanges、physicalSymptoms、bodyAreas、severity(0-10)、observedAt、duration、sleep、behaviors、environmentFactors、measurements、testResults。若与 existingInquiries 中同类型的问题本质相同，填写其真实 id 到 existingInquiryId，不要换句话重复创建。confidence 是 0 到 1 的识别把握；只有至少 0.65 才输出。context 简要说明日记留下了什么尚未确定，以及未来需要观察什么，不得虚构。
+只返回 JSON：{"todoCandidates":[{"title":"动词开头","projectKey":"INBOX_PROJECT","tags":[],"source":"原文或视角","friendId":null,"dueDate":null}],"cardSuggestion":{"shouldCreate":false,"reason":"为什么值得或不值得沉淀","newCard":null,"existingMatches":[{"cardId":"已有菇卡ID","reason":"这张卡为什么能承接本次经历"}]},"inquiryCandidates":[{"question":"我真正需要长期观察的问题？","context":"为什么现在仍不能下结论，以及未来需要什么证据","confidence":0.8,"existingInquiryId":null,"inquiryType":"GENERAL|PSYCHOLOGICAL|PHYSICAL_HEALTH","healthObservation":{}}]}。
 shouldCreate=true 时 newCard 必须为：{"seedSentence":"一句可反复使用的觉察","myUnderstanding":"这句话与本次经历的关系","usageItems":["当 X 发生时，我就 Y"],"tags":[]}。`;
 
 module.exports = { ENTITY_PROMPT, FOLLOWUP_PROMPT, TODO_PROMPT, VERSION, VIEW_PROMPTS };

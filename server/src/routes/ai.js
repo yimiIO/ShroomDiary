@@ -96,7 +96,7 @@ async function lifeOs(userId) {
 
 async function currentInquiries(userId) {
   const result = await db.query(
-    `SELECT id, question, context, status FROM inquiries
+    `SELECT id, question, context, status, inquiry_type AS "inquiryType" FROM inquiries
       WHERE user_id = $1 AND status IN ('OPEN', 'PAUSED')
       ORDER BY updated_at DESC LIMIT 50`,
     [userId]
@@ -204,7 +204,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
     const cardSuggestion = normalizeCardSuggestion(followup.cardSuggestion, cards);
     const inquiryCandidates = normalizeInquiryCandidates(
       followup.inquiryCandidates,
-      existingInquiries.map(item => item.id)
+      existingInquiries
     );
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });

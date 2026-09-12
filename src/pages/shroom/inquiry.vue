@@ -10,7 +10,7 @@
 		<scroll-view class="content-scroll" scroll-y>
 			<view class="page-shell" v-if="inquiry">
 				<view class="question-hero">
-					<text class="hero-state">{{ statusLabel(inquiry.status) }}</text>
+					<view class="hero-state-row"><text class="hero-state">{{ statusLabel(inquiry.status) }}</text><text class="hero-type">{{ typeLabel(inquiry.inquiryType) }}</text></view>
 					<text class="hero-question">{{ inquiry.question }}</text>
 					<text v-if="inquiry.context" class="hero-context">{{ inquiry.context }}</text>
 					<view class="hero-meta">
@@ -20,26 +20,60 @@
 					</view>
 				</view>
 
+				<view v-if="isHealth" class="health-notice">
+					<text class="health-notice-mark">i</text>
+					<text>{{ inquiry.medicalDisclaimer || '这是健康观察和线索，不是医学诊断，也不能替代医生的检查与判断。' }}</text>
+				</view>
+				<view v-if="isHealth" class="health-profile">
+					<view class="section-topline"><text class="section-kicker">PERSONAL BASELINE</text><button class="profile-edit" @tap="beginProfileEdit">{{ editingProfile ? '取消' : '修订' }}</button></view>
+					<text class="section-title">观察起点与平时状态</text>
+					<template v-if="!editingProfile">
+						<view class="profile-row"><text>观察开始</text><text>{{ inquiry.observationStartedOn || '还没记录' }}</text></view>
+						<view class="profile-baseline"><text>我的平时状态</text><text>{{ inquiry.personalBaseline || '还没记录，可以从“以前通常怎样”开始。' }}</text></view>
+					</template>
+					<view v-else class="profile-form">
+						<picker mode="date" :value="profileDraft.observationStartedOn" @change="profileDraft.observationStartedOn = $event.detail.value"><view class="profile-input">{{ profileDraft.observationStartedOn || '选择观察开始日期' }}</view></picker>
+						<textarea v-model="profileDraft.personalBaseline" class="profile-textarea" maxlength="3000" placeholder="以前通常是什么状态？哪些变化是最近才出现的？" :show-confirm-bar="false" />
+						<button class="profile-save" :disabled="savingProfile" @tap="saveProfile">{{ savingProfile ? '保存中' : '保存修订' }}</button>
+					</view>
+					<button class="export-summary" :disabled="exporting" @tap="exportHealthSummary">{{ exporting ? '正在整理…' : '导出就医摘要' }}</button>
+				</view>
+
 				<view class="review-panel" v-if="inquiry.currentSynthesis && inquiry.currentSynthesis.summary">
 					<view class="section-topline"><text class="section-kicker">CURRENT UNDERSTANDING</text><text class="section-index">V{{ inquiry.synthesisVersion }}</text></view>
 					<text class="section-title">此刻最可靠的理解</text>
 					<text class="synthesis-summary">{{ inquiry.currentSynthesis.summary }}</text>
 
-					<view v-if="inquiry.currentSynthesis.whatChanged" class="finding-block">
+					<view v-if="!isHealth && inquiry.currentSynthesis.whatChanged" class="finding-block">
 						<text class="finding-label">发生了什么变化</text>
 						<text class="finding-copy">{{ inquiry.currentSynthesis.whatChanged }}</text>
 					</view>
+					<view v-if="isHealth && inquiry.currentSynthesis.baselineComparison" class="finding-block">
+						<text class="finding-label">相对个人基线</text><text class="finding-copy">{{ inquiry.currentSynthesis.baselineComparison }}</text>
+					</view>
+					<view v-if="isHealth && inquiry.currentSynthesis.currentClues && inquiry.currentSynthesis.currentClues.length" class="finding-block">
+						<text class="finding-label">当前线索</text><text v-for="(item, index) in inquiry.currentSynthesis.currentClues" :key="index" class="unknown-item">· {{ item.statement }} <text class="evidence-refs">{{ refsLabel(item.evidenceRefs) }}</text></text>
+					</view>
+					<view v-if="isHealth && inquiry.currentSynthesis.correlations && inquiry.currentSynthesis.correlations.length" class="finding-block correlation-block">
+						<text class="finding-label">一起发生过，但还不能证明因果</text>
+						<view v-for="(item, index) in inquiry.currentSynthesis.correlations" :key="index" class="correlation-item"><text>{{ item.observation }}</text><text>{{ (item.factors || []).join(' · ') }} · {{ item.caution }} {{ refsLabel(item.evidenceRefs) }}</text></view>
+					</view>
+					<text v-if="isHealth && inquiry.currentSynthesis.hypotheses && inquiry.currentSynthesis.hypotheses.length" class="hypothesis-heading">原因假设 · 都可以被新记录推翻</text>
 					<view v-for="(item, index) in inquiry.currentSynthesis.hypotheses || []" :key="index" class="hypothesis-row">
 						<view class="hypothesis-mark">{{ index + 1 }}</view>
-						<view class="hypothesis-copy"><text>{{ item.statement }}</text><text>{{ confidenceLabel(item.confidence) }} · 支持 {{ (item.supportingEvidenceRefs || []).length }} · 反例 {{ (item.challengingEvidenceRefs || []).length }}</text></view>
+						<view class="hypothesis-copy"><text>{{ item.statement }}</text><text v-if="isHealth">{{ confidenceLabel(item.confidence) }} · 支持 {{ refsLabel(item.supportingEvidenceRefs) }} · 反对/不一致 {{ refsLabel(item.challengingEvidenceRefs) }}</text><text v-else>{{ confidenceLabel(item.confidence) }} · 支持 {{ (item.supportingEvidenceRefs || []).length }} · 反例 {{ (item.challengingEvidenceRefs || []).length }}</text></view>
 					</view>
-					<view v-if="inquiry.currentSynthesis.unknowns && inquiry.currentSynthesis.unknowns.length" class="finding-block unknown-block">
-						<text class="finding-label">仍然不知道</text>
-						<text v-for="(item, index) in inquiry.currentSynthesis.unknowns" :key="index" class="unknown-item">· {{ item }}</text>
+					<view v-if="missingInformation.length" class="finding-block unknown-block">
+						<text class="finding-label">{{ isHealth ? '缺失信息' : '仍然不知道' }}</text>
+						<text v-for="(item, index) in missingInformation" :key="index" class="unknown-item">· {{ item }}</text>
 					</view>
-					<view v-if="inquiry.currentSynthesis.nextObservation" class="next-observation">
-						<text>下一次值得观察</text><text>{{ inquiry.currentSynthesis.nextObservation }}</text>
+					<view v-if="nextObservations.length" class="next-observation">
+						<text>{{ isHealth ? '下一步记录什么最有价值' : '下一次值得观察' }}</text><text v-for="(item, index) in nextObservations" :key="index">{{ isHealth ? '· ' : '' }}{{ item }}</text>
 					</view>
+					<view v-if="isHealth && inquiry.currentSynthesis.careSignals && inquiry.currentSynthesis.careSignals.length" class="care-signals">
+						<text>需要及时处理的信号</text><view v-for="(item, index) in inquiry.currentSynthesis.careSignals" :key="index"><text>{{ careUrgency(item.urgency) }} · {{ item.signal }}</text><text>{{ item.action }} {{ refsLabel(item.evidenceRefs) }}</text></view>
+					</view>
+					<text v-if="isHealth" class="inline-disclaimer">{{ inquiry.currentSynthesis.medicalDisclaimer || inquiry.medicalDisclaimer }}</text>
 					<text v-if="inquiry.currentSynthesis.statusSuggestion === 'RESOLVED' && inquiry.status !== 'RESOLVED'" class="status-suggestion">AI 认为证据已经接近稳定，但是否“想明白”仍由你确认。</text>
 					<button v-if="inquiry.history && inquiry.history.length > 1" class="history-toggle" @tap="historyOpen = !historyOpen">{{ historyOpen ? '收起过去的理解' : `查看过去 ${inquiry.history.length - 1} 个版本` }} <text>›</text></button>
 					<view v-if="historyOpen" class="history-list">
@@ -64,7 +98,7 @@
 				<view class="review-callout" :class="{ due: inquiry.reviewDue }">
 					<view class="review-copy">
 						<text class="review-title">{{ reviewTitle }}</text>
-						<text class="review-description">AI 会同时寻找支持、反例和缺口，并保存为可回看的新版本。</text>
+						<text class="review-description">{{ isHealth ? 'AI 会区分基线、共同变化、支持和反对证据，只整理观察与原因假设，不作诊断。' : 'AI 会同时寻找支持、反例和缺口，并保存为可回看的新版本。' }}</text>
 					</view>
 					<button class="review-button" :disabled="reviewing || inquiry.usableEvidenceCount < 2" @tap="reviewInquiry">{{ reviewing ? '正在核对…' : '重新看看' }}</button>
 					<view v-if="reviewing" class="progress-track"><view class="progress-fill"></view></view>
@@ -72,16 +106,31 @@
 				</view>
 
 				<view class="evidence-section">
-					<view class="section-topline"><text class="section-kicker">EVIDENCE TRAIL</text><text class="section-index">{{ inquiry.evidence.length }}</text></view>
-					<text class="section-title">生活留下的线索</text>
+					<view class="section-topline"><text class="section-kicker">{{ isHealth ? 'HEALTH TIMELINE' : 'EVIDENCE TRAIL' }}</text><text class="section-index">{{ inquiry.evidence.length }}</text></view>
+					<text class="section-title">{{ isHealth ? '健康时间线' : '生活留下的线索' }}</text>
 					<text class="section-intro">关联只在你确认后发生；日记关闭 AI 读取后，也不会进入复盘。</text>
 
 					<button v-if="!addingEvidence && inquiry.status !== 'RESOLVED'" class="add-evidence-entry" @tap="addingEvidence = true">
-						<text>＋</text><view><text>补一条新线索</text><text>观察、行动结果、外部材料或反例</text></view>
+						<text>＋</text><view><text>{{ isHealth ? '更新健康线索' : '补一条新线索' }}</text><text>{{ isHealth ? '症状、心理感受、睡眠、行为、环境、测量或检查结果' : '观察、行动结果、外部材料或反例' }}</text></view>
 					</button>
 					<view v-if="addingEvidence" class="evidence-form">
 						<text class="field-label">这条线索是什么</text>
 						<textarea v-model="evidenceDraft.excerpt" class="evidence-input" maxlength="5000" placeholder="写下发生了什么，或粘贴一段值得保留的材料……" :show-confirm-bar="false" />
+						<view v-if="isHealth" class="health-observation-form">
+							<text class="optional-heading">可选结构化观察</text>
+							<input v-if="inquiry.inquiryType === 'PSYCHOLOGICAL'" v-model="healthDraft.psychologicalFeelings" class="source-input" maxlength="400" placeholder="心理感受与情绪，用逗号分开" />
+							<input v-if="inquiry.inquiryType === 'PSYCHOLOGICAL'" v-model="healthDraft.stressors" class="source-input" maxlength="400" placeholder="压力来源，用逗号分开" />
+							<input v-if="inquiry.inquiryType === 'PSYCHOLOGICAL'" v-model="healthDraft.cognitiveChanges" class="source-input" maxlength="400" placeholder="注意力、记忆或思维变化" />
+							<input v-model="healthDraft.physicalSymptoms" class="source-input" maxlength="400" placeholder="身体症状，用逗号分开" />
+							<input v-model="healthDraft.bodyAreas" class="source-input" maxlength="300" placeholder="身体部位，用逗号分开" />
+							<view class="health-field-pair"><input v-model="healthDraft.severity" type="number" class="source-input" maxlength="2" placeholder="严重程度 0-10" /><input v-model="healthDraft.observedAt" class="source-input" maxlength="80" placeholder="发生时间" /></view>
+							<input v-model="healthDraft.duration" class="source-input" maxlength="160" placeholder="持续多久" />
+							<input v-model="healthDraft.sleepNote" class="source-input" maxlength="300" placeholder="睡眠（时长、质量或变化）" />
+							<input v-model="healthDraft.behaviors" class="source-input" maxlength="400" placeholder="同期行为/饮食/运动，用逗号分开" />
+							<input v-model="healthDraft.environmentFactors" class="source-input" maxlength="400" placeholder="环境或情境因素，用逗号分开" />
+							<input v-model="healthDraft.measurements" class="source-input" maxlength="600" placeholder="测量结果（可选）" />
+							<input v-model="healthDraft.testResults" class="source-input" maxlength="1000" placeholder="检查结果摘要（可选）" />
+						</view>
 						<view class="relation-row source-type-row">
 							<button v-for="item in sourceTypes" :key="item.value" class="relation-chip" :class="{ active: evidenceDraft.sourceType === item.value }" @tap="evidenceDraft.sourceType = item.value">{{ item.label }}</button>
 						</view>
@@ -96,7 +145,9 @@
 						<view v-for="item in inquiry.evidence" :key="item.id" class="evidence-card" @tap="openEvidence(item)">
 							<view class="evidence-topline"><text class="evidence-type">{{ evidenceTypeLabel(item.sourceType) }}</text><text>{{ item.sourceDate || formatDate(item.createdAt) }}</text></view>
 							<text class="evidence-excerpt">{{ item.excerpt }}</text>
+							<text v-if="healthObservationText(item.healthObservation)" class="structured-observation">{{ healthObservationText(item.healthObservation) }}</text>
 							<view class="evidence-footer"><text>{{ relationLabel(item.relation) }}</text><text v-if="item.diaryId && !item.aiAllowed" class="ai-locked">未授权 AI 读取</text><text v-else-if="item.sourceLabel">{{ item.sourceLabel }}</text></view>
+							<text v-if="item.diaryImageCount" class="photo-count">含 {{ item.diaryImageCount }} 张照片 · 点开查看原日记</text>
 						</view>
 					</view>
 					<view v-else class="evidence-empty"><text>还没有线索</text><text>可以在写日记时关联，也可以在这里手动补充。</text></view>
@@ -104,11 +155,11 @@
 
 				<view class="status-section">
 					<text class="section-kicker">YOU DECIDE</text>
-					<text class="section-title">这个问题现在在哪里？</text>
+					<text class="section-title">{{ isHealth ? '当前结论状态' : '这个问题现在在哪里？' }}</text>
 					<view class="status-actions">
-						<button v-for="item in statuses" :key="item.value" class="status-button" :class="{ active: inquiry.status === item.value }" @tap="changeStatus(item.value)">{{ item.label }}</button>
+						<button v-for="item in statusOptions" :key="item.value" class="status-button" :class="{ active: inquiry.status === item.value }" @tap="changeStatus(item.value)">{{ item.label }}</button>
 					</view>
-					<text class="status-note">状态不会由 AI 自动改变。暂停和想明白都保留全部线索与历史版本。</text>
+					<text class="status-note">{{ isHealth ? '状态不会由 AI 自动改变。结束观察也不会删除时间线与历史理解。' : '状态不会由 AI 自动改变。暂停和想明白都保留全部线索与历史版本。' }}</text>
 				</view>
 				<view class="bottom-space"></view>
 			</view>
@@ -117,7 +168,7 @@
 </template>
 
 <script>
-import { inquiryDetail, inquiryEvidence, inquiryReview } from '@/api/inquiry';
+import { inquiryDetail, inquiryEvidence, inquiryHealthSummary, inquiryReview } from '@/api/inquiry';
 
 export default {
 	data() {
@@ -129,7 +180,12 @@ export default {
 			historyOpen: false,
 			addingEvidence: false,
 			savingEvidence: false,
+			editingProfile: false,
+			savingProfile: false,
+			exporting: false,
+			profileDraft: { observationStartedOn: '', personalBaseline: '' },
 			evidenceDraft: { excerpt: '', sourceLabel: '', relation: 'CONTEXT', sourceType: 'NOTE' },
+			healthDraft: { psychologicalFeelings: '', stressors: '', cognitiveChanges: '', physicalSymptoms: '', bodyAreas: '', severity: '', observedAt: '', duration: '', sleepNote: '', behaviors: '', environmentFactors: '', measurements: '', testResults: '' },
 			relations: [
 				{ value: 'CONTEXT', label: '新背景' },
 				{ value: 'SUPPORT', label: '支持' },
@@ -150,6 +206,25 @@ export default {
 		};
 	},
 	computed: {
+		isHealth() {
+			return Boolean(this.inquiry && (this.inquiry.inquiryType === 'PSYCHOLOGICAL' || this.inquiry.inquiryType === 'PHYSICAL_HEALTH'));
+		},
+		missingInformation() {
+			if (!this.inquiry || !this.inquiry.currentSynthesis) return [];
+			return this.inquiry.currentSynthesis.missingInformation || this.inquiry.currentSynthesis.unknowns || [];
+		},
+		nextObservations() {
+			if (!this.inquiry || !this.inquiry.currentSynthesis) return [];
+			const value = this.inquiry.currentSynthesis.nextObservations;
+			if (Array.isArray(value)) return value;
+			return this.inquiry.currentSynthesis.nextObservation ? [this.inquiry.currentSynthesis.nextObservation] : [];
+		},
+		statusOptions() {
+			if (this.isHealth) return [
+				{ value: 'OPEN', label: '继续观察' }, { value: 'PAUSED', label: '暂停观察' }, { value: 'RESOLVED', label: '结束这次观察' }
+			];
+			return this.statuses;
+		},
 		reviewTitle() {
 			if (!this.inquiry || this.inquiry.usableEvidenceCount < 2) return '再积累一条可用线索，就适合一起看';
 			if (this.inquiry.reviewDue) return '新证据已经值得重新理解';
@@ -180,8 +255,14 @@ export default {
 				if (showLoading) uni.hideLoading();
 			}
 		},
-		statusLabel(value) { return { OPEN: '正在想', PAUSED: '先放一放', RESOLVED: '已经想明白' }[value] || '正在想'; },
+		statusLabel(value) {
+			if (this.isHealth) return { OPEN: '持续观察中', PAUSED: '观察已暂停', RESOLVED: '这次观察已结束' }[value] || '持续观察中';
+			return { OPEN: '正在想', PAUSED: '先放一放', RESOLVED: '已经想明白' }[value] || '正在想';
+		},
+		typeLabel(value) { return { GENERAL: '普通困惑', PSYCHOLOGICAL: '心理困惑', PHYSICAL_HEALTH: '身体健康困惑' }[value] || '普通困惑'; },
 		confidenceLabel(value) { return { emerging: '初步判断', medium: '已有一些依据', strong: '目前证据较强' }[value] || '初步判断'; },
+		refsLabel(value) { return Array.isArray(value) && value.length ? value.join('、') : '暂无直接证据'; },
+		careUrgency(value) { return { PROMPT: '建议尽快咨询', URGENT: '建议及时就医', EMERGENCY: '建议立即求助' }[value] || '建议咨询'; },
 		evidenceTypeLabel(value) { return { DIARY: '日记', NOTE: '观察', LINK: '外部材料', ACTION: '行动结果', REFLECTION: '讨论记录' }[value] || '线索'; },
 		relationLabel(value) { return { SUPPORT: '支持当前理解', CHALLENGE: '反例 / 冲突', CONTEXT: '补充背景', UNKNOWN: '关系未确定' }[value] || '补充背景'; },
 		formatDate(value) {
@@ -196,7 +277,7 @@ export default {
 			try {
 				await this.$http.post(inquiryReview(this.inquiryId), {});
 				await this.loadInquiry(false);
-				uni.showToast({ title: '新的理解已形成', icon: 'success' });
+				uni.showToast({ title: this.isHealth ? '健康线索已更新' : '新的理解已形成', icon: 'success' });
 			} catch (error) {
 				console.error('复盘问题失败', error);
 			} finally {
@@ -206,12 +287,45 @@ export default {
 		cancelEvidence() {
 			this.addingEvidence = false;
 			this.evidenceDraft = { excerpt: '', sourceLabel: '', relation: 'CONTEXT', sourceType: 'NOTE' };
+			this.healthDraft = { psychologicalFeelings: '', stressors: '', cognitiveChanges: '', physicalSymptoms: '', bodyAreas: '', severity: '', observedAt: '', duration: '', sleepNote: '', behaviors: '', environmentFactors: '', measurements: '', testResults: '' };
+		},
+		splitItems(value) { return String(value || '').split(/[，,、;；\n]/u).map(item => item.trim()).filter(Boolean); },
+		healthObservationPayload() {
+			return {
+				psychologicalFeelings: this.splitItems(this.healthDraft.psychologicalFeelings),
+				stressors: this.splitItems(this.healthDraft.stressors),
+				cognitiveChanges: this.splitItems(this.healthDraft.cognitiveChanges),
+				physicalSymptoms: this.splitItems(this.healthDraft.physicalSymptoms),
+				bodyAreas: this.splitItems(this.healthDraft.bodyAreas),
+				severity: this.healthDraft.severity === '' ? null : Number(this.healthDraft.severity),
+				observedAt: this.healthDraft.observedAt,
+				duration: this.healthDraft.duration,
+				sleep: { note: this.healthDraft.sleepNote },
+				behaviors: this.splitItems(this.healthDraft.behaviors),
+				environmentFactors: this.splitItems(this.healthDraft.environmentFactors),
+				measurements: this.splitItems(this.healthDraft.measurements),
+				testResults: this.splitItems(this.healthDraft.testResults)
+			};
+		},
+		healthObservationText(value) {
+			if (!value || typeof value !== 'object') return '';
+			const parts = [];
+			if (value.psychologicalFeelings && value.psychologicalFeelings.length) parts.push(`感受 ${value.psychologicalFeelings.join('、')}`);
+			if (value.physicalSymptoms && value.physicalSymptoms.length) parts.push(`症状 ${value.physicalSymptoms.join('、')}`);
+			if (value.bodyAreas && value.bodyAreas.length) parts.push(`部位 ${value.bodyAreas.join('、')}`);
+			if (value.severity !== null && value.severity !== undefined) parts.push(`程度 ${value.severity}/10`);
+			if (value.duration) parts.push(value.duration);
+			if (value.sleep && value.sleep.note) parts.push(`睡眠 ${value.sleep.note}`);
+			return parts.join(' · ');
 		},
 		async saveEvidence() {
 			if (!this.evidenceDraft.excerpt.trim() || this.savingEvidence) return;
 			this.savingEvidence = true;
 			try {
-				await this.$http.post(inquiryEvidence(this.inquiryId), this.evidenceDraft);
+				await this.$http.post(inquiryEvidence(this.inquiryId), {
+					...this.evidenceDraft,
+					...(this.isHealth ? { healthObservation: this.healthObservationPayload() } : {})
+				});
 				this.cancelEvidence();
 				await this.loadInquiry(false);
 				uni.showToast({ title: '线索已加入', icon: 'success' });
@@ -224,6 +338,34 @@ export default {
 		openEvidence(item) {
 			if (item.diaryId) uni.navigateTo({ url: `/pages/diary/edit?id=${item.diaryId}` });
 		},
+		beginProfileEdit() {
+			if (this.editingProfile) { this.editingProfile = false; return; }
+			this.profileDraft = {
+				observationStartedOn: this.inquiry.observationStartedOn || '',
+				personalBaseline: this.inquiry.personalBaseline || ''
+			};
+			this.editingProfile = true;
+		},
+		async saveProfile() {
+			if (this.savingProfile) return;
+			this.savingProfile = true;
+			try {
+				await this.$http.patch(inquiryDetail(this.inquiryId), this.profileDraft);
+				this.editingProfile = false;
+				await this.loadInquiry(false);
+				uni.showToast({ title: '观察基线已更新', icon: 'success' });
+			} catch (error) { console.error('更新健康观察基线失败', error); }
+			finally { this.savingProfile = false; }
+		},
+		async exportHealthSummary() {
+			if (!this.isHealth || this.exporting) return;
+			this.exporting = true;
+			try {
+				const res = await this.$http.get(inquiryHealthSummary(this.inquiryId));
+				uni.setClipboardData({ data: res.data.content, success: () => uni.showToast({ title: '就医摘要已复制', icon: 'success' }) });
+			} catch (error) { console.error('导出就医摘要失败', error); }
+			finally { this.exporting = false; }
+		},
 		changeStatus(value) {
 			if (this.inquiry.status === value) return;
 			const apply = async () => {
@@ -235,8 +377,8 @@ export default {
 			};
 			if (value !== 'RESOLVED') return apply();
 			uni.showModal({
-				title: '确认已经想明白？',
-				content: '线索和历史理解会继续保留，以后也可以重新打开。',
+					title: this.isHealth ? '结束这次健康观察？' : '确认已经想明白？',
+					content: this.isHealth ? '时间线和历史理解会继续保留，以后也可以重新开始观察。' : '线索和历史理解会继续保留，以后也可以重新打开。',
 				confirmText: '确认',
 				success: result => { if (result.confirm) apply(); }
 			});
@@ -260,11 +402,28 @@ button::after { border: 0; }
 .content-scroll { flex: 1; height: 0; }
 .page-shell { width: 100%; max-width: 920rpx; margin: 0 auto; padding: 50rpx 34rpx 0; box-sizing: border-box; }
 .question-hero { padding: 12rpx 10rpx 48rpx; display: flex; flex-direction: column; }
+.hero-state-row { display: flex; align-items: center; gap: 12rpx; }
 .hero-state { font-size: 19rpx; letter-spacing: 3rpx; color: #70804d; font-weight: 700; }
+.hero-type { padding: 7rpx 13rpx; border-radius: 20rpx; background: #e0e9c2; color: #56643d; font-size: 17rpx; }
 .hero-question { margin-top: 18rpx; font-family: Georgia, 'Songti SC', serif; font-size: 46rpx; line-height: 1.45; }
 .hero-context { margin-top: 20rpx; color: #657065; font-size: 24rpx; line-height: 1.75; }
 .hero-meta { margin-top: 25rpx; display: flex; flex-wrap: wrap; gap: 18rpx; color: #838a83; font-size: 20rpx; }
-.review-panel, .evidence-section, .status-section { margin-bottom: 24rpx; padding: 32rpx; border-radius: 30rpx; background: #fffdf7; border: 1rpx solid rgba(23,32,25,.07); }
+.review-panel, .evidence-section, .status-section, .health-profile { margin-bottom: 24rpx; padding: 32rpx; border-radius: 30rpx; background: #fffdf7; border: 1rpx solid rgba(23,32,25,.07); }
+.health-notice { margin: -20rpx 0 24rpx; padding: 22rpx 25rpx; border-radius: 23rpx; background: #e8eee0; display: flex; align-items: flex-start; gap: 15rpx; }
+.health-notice-mark { width: 34rpx; height: 34rpx; flex: 0 0 34rpx; border-radius: 50%; background: #5d6b4d; color: white; font-family: Georgia, serif; display: flex; align-items: center; justify-content: center; font-size: 18rpx; }
+.health-notice > text:last-child { flex: 1; color: #5b6656; font-size: 20rpx; line-height: 1.65; }
+.profile-edit { color: #657254; font-size: 20rpx; }
+.profile-row { margin-top: 24rpx; padding: 18rpx 0; border-bottom: 1rpx solid rgba(23,32,25,.07); display: flex; justify-content: space-between; gap: 20rpx; font-size: 21rpx; }
+.profile-row text:first-child, .profile-baseline text:first-child { color: #7c8579; }
+.profile-baseline { padding: 20rpx 0 4rpx; display: flex; flex-direction: column; gap: 10rpx; font-size: 21rpx; line-height: 1.7; }
+.profile-form { margin-top: 22rpx; }
+.profile-input, .profile-textarea { width: 100%; box-sizing: border-box; border-radius: 17rpx; background: #f2f3e9; font-size: 22rpx; }
+.profile-input { height: 68rpx; padding: 0 18rpx; display: flex; align-items: center; }
+.profile-textarea { height: 160rpx; margin-top: 13rpx; padding: 18rpx; line-height: 1.6; }
+.profile-save, .export-summary { height: 62rpx; margin-top: 18rpx; border-radius: 32rpx; display: flex; align-items: center; justify-content: center; font-size: 20rpx; }
+.profile-save { background: #52622f; color: white; }
+.export-summary { width: 100%; border: 1rpx solid rgba(82,98,47,.22); color: #52622f; }
+.profile-save[disabled], .export-summary[disabled] { opacity: .4; }
 .invalidated-panel { margin-bottom: 24rpx; padding: 26rpx 30rpx; border-radius: 24rpx; background: #f4e9df; display: flex; flex-direction: column; }
 .invalidated-panel > text:first-child { color: #704f38; font-size: 23rpx; font-weight: 700; }
 .invalidated-panel > text:nth-child(2) { margin-top: 10rpx; color: #826b5a; font-size: 20rpx; line-height: 1.65; }
@@ -277,6 +436,12 @@ button::after { border: 0; }
 .finding-block { margin-top: 26rpx; padding: 24rpx; border-radius: 20rpx; background: #f3f3e8; display: flex; flex-direction: column; }
 .finding-label { color: #677057; font-size: 20rpx; font-weight: 700; }
 .finding-copy, .unknown-item { margin-top: 11rpx; font-size: 23rpx; line-height: 1.72; }
+.evidence-refs { color: #8a9188; font-size: 18rpx; }
+.correlation-block { background: #eef2e8; }
+.correlation-item { margin-top: 17rpx; padding-top: 15rpx; border-top: 1rpx solid rgba(23,32,25,.06); display: flex; flex-direction: column; gap: 7rpx; }
+.correlation-item text:first-child { font-size: 22rpx; line-height: 1.6; }
+.correlation-item text:last-child { color: #7a8477; font-size: 18rpx; line-height: 1.55; }
+.hypothesis-heading { display: block; margin-top: 27rpx; color: #677057; font-size: 20rpx; font-weight: 700; }
 .hypothesis-row { margin-top: 22rpx; display: flex; align-items: flex-start; }
 .hypothesis-mark { flex: 0 0 42rpx; width: 42rpx; height: 42rpx; border-radius: 50%; background: #dfe8bd; display: flex; align-items: center; justify-content: center; font-size: 19rpx; }
 .hypothesis-copy { padding-left: 16rpx; flex: 1; display: flex; flex-direction: column; }
@@ -286,6 +451,13 @@ button::after { border: 0; }
 .next-observation { margin-top: 26rpx; padding-top: 22rpx; border-top: 1rpx solid rgba(23,32,25,.08); display: flex; flex-direction: column; }
 .next-observation text:first-child { color: #738073; font-size: 19rpx; font-weight: 700; }
 .next-observation text:last-child { margin-top: 10rpx; font-size: 23rpx; line-height: 1.7; }
+.next-observation text:not(:first-child) { margin-top: 10rpx; font-size: 23rpx; line-height: 1.7; }
+.care-signals { margin-top: 24rpx; padding: 23rpx; border-radius: 20rpx; background: #f5e4df; display: flex; flex-direction: column; }
+.care-signals > text { color: #8a4e43; font-size: 20rpx; font-weight: 700; }
+.care-signals > view { margin-top: 15rpx; display: flex; flex-direction: column; gap: 7rpx; }
+.care-signals > view text:first-child { color: #713d34; font-size: 21rpx; font-weight: 650; }
+.care-signals > view text:last-child { color: #845c54; font-size: 19rpx; line-height: 1.6; }
+.inline-disclaimer { display: block; margin-top: 24rpx; color: #8a9188; font-size: 18rpx; line-height: 1.6; }
 .status-suggestion { display: block; margin-top: 20rpx; color: #85683e; font-size: 20rpx; line-height: 1.6; }
 .history-toggle { width: 100%; margin-top: 24rpx; padding-top: 20rpx; border-top: 1rpx solid rgba(23,32,25,.08); color: #657065; font-size: 20rpx; line-height: 1.4; text-align: left; display: flex; align-items: center; justify-content: space-between; }
 .history-toggle text { font-size: 25rpx; }
@@ -312,6 +484,10 @@ button::after { border: 0; }
 .evidence-form { margin-top: 24rpx; padding: 24rpx; border-radius: 22rpx; background: #f4f5e9; }
 .field-label { display: block; font-size: 21rpx; font-weight: 650; }
 .evidence-input { display: block; width: 100%; max-width: 100%; height: 210rpx; margin-top: 13rpx; padding: 18rpx; box-sizing: border-box; border-radius: 16rpx; background: white; font-size: 24rpx; line-height: 1.65; overflow-x: hidden; word-break: break-word; overflow-wrap: anywhere; }
+.health-observation-form { margin-top: 18rpx; padding: 20rpx; border-radius: 18rpx; background: #e8eddf; }
+.optional-heading { color: #637058; font-size: 19rpx; font-weight: 700; }
+.health-field-pair { display: flex; gap: 12rpx; }
+.health-field-pair .source-input { min-width: 0; flex: 1; }
 .relation-row { margin-top: 16rpx; display: flex; flex-wrap: wrap; gap: 10rpx; }
 .source-type-row { padding-bottom: 14rpx; border-bottom: 1rpx solid rgba(23,32,25,.07); }
 .relation-chip { height: 54rpx; padding: 0 19rpx; border-radius: 28rpx; color: #657065; font-size: 19rpx; display: flex; align-items: center; justify-content: center; }
@@ -327,7 +503,9 @@ button::after { border: 0; }
 .evidence-topline, .evidence-footer { display: flex; justify-content: space-between; gap: 18rpx; color: #858c85; font-size: 18rpx; }
 .evidence-type { color: #61715f; font-weight: 700; }
 .evidence-excerpt { display: -webkit-box; margin-top: 13rpx; color: #303832; font-size: 22rpx; line-height: 1.65; overflow: hidden; -webkit-line-clamp: 4; -webkit-box-orient: vertical; white-space: normal; word-break: break-word; }
+.structured-observation { display: block; margin-top: 12rpx; padding: 11rpx 13rpx; border-radius: 12rpx; background: #e8eddf; color: #62705b; font-size: 18rpx; line-height: 1.55; }
 .evidence-footer { margin-top: 16rpx; padding-top: 13rpx; border-top: 1rpx solid rgba(23,32,25,.06); }
+.photo-count { display: block; margin-top: 12rpx; color: #6e7c64; font-size: 17rpx; }
 .ai-locked { color: #ad6157; }
 .evidence-empty { padding: 48rpx 10rpx 24rpx; display: flex; align-items: center; flex-direction: column; color: #7d867e; }
 .evidence-empty text:first-child { font-size: 24rpx; color: #4c574e; }

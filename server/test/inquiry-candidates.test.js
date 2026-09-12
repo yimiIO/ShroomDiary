@@ -30,6 +30,18 @@ test('unknown existing inquiry ids are never trusted', () => {
   assert.equal(candidate.suggestedInquiryId, null);
 });
 
+test('health candidates keep observations and only suggest an inquiry of the same type', () => {
+  const physicalId = '4c374d8d-a1df-4788-b1ca-71740879ff6d';
+  const [candidate] = normalizeInquiryCandidates([{
+    question: '为什么我最近总是手心出汗', confidence: 0.82,
+    inquiryType: 'PHYSICAL_HEALTH', existingInquiryId: physicalId,
+    healthObservation: { physicalSymptoms: ['手心出汗'], bodyAreas: ['手'], severity: 7 }
+  }], [{ id: physicalId, inquiryType: 'PSYCHOLOGICAL' }]);
+  assert.equal(candidate.inquiryType, 'PHYSICAL_HEALTH');
+  assert.deepEqual(candidate.healthObservation.physicalSymptoms, ['手心出汗']);
+  assert.equal(candidate.suggestedInquiryId, null);
+});
+
 test('candidate fingerprints are stable across source ordering', () => {
   const left = candidateFingerprint('我真正担心的是什么', ['diary-b', 'diary-a']);
   const right = candidateFingerprint(normalizeQuestion('我真正担心的是什么'), ['diary-a', 'diary-b']);

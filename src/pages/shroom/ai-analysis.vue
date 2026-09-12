@@ -72,10 +72,11 @@
 					<view class="inquiry-heading"><text>这篇留下了还没想明白的事吗？</text><text>这只是 AI 提出的候选。只有你确认后，才会成为持续观察的问题。</text></view>
 					<view class="inquiry-candidate" v-for="item in inquiryCandidates" :key="item.id">
 						<text class="inquiry-mark">?</text>
-						<view class="inquiry-copy"><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
+						<view class="inquiry-copy"><text v-if="item.inquiryType !== 'GENERAL'" class="health-candidate-label">{{ inquiryTypeLabel(item.inquiryType) }} · 这条记录可能与你正在观察的问题有关</text><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
+							<text v-if="healthObservationText(item.healthObservation)" class="health-candidate-observation">{{ healthObservationText(item.healthObservation) }}</text>
 							<view class="inquiry-actions" v-if="item.status === 'PENDING'">
 								<button class="inquiry-ignore" :disabled="processingInquiryId === item.id" @tap="ignoreInquiryCandidate(item)">忽略</button>
-								<button class="inquiry-accept" :disabled="processingInquiryId === item.id" @tap="acceptInquiryCandidate(item)">{{ item.suggestedInquiryId ? '关联已有问题' : '开始观察' }}</button>
+								<button class="inquiry-accept" :disabled="processingInquiryId === item.id" @tap="acceptInquiryCandidate(item)">{{ item.suggestedInquiryId ? '关联到健康困惑' : (item.inquiryType === 'PHYSICAL_HEALTH' ? '确认这条身体观察' : '开始观察') }}</button>
 							</view>
 							<button class="inquiry-open" v-else-if="item.acceptedInquiryId" @tap="openInquiry(item.acceptedInquiryId)">✓ 已开始观察 · 查看问题</button>
 						</view>
@@ -226,17 +227,38 @@ export default {
 			} catch (error) { console.error('关联历史菇卡失败', error); }
 			finally { this.bindingCards = false; }
 		},
-		async acceptInquiryCandidate(item) {
-			if (!item || !item.id || this.processingInquiryId) return;
-			this.processingInquiryId = item.id;
-			try {
-				const res = await this.$http.post(inquiryCandidateAccept(item.id), {});
+			async acceptInquiryCandidate(item) {
+				if (!item || !item.id || this.processingInquiryId) return;
+				const isHealth = item.inquiryType === 'PSYCHOLOGICAL' || item.inquiryType === 'PHYSICAL_HEALTH';
+				const healthConsent = isHealth ? await this.confirmHealthConsent() : false;
+				if (isHealth && !healthConsent) return;
+				this.processingInquiryId = item.id;
+				try {
+					const res = await this.$http.post(inquiryCandidateAccept(item.id), { healthConsent });
 				item.status = 'ACCEPTED';
 				item.acceptedInquiryId = res.data.inquiryId;
 				uni.showToast({ title: res.data.created ? '问题已开始观察' : '已关联已有问题', icon: 'success' });
 			} catch (error) { console.error('确认未解之问候选失败', error); }
-			finally { this.processingInquiryId = ''; }
-		},
+				finally { this.processingInquiryId = ''; }
+			},
+			confirmHealthConsent() {
+				return new Promise(resolve => uni.showModal({
+					title: '确认记录健康观察',
+					content: '健康记录属于敏感个人信息，只保存在你的账户中。只有你主动发起回看时，已授权线索才会发送给当前 AI 服务；不会进入发现。',
+					confirmText: '同意并继续', cancelText: '暂不',
+					success: result => resolve(Boolean(result.confirm)), fail: () => resolve(false)
+				}));
+			},
+			inquiryTypeLabel(value) { return value === 'PHYSICAL_HEALTH' ? '身体健康观察' : '心理观察'; },
+			healthObservationText(value) {
+				if (!value || typeof value !== 'object') return '';
+				const parts = [];
+				if (value.psychologicalFeelings && value.psychologicalFeelings.length) parts.push(value.psychologicalFeelings.join('、'));
+				if (value.physicalSymptoms && value.physicalSymptoms.length) parts.push(value.physicalSymptoms.join('、'));
+				if (value.bodyAreas && value.bodyAreas.length) parts.push(`部位：${value.bodyAreas.join('、')}`);
+				if (value.severity !== null && value.severity !== undefined) parts.push(`程度 ${value.severity}/10`);
+				return parts.join(' · ');
+			},
 		async ignoreInquiryCandidate(item) {
 			if (!item || !item.id || this.processingInquiryId) return;
 			this.processingInquiryId = item.id;
@@ -318,8 +340,10 @@ button::after { border: 0; }
 .inquiry-candidate { display: flex; align-items: flex-start; gap: 18rpx; margin-top: 23rpx; padding-top: 23rpx; border-top: 1rpx solid rgba(255,255,255,.1); }
 .inquiry-mark { display: flex; width: 46rpx; height: 46rpx; flex: 0 0 46rpx; align-items: center; justify-content: center; border-radius: 50%; background: #dfe9bd; color: #263027; font-family: Georgia, serif; font-size: 25rpx; }
 .inquiry-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
-.inquiry-copy > text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; line-height: 1.55; }
-.inquiry-copy > text:nth-child(2) { margin-top: 10rpx; font-size: 18rpx; line-height: 1.6; color: #b9c4ba; }
+.inquiry-copy > text { font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; line-height: 1.55; }
+.inquiry-copy > text + text { margin-top: 10rpx; }
+.inquiry-copy .health-candidate-label { align-self: flex-start; margin: 0 0 9rpx; padding: 7rpx 11rpx; border-radius: 18rpx; background: rgba(214,230,169,.13); color: #cce09d; font-family: inherit; font-size: 16rpx; line-height: 1.4; }
+.inquiry-copy .health-candidate-observation { padding: 11rpx 13rpx; border-radius: 13rpx; background: rgba(255,255,255,.07); color: #aebbae; font-family: inherit; font-size: 17rpx; line-height: 1.55; }
 .inquiry-actions { display: flex; justify-content: flex-end; gap: 12rpx; margin-top: 20rpx; }
 .inquiry-ignore, .inquiry-accept, .inquiry-open { min-height: 58rpx; padding: 0 21rpx; border-radius: 999rpx; display: flex; align-items: center; justify-content: center; font-size: 18rpx; line-height: 1.2; }
 .inquiry-ignore { border: 1rpx solid rgba(255,255,255,.2); color: #c4cec5; }

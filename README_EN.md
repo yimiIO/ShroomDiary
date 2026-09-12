@@ -20,6 +20,7 @@ Today, deliberate journaling is Shroom's primary memory interface. Over time, Sh
 - **High-accuracy transcription** where the recording is stored privately first and the transcript remains an editable draft.
 - **Semantic journal memory** built on PostgreSQL and pgvector, with evidence-linked answers rather than unsupported summaries.
 - **Living questions** that preserve dilemmas a single conversation cannot answer, accumulate user-confirmed journal evidence, and produce versioned interpretations with support, counterevidence, and explicit unknowns.
+- **Longitudinal health observation** inside living questions, connecting mental states, physical changes, sleep, behavior, environment, measurements, tests, and journal photos against a personal baseline. It exports a clinician-ready summary while treating every output as a revisable clue—not a diagnosis.
 - **Five observer seats** available to every new user, plus user-defined observers that can be edited and switched.
 - **Shroom Cards** for reusable understandings, reminders, or perspectives derived from concrete experience. They are not tasks or slogans.
 - **Life OS** as a small, evolving set of cross-context decision principles. AI proposes evidence-backed drafts; only the user can publish a revision.

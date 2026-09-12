@@ -244,9 +244,9 @@
 						<view><text class="section-heading">放进长期问题</text><text>保存后成为一条由你确认的线索</text></view>
 						<button @tap="selectInquiry">调整</button>
 					</view>
-					<view class="linked-inquiry" v-for="item in linkedInquiries" :key="item.id">
-						<text class="linked-inquiry-mark">?</text>
-						<text class="linked-inquiry-text">{{ item.question }}</text>
+						<view class="linked-inquiry" v-for="item in linkedInquiries" :key="item.id">
+							<text class="linked-inquiry-mark">?</text>
+							<view class="linked-inquiry-copy"><text v-if="item.inquiryType && item.inquiryType !== 'GENERAL'" class="linked-inquiry-type">{{ item.inquiryType === 'PHYSICAL_HEALTH' ? '身体健康' : '心理观察' }}</text><text class="linked-inquiry-text">{{ item.question }}</text></view>
 						<button class="linked-card-delete" @tap="removeInquiry(item.id)">×</button>
 					</view>
 				</view>
@@ -1008,7 +1008,7 @@ export default {
 		},
 		selectInquiry() {
 			const selected = encodeURIComponent(JSON.stringify(this.linkedInquiries.map(item => ({
-				id: item.id, question: item.question, status: item.status
+					id: item.id, question: item.question, status: item.status, inquiryType: item.inquiryType
 			}))));
 			uni.navigateTo({
 				url: `/pages/shroom/inquiries?mode=select&selected=${selected}`,
@@ -1442,7 +1442,9 @@ button::after { border: 0; }
 .linked-inquiry-heading > button { padding: 10rpx 14rpx; color: #617044; font-size: 20rpx; }
 .linked-inquiry { margin-top: 18rpx; padding: 20rpx; border-radius: 18rpx; display: flex; align-items: center; background: #f0f2e5; }
 .linked-inquiry-mark { width: 42rpx; height: 42rpx; border-radius: 50%; background: #d9e4af; color: #4f5d32; display: flex; align-items: center; justify-content: center; font-family: Georgia, serif; font-size: 23rpx; }
-.linked-inquiry-text { min-width: 0; flex: 1; margin-left: 15rpx; font-size: 23rpx; line-height: 1.5; white-space: normal; word-break: break-word; }
+.linked-inquiry-copy { min-width: 0; flex: 1; margin-left: 15rpx; display: flex; flex-direction: column; }
+.linked-inquiry-type { align-self: flex-start; margin-bottom: 6rpx; padding: 5rpx 10rpx; border-radius: 14rpx; background: #dfe8c4; color: #5f6d47; font-size: 16rpx; }
+.linked-inquiry-text { min-width: 0; font-size: 23rpx; line-height: 1.5; white-space: normal; word-break: break-word; }
 
 .details-panel { background: #fffdf9; color: #281d19; box-shadow: 0 24rpx 64rpx rgba(68, 50, 39, 0.08); }
 .details-panel .voice-kicker { color: #77815f; }

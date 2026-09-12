@@ -186,6 +186,31 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   assert.doesNotMatch(route, /req\.body\.userId/);
 });
 
+test('health observation extends inquiries without changing diary save or bottom navigation', () => {
+  const edit = source('src/pages/diary/edit.vue');
+  const list = source('src/pages/shroom/inquiries.vue');
+  const detail = source('src/pages/shroom/inquiry.vue');
+  const analysis = source('src/pages/shroom/ai-analysis.vue');
+  const pages = source('src/pages.json');
+  const routes = source('server/src/routes/inquiries.js');
+
+  for (const label of ['普通困惑', '心理困惑', '身体健康']) assert.match(list, new RegExp(label));
+  assert.match(list, /确认记录健康观察/);
+  assert.match(detail, /健康时间线/);
+  assert.match(detail, /当前线索/);
+  assert.match(detail, /原因假设/);
+  assert.match(detail, /缺失信息/);
+  assert.match(detail, /下一步记录什么最有价值/);
+  assert.match(detail, /导出就医摘要/);
+  assert.match(detail, /不是医学诊断/);
+  assert.match(analysis, /这条记录可能与你正在观察的问题有关/);
+  assert.match(analysis, /确认这条身体观察/);
+  assert.match(routes, /health-summary/);
+  assert.doesNotMatch(edit, /healthObservationPayload|健康表单|症状严重程度/);
+  const tabBar = JSON.parse(pages).tabBar.list;
+  assert.equal(tabBar.length, 4);
+});
+
 test('public cards form a horizontal deck and open an ownership-aware detail', () => {
   const discover = source('src/pages/shroom/discover.vue');
   const personalCards = source('src/pages/shroom/cards.vue');
