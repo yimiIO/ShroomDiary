@@ -222,11 +222,18 @@ test('health observation extends inquiries without changing diary save or bottom
   const list = source('src/pages/shroom/inquiries.vue');
   const detail = source('src/pages/shroom/inquiry.vue');
   const analysis = source('src/pages/shroom/ai-analysis.vue');
+  const consent = source('src/components/HealthConsentSheet.vue');
   const pages = source('src/pages.json');
   const routes = source('server/src/routes/inquiries.js');
 
   for (const label of ['普通困惑', '心理困惑', '身体健康']) assert.match(list, new RegExp(label));
-  assert.match(list, /确认记录健康观察/);
+  assert.match(list, /HealthConsentSheet/);
+  assert.match(analysis, /HealthConsentSheet/);
+  assert.doesNotMatch(list, /uni\.showModal\(/);
+  assert.doesNotMatch(analysis, /uni\.showModal\([\s\S]*?健康观察/);
+  assert.match(consent, /为什么需要确认|这条候选涉及/);
+  assert.match(consent, /不是医学诊断/);
+  assert.match(consent, /不会进入发现或自动公开/);
   assert.match(detail, /健康时间线/);
   assert.match(detail, /当前线索/);
   assert.match(detail, /原因假设/);

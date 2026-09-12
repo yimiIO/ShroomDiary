@@ -105,13 +105,21 @@
 				<view class="bottom-space"></view>
 			</view>
 		</scroll-view>
+		<health-consent-sheet
+			:visible="healthConsentVisible"
+			:inquiry-type="healthConsentType"
+			@cancel="resolveHealthConsent(false)"
+			@confirm="resolveHealthConsent(true)"
+		/>
 	</view>
 </template>
 
 <script>
 import { inquiryCandidateAccept, inquiryCandidateIgnore, inquiryCandidates, inquiryList } from '@/api/inquiry';
+import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
 
 export default {
+	components: { HealthConsentSheet },
 	data() {
 		return {
 			statusBarHeight: 0,
@@ -141,6 +149,8 @@ export default {
 			creating: false,
 			creatingInquiry: false,
 			loading: false,
+			healthConsentVisible: false,
+			healthConsentType: 'PSYCHOLOGICAL',
 			draft: { question: '', context: '', inquiryType: 'GENERAL', observationStartedOn: '', personalBaseline: '' }
 		};
 	},
@@ -153,6 +163,7 @@ export default {
 		this.loadItems();
 		if (!this.selectionMode) this.loadCandidates();
 	},
+	onUnload() { this.resolveHealthConsent(false); },
 	methods: {
 		async loadCandidates() {
 			try {
@@ -165,7 +176,7 @@ export default {
 		},
 		async acceptCandidate(item) {
 			if (!item || !item.id || this.processingCandidateId) return;
-			const healthConsent = this.isHealthType(item.inquiryType) ? await this.confirmHealthConsent() : false;
+			const healthConsent = this.isHealthType(item.inquiryType) ? await this.confirmHealthConsent(item.inquiryType) : false;
 			if (this.isHealthType(item.inquiryType) && !healthConsent) return;
 			this.processingCandidateId = item.id;
 			try {
@@ -217,15 +228,16 @@ export default {
 			return { GENERAL: '普通困惑', PSYCHOLOGICAL: '心理困惑', PHYSICAL_HEALTH: '身体健康' }[value] || '普通困惑';
 		},
 		isHealthType(value) { return value === 'PSYCHOLOGICAL' || value === 'PHYSICAL_HEALTH'; },
-		confirmHealthConsent() {
-			return new Promise(resolve => uni.showModal({
-				title: '确认记录健康观察',
-				content: '健康记录属于敏感个人信息，将仅保存在你的账户中。只有你主动发起 AI 回看时，已授权线索才会发送给当前 AI 服务；它不会进入发现。',
-				confirmText: '同意并继续',
-				cancelText: '暂不',
-				success: result => resolve(Boolean(result.confirm)),
-				fail: () => resolve(false)
-			}));
+		confirmHealthConsent(inquiryType) {
+			this.healthConsentType = inquiryType;
+			this.healthConsentVisible = true;
+			return new Promise(resolve => { this._healthConsentResolver = resolve; });
+		},
+		resolveHealthConsent(confirmed) {
+			this.healthConsentVisible = false;
+			const resolve = this._healthConsentResolver;
+			this._healthConsentResolver = null;
+			if (resolve) resolve(Boolean(confirmed));
 		},
 		statusLabel(value) {
 			return { OPEN: '正在想', PAUSED: '先放一放', RESOLVED: '已经想明白' }[value] || '正在想';
@@ -259,7 +271,7 @@ export default {
 		},
 		async createInquiry() {
 			if (this.draft.question.trim().length < 4 || this.creatingInquiry) return;
-			const healthConsent = this.isHealthType(this.draft.inquiryType) ? await this.confirmHealthConsent() : false;
+			const healthConsent = this.isHealthType(this.draft.inquiryType) ? await this.confirmHealthConsent(this.draft.inquiryType) : false;
 			if (this.isHealthType(this.draft.inquiryType) && !healthConsent) return;
 			this.creatingInquiry = true;
 			try {

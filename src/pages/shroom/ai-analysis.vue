@@ -83,9 +83,9 @@
 					</view>
 					</view>
 
-					<view class="life-os-links" v-if="lifeOsLinks.length">
-						<view class="life-os-links-head"><view><text>与人生 OS 的 {{ lifeOsLinks.length }} 项有关</text><text>普通关联已自动保存为“AI 关联”，你可以取消或纠正它是什么记录。</text></view><text @tap="openLifeOsPlan">进入 OS　›</text></view>
-						<view v-for="link in lifeOsLinks" :key="link.id" class="life-os-link">
+					<view class="life-os-links" v-if="compoundLinks.length">
+						<view class="life-os-links-head"><view><text>与复利系统的 {{ compoundLinks.length }} 个方向有关</text><text>这只是可纠正的 AI 关联；进入后才能把它接入正在推进的事。</text></view><text @tap="openCompound">进入复利系统　›</text></view>
+						<view v-for="link in compoundLinks" :key="link.id" class="life-os-link">
 							<view class="life-os-link-title" @tap="openLifeOsItem(link)"><text>{{ link.itemKey }} · {{ link.itemName }}</text><text>AI 关联　›</text></view>
 							<text class="life-os-evidence">“{{ link.evidenceExcerpt }}”</text>
 							<text class="life-os-summary" v-if="link.summary">{{ link.summary }}</text>
@@ -136,15 +136,23 @@
 				<view class="rerun" @tap="confirmRerun">用当前观察席重新分析</view>
 			</view>
 		</view>
+		<health-consent-sheet
+			:visible="healthConsentVisible"
+			:inquiry-type="healthConsentType"
+			@cancel="resolveHealthConsent(false)"
+			@confirm="resolveHealthConsent(true)"
+		/>
 	</view>
 </template>
 
 <script>
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
+import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
 
 export default {
-		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], lifeOsLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false }; },
+	components: { HealthConsentSheet },
+		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
@@ -162,7 +170,7 @@ export default {
 		selectedCardCount() { return this.cardMatches.filter(item => item.selected && !this.isCardBound(item.cardId)).length; }
 	},
 	onLoad(options) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.diaryId = options.diaryId || ''; this.autoStart = options.autoStart === '1'; this.load(); },
-	onUnload() { this.stopPolling(); },
+	onUnload() { this.stopPolling(); this.resolveHealthConsent(false); },
 	methods: {
 		async load() {
 			try {
@@ -173,7 +181,7 @@ export default {
 				if (this.autoStart && this.analysisEnabled && (!existing.data || !['pending', 'running'].includes(existing.data.status))) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
-		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.lifeOsLinks = Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []; },
+		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
 		async startAnalysis() {
 			if (!this.analysisEnabled) return;
 			this.stopPolling();
@@ -242,7 +250,7 @@ export default {
 			async acceptInquiryCandidate(item) {
 				if (!item || !item.id || this.processingInquiryId) return;
 				const isHealth = item.inquiryType === 'PSYCHOLOGICAL' || item.inquiryType === 'PHYSICAL_HEALTH';
-				const healthConsent = isHealth ? await this.confirmHealthConsent() : false;
+				const healthConsent = isHealth ? await this.confirmHealthConsent(item.inquiryType) : false;
 				if (isHealth && !healthConsent) return;
 				this.processingInquiryId = item.id;
 				try {
@@ -253,13 +261,16 @@ export default {
 			} catch (error) { console.error('确认未解之问候选失败', error); }
 				finally { this.processingInquiryId = ''; }
 			},
-			confirmHealthConsent() {
-				return new Promise(resolve => uni.showModal({
-					title: '确认记录健康观察',
-					content: '健康记录属于敏感个人信息，只保存在你的账户中。只有你主动发起回看时，已授权线索才会发送给当前 AI 服务；不会进入发现。',
-					confirmText: '同意并继续', cancelText: '暂不',
-					success: result => resolve(Boolean(result.confirm)), fail: () => resolve(false)
-				}));
+			confirmHealthConsent(inquiryType) {
+				this.healthConsentType = inquiryType;
+				this.healthConsentVisible = true;
+				return new Promise(resolve => { this._healthConsentResolver = resolve; });
+			},
+			resolveHealthConsent(confirmed) {
+				this.healthConsentVisible = false;
+				const resolve = this._healthConsentResolver;
+				this._healthConsentResolver = null;
+				if (resolve) resolve(Boolean(confirmed));
 			},
 			inquiryTypeLabel(value) { return value === 'PHYSICAL_HEALTH' ? '身体健康观察' : '心理观察'; },
 			healthObservationText(value) {
@@ -285,13 +296,13 @@ export default {
 		async changeLifeOsLinkType(link, recordType) {
 			if (!link || link.recordType === recordType) return;
 			try { await this.$http.patch(lifeOsPlanLink(link.id), { recordType }); link.recordType = recordType; link.userConfirmed = true; uni.showToast({ title: '记录类型已纠正', icon: 'success' }); }
-			catch (error) { console.error('纠正人生 OS 关联失败', error); }
+			catch (error) { console.error('纠正复利方向关联失败', error); }
 		},
 		removeLifeOsLink(link) {
-			uni.showModal({ title: '取消这条关联？', content: '不会删除日记或长期事项。', confirmText: '取消关联', success: async result => { if (!result.confirm) return; try { await this.$http.delete(lifeOsPlanLink(link.id)); this.lifeOsLinks = this.lifeOsLinks.filter(item => item.id !== link.id); } catch (error) { console.error('取消人生 OS 关联失败', error); } } });
+			uni.showModal({ title: '取消这条关联？', content: '不会删除日记、复利方向或人生 OS 原则。', confirmText: '取消关联', success: async result => { if (!result.confirm) return; try { await this.$http.delete(lifeOsPlanLink(link.id)); this.compoundLinks = this.compoundLinks.filter(item => item.id !== link.id); } catch (error) { console.error('取消复利方向关联失败', error); } } });
 		},
 		openLifeOsItem(link) { if (link && link.itemKey) uni.navigateTo({ url: `/pages/shroom/life-os-item?key=${link.itemKey}` }); },
-		openLifeOsPlan() { uni.navigateTo({ url: '/pages/shroom/life-os-plan' }); },
+		openCompound() { uni.navigateTo({ url: '/pages/shroom/compound' }); },
 		viewCreatedCard() { if (this.cardSuggestion && this.cardSuggestion.createdCardId) uni.navigateTo({ url: `/pages/common/cards/detail?id=${this.cardSuggestion.createdCardId}` }); },
 		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果，并产生新的 AI 用量。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
 		openObservers() { uni.navigateTo({ url: '/pages/shroom/observers' }); },
