@@ -4,176 +4,156 @@
 		<view class="page-shell">
 			<view class="topbar">
 				<button class="back-button" aria-label="返回" @tap="goBack">‹</button>
-				<text class="topbar-title">复利系统</text>
-				<view class="topbar-spacer"></view>
+				<view class="topbar-copy"><text class="topbar-kicker">COMPOUND SYSTEM</text><text class="topbar-title">复利系统</text></view>
+				<button class="more-button" aria-label="查看长期方向" @tap="openDirections">•••</button>
 			</view>
 
-			<view class="hero">
-				<text class="hero-kicker">MY COMPOUND SYSTEM</text>
-				<text class="hero-title">让正确的事<br>持续发生</text>
-				<text class="hero-copy">系统替我重复，规则替我决策，信用替我积累，身体让我走得更久。</text>
-				<view class="progress-block">
-					<view class="progress-copy">
-						<text>今日必做</text>
-						<text class="progress-number">{{ progress.completed }}/{{ progress.total }}</text>
-					</view>
-					<view class="progress-track">
-						<view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
-					</view>
-				</view>
-			</view>
+			<view v-if="loading" class="state-card"><view class="loading-dot"></view><text>正在找回上次停留的位置</text></view>
+			<view v-else-if="loadError" class="state-card error"><text>推进记录暂时没有读到</text><button class="pill-button dark" @tap="loadHome">重新读取</button></view>
 
-			<view v-if="loading" class="loading-card">
-				<view class="loading-dot"></view>
-				<text>正在把今天的数据放回四个长期账户</text>
-			</view>
-			<view v-else-if="loadError" class="load-error-card">
-				<text class="load-error-title">复利记录暂时没有读到</text>
-				<text class="load-error-copy">页面会留在这里，不会再自动退出。可以重新读取；如果登录已过期，请先重新登录。</text>
-				<button class="action-button primary" @tap="loadToday">重新读取</button>
-			</view>
-
-			<template v-else>
-				<view class="section">
-					<view class="section-heading">
-						<view>
-							<text class="section-kicker">TODAY</text>
-							<text class="section-title">今天的本金</text>
-						</view>
-						<text class="date-label">{{ dateLabel }}</text>
-					</view>
-
-					<view
-						v-for="ritual in rituals"
-						:key="ritual.key"
-						class="ritual-row"
-						:class="{ completed: ritual.completed, disabled: !ritual.enabled }"
-					>
-						<view class="ritual-state">{{ ritual.completed ? '✓' : (ritual.enabled ? '·' : '—') }}</view>
-						<view class="ritual-content">
-							<view class="ritual-title-line">
-								<text class="ritual-title">{{ ritual.title }}</text>
-								<text class="ritual-meta">{{ ritual.meta }}</text>
-							</view>
-							<text class="ritual-description" :class="{ prayer: ritual.key === 'prayer' && ritual.enabled }">{{ ritual.description }}</text>
-							<view v-if="ritual.key === 'body'" class="ritual-actions">
-								<template v-if="!ritual.completed">
-									<button class="action-button primary" :disabled="saving" @tap="openYogaPractice">开始瑜伽跟练</button>
-									<button class="action-button quiet secondary-action" :disabled="saving" @tap="startBodyCheckIn">记录其他跟练</button>
-								</template>
-								<button v-else class="action-button quiet" :disabled="saving" @tap="undoCheckIn('body')">撤销今天</button>
-							</view>
-							<view v-if="ritual.key === 'body' && showYogaPractice && !ritual.completed" class="yoga-practice">
-								<view class="yoga-heading">
-									<view>
-										<text class="yoga-title">{{ bodyPractice.title }}</text>
-										<text class="yoga-subtitle">{{ bodyPractice.subtitle }}</text>
-									</view>
-									<button class="close-practice" aria-label="收起跟练视频" @tap="closeYogaPractice">×</button>
-								</view>
-								<video
-									id="daily-yoga-practice"
-									class="yoga-video"
-									:src="bodyPractice.videoUrl"
-									:poster="bodyPractice.posterUrl"
-									:controls="true"
-									:autoplay="true"
-									:show-center-play-btn="true"
-									:enable-progress-gesture="true"
-									object-fit="contain"
-									@ended="finishYogaPractice"
-								></video>
-								<text class="yoga-safety">跟着自己的呼吸和活动范围做；出现疼痛、眩晕或明显不适请立即停止。</text>
-								<button
-									class="action-button yoga-checkin"
-									:class="{ ready: yogaFinished }"
-									:disabled="saving || !yogaFinished"
-									@tap="completeYogaCheckIn"
-								>{{ yogaFinished ? '完成并打卡' : '跟练结束后可打卡' }}</button>
-								<text class="yoga-credit">来源：{{ bodyPractice.sourceTitle }} · {{ bodyPractice.license }}</text>
-								<text class="yoga-credit">{{ bodyPractice.notice }}</text>
-							</view>
-							<view v-else-if="ritual.key === 'prayer' && ritual.enabled" class="ritual-actions">
-								<button v-if="!ritual.completed" class="action-button primary" :disabled="saving" @tap="checkInPrayer">我已读完</button>
-								<button v-else class="action-button quiet" :disabled="saving" @tap="undoCheckIn('prayer')">撤销今天</button>
-							</view>
-							<view v-else-if="ritual.key === 'system' && ritual.enabled" class="auto-note">由 Codex 记录自动判断，无需手动打卡</view>
-						</view>
-					</view>
+			<template v-else-if="home.needsOnboarding">
+				<view class="onboarding-hero">
+					<text class="eyebrow">START WITH ONE THING</text>
+					<text class="onboarding-title">先选一件，<br>现在最值得开始的事</text>
+					<text class="onboarding-copy">不用配置二十项计划。选一个方向，确认这次要做到什么，然后直接完成最小一步。</text>
 				</view>
 
-				<view class="section accounts-section">
-					<view class="section-heading">
-						<view>
-							<text class="section-kicker">LIFETIME ACCOUNTS</text>
-							<text class="section-title">四个长期账户</text>
-						</view>
-					</view>
-					<view v-for="dimension in dimensions" :key="dimension.key" class="account-row">
-						<text class="account-number">{{ dimension.number }}</text>
-						<view class="account-content">
-							<view class="account-title-line">
-								<text class="account-title">{{ dimension.title }}</text>
-								<text class="cadence" :class="dimension.state">{{ dimension.cadence }}</text>
-							</view>
-							<text class="account-description">{{ dimension.description }}</text>
-							<text class="account-metric">{{ dimension.metric }}</text>
-							<text class="account-detail">{{ dimension.detail }}</text>
-							<view v-if="dimension.key === 'financial'" class="account-action">
-								<button v-if="dimension.state !== 'done'" class="action-button outline" :disabled="saving" @tap="checkInFinancial">本月已按规则执行</button>
-								<button v-else class="text-button" :disabled="saving" @tap="undoCheckIn('financial')">撤销本月确认</button>
-							</view>
-						</view>
-					</view>
+				<view v-if="!starterDraft" class="direction-picker">
+					<button v-for="item in visibleCandidates" :key="item.stableKey" class="direction-option" :disabled="starting" @tap="prepareStarter(item)">
+						<text class="direction-number">{{ item.stableKey }}</text>
+						<view><text class="direction-name">{{ item.name }}</text><text class="direction-reason">{{ candidateReason(item) }}</text></view>
+						<text class="direction-arrow">›</text>
+					</button>
+					<button class="all-directions" @tap="openDirections">查看五类 20 个长期方向　›</button>
 				</view>
 
-				<view v-if="system.available && system.assetSystems && system.assetSystems.length" class="section asset-section">
-					<view class="section-heading">
-						<view>
-							<text class="section-kicker">COMPOUND CAPITAL</text>
-							<text class="section-title">六类复利本金</text>
-						</view>
-						<text class="date-label">累计 {{ system.totalAssetContributions }} 份</text>
-					</view>
-					<text class="asset-intro">自动运行只代表省时；资产被下一次任务调用，才算开始生息。</text>
-					<view class="asset-grid">
-						<view v-for="item in system.assetSystems" :key="item.key" class="asset-card" :class="item.state">
-							<view class="asset-title-line">
-								<text class="asset-title">{{ item.name }}</text>
-								<text class="asset-state">{{ item.state === 'yielding' ? '正在生息' : (item.state === 'building' ? '积累中' : '待建立') }}</text>
-							</view>
-							<view class="asset-metrics">
-								<text>{{ item.contributions }} 份本金</text>
-								<text>{{ item.reuseEvents }} 次复用</text>
-								<text>近30天 +{{ item.recentContributions }}</text>
-							</view>
-						</view>
-					</view>
-				</view>
-
-				<view class="section recommendation-section">
-					<text class="section-kicker">NEXT LEVER</text>
-					<text class="section-title">下一步杠杆</text>
-					<view v-for="(item, index) in recommendations" :key="item.key" class="recommendation-row">
-						<text class="recommendation-index">0{{ index + 1 }}</text>
-						<view>
-							<text class="recommendation-title">{{ item.title }}</text>
-							<text class="recommendation-copy">{{ item.description }}</text>
-						</view>
-					</view>
-				</view>
-
-				<view class="principle-card">
-					<text class="principle-label">THE RULE</text>
-					<text class="principle-text">不追求做更多，<br>让正确的事自动继续。</text>
+				<view v-else class="starter-card">
+					<view class="starter-heading"><view><text>{{ starterItem.stableKey }} · {{ starterItem.section }}</text><text>{{ starterItem.name }}</text></view><button @tap="resetStarter">重选</button></view>
+					<label class="field"><text>这次要做到什么</text><textarea v-model="starterDraft.desiredOutcome" maxlength="1200" auto-height /></label>
+					<label class="field"><text>现在可以做的最小一步</text><textarea v-model="starterDraft.currentStep" maxlength="1000" auto-height /></label>
+					<text v-if="starterDraft.contextReason" class="starter-reason">为什么从这里开始：{{ starterDraft.contextReason }}</text>
+					<button class="primary-action" :disabled="startingThread" @tap="startThread">{{ startingThread ? '正在保存起点…' : '确认并开始这一步' }}</button>
+					<text class="confirm-note">确认前只是建议；不会自动新增待办或修改人生 OS。</text>
 				</view>
 			</template>
+
+			<template v-else-if="current">
+				<view class="resume-hero">
+					<view class="resume-meta"><text>{{ modeLabel(current.progressMode) }}</text><text>{{ current.itemKey }} · {{ current.section }}</text></view>
+					<text class="resume-label">正在推进</text>
+					<text class="resume-title">{{ current.itemName }}</text>
+					<text class="resume-outcome">{{ current.desiredOutcome }}</text>
+
+					<view class="continuity">
+						<view v-if="current.lastCompleted" class="continuity-row done"><text class="continuity-label">上次已经做到</text><text>{{ current.lastCompleted }}</text></view>
+						<view v-if="current.blockerSummary" class="continuity-row blocked"><text class="continuity-label">当前卡点</text><text>{{ current.blockerSummary }}</text></view>
+						<view class="continuity-row next"><text class="continuity-label">现在可以做</text><text>{{ current.currentStep }}</text></view>
+					</view>
+
+					<view class="main-actions">
+						<button class="action continue" :disabled="working" @tap="continueWork"><text>继续推进</text><text>带着上次上下文继续</text></button>
+						<button class="action" :class="{ selected: composerMode === 'blocker' }" :disabled="working" @tap="openComposer('blocker')"><text>我卡住了</text><text>换一种推进方式</text></button>
+						<button class="action" :class="{ selected: composerMode === 'result' }" :disabled="working" @tap="openComposer('result')"><text>记录结果</text><text>留下真实发生的事</text></button>
+					</view>
+				</view>
+
+				<view v-if="composerMode === 'blocker'" class="composer-card">
+					<view class="composer-head"><view><text class="eyebrow">UNBLOCK</text><text>具体卡在哪里？</text></view><button @tap="closeComposer">×</button></view>
+					<textarea v-model="blockerText" maxlength="1800" auto-height placeholder="例如：我找不到能证明前后变化的材料。" />
+					<button class="primary-action" :disabled="working || !blockerText.trim()" @tap="submitBlocker">{{ working ? '正在判断障碍…' : '调整这一步' }}</button>
+				</view>
+
+				<view v-if="composerMode === 'result'" class="composer-card result-composer">
+					<view class="composer-head"><view><text class="eyebrow">REAL RESULT</text><text>实际发生了什么？</text></view><button @tap="closeComposer">×</button></view>
+					<textarea v-model="resultText" maxlength="5000" auto-height placeholder="一句话也可以。准备做、已经做、有效果和还没验证，系统会先整理成可纠正草稿。" />
+					<view class="input-tools">
+						<button :class="{ recording: isRecording }" :disabled="uploading" @tap="toggleRecording">{{ isRecording ? `停止录音 ${formatDuration(recordSeconds)}` : '语音记录' }}</button>
+						<button :disabled="uploading || attachments.length >= 9" @tap="chooseAttachment">添加照片</button>
+					</view>
+					<view v-if="uploading" class="upload-progress"><view><view :style="{ width: uploadProgress + '%' }"></view></view><text>{{ uploadLabel }} {{ uploadProgress }}%</text></view>
+					<view v-if="attachments.length" class="attachment-row"><image v-for="item in attachments" :key="item.id" :src="item.url" mode="aspectFill" /><text>{{ attachments.length }} 份附件</text></view>
+					<text v-if="voiceNote" class="voice-note">{{ voiceNote }}</text>
+					<button class="primary-action" :disabled="working || uploading || (!resultText.trim() && !attachments.length)" @tap="prepareResult">{{ working ? '正在整理结果…' : '整理为可确认结果' }}</button>
+				</view>
+
+				<view v-if="resultDraft" class="draft-card">
+					<view class="draft-head"><view><text class="eyebrow">CONFIRM RESULT</text><text>先确认它是什么</text></view><button @tap="resultDraft = null">×</button></view>
+					<view class="state-options">
+						<button v-for="option in resultStates" :key="option.value" :class="{ active: resultDraft.payload.state === option.value }" @tap="resultDraft.payload.state = option.value">{{ option.label }}</button>
+					</view>
+					<label class="field"><text>实际发生</text><textarea v-model="resultDraft.payload.summary" maxlength="1800" auto-height /></label>
+					<label class="field"><text>留下的产出或变化</text><textarea v-model="resultDraft.payload.actualResult" maxlength="2400" auto-height placeholder="没有可核对结果时可以留空" /></label>
+					<label class="field"><text>下次从哪里继续</text><textarea v-model="resultDraft.payload.nextStep" maxlength="1000" auto-height /></label>
+					<view class="close-options"><text>确认后</text><button v-for="option in closeModes" :key="option.value" :class="{ active: resultCloseMode === option.value }" @tap="resultCloseMode = option.value">{{ option.label }}</button></view>
+					<button class="primary-action" :disabled="working" @tap="confirmResult">{{ working ? '正在保存…' : '确认结果并留下接续位置' }}</button>
+				</view>
+
+				<view v-if="latestWork" class="work-card">
+					<view class="work-heading"><text>{{ latestWork.kind === 'BLOCKER' ? '卡点已经调整' : '这次一起做' }}</text><text>{{ eventTime(latestWork.createdAt) }}</text></view>
+					<text class="work-copy">{{ latestWork.payload.assistance || latestWork.payload.analysis || latestWork.summary }}</text>
+					<view v-if="latestWork.payload.completionCriteria" class="work-detail"><text>怎样算真正发生</text><text>{{ latestWork.payload.completionCriteria }}</text></view>
+					<view v-if="latestWork.payload.neededInput" class="work-detail"><text>还缺一个信息</text><text>{{ latestWork.payload.neededInput }}</text></view>
+					<view v-if="latestWork.payload.adjustedStep" class="work-detail"><text>调整后</text><text>{{ latestWork.payload.adjustedStep }}</text></view>
+					<text class="ai-boundary">这是一段协助，不代表你已经完成行动。</text>
+				</view>
+
+				<view v-if="diaryReviewDraft" class="draft-card diary-review-card">
+					<view class="draft-head"><view><text class="eyebrow">DIARY REVIEW</text><text>回看这次发生了什么</text></view><button @tap="diaryReviewDraft = null">×</button></view>
+					<view class="review-block"><text>日记支持的事实</text><text v-for="(fact, index) in diaryReviewDraft.payload.facts" :key="index">· {{ fact }}</text></view>
+					<view v-if="diaryReviewDraft.payload.inferences.length" class="review-block inference"><text>仍需验证的推测</text><text v-for="(item, index) in diaryReviewDraft.payload.inferences" :key="index">· {{ item }}</text></view>
+					<label class="field"><text>下次尝试的方法</text><textarea v-model="diaryReviewDraft.payload.nextTry" maxlength="1000" auto-height /></label>
+					<button class="primary-action" :disabled="working" @tap="confirmDiaryReview">采用这个方法并继续观察</button>
+				</view>
+
+				<view v-if="home.diarySuggestions.length" class="section-card diary-section">
+					<view class="section-head"><view><text class="eyebrow">FROM YOUR JOURNAL</text><text>相关日记，等你处理</text></view><text>{{ home.diarySuggestions.length }}</text></view>
+					<view v-for="item in home.diarySuggestions" :key="item.linkId" class="diary-prompt">
+						<text class="diary-date">{{ item.sourceDate }} · {{ item.itemName }}</text>
+						<text class="diary-excerpt">“{{ item.evidenceExcerpt }}”</text>
+						<text class="diary-question">这件事与正在推进的方向有关。要不要回看这次发生了什么？</text>
+						<view><button :disabled="working" @tap="reviewDiary(item)">回看这次</button><button :disabled="working" @tap="dismissDiary(item)">不是这件事</button></view>
+					</view>
+				</view>
+
+				<view v-if="home.recentResults.length" class="section-card">
+					<view class="section-head"><view><text class="eyebrow">RECENT ACCUMULATION</text><text>近期留下的结果</text></view></view>
+					<view v-for="item in home.recentResults" :key="item.id" class="result-row"><text>{{ item.itemKey }} · {{ item.itemName }}</text><text>{{ item.payload.actualResult || item.summary }}</text><text>{{ eventTime(item.createdAt) }}</text></view>
+				</view>
+
+				<view v-if="home.otherActive.length" class="section-card compact-section">
+					<view class="section-head"><view><text class="eyebrow">OTHER THREADS</text><text>其他正在推进</text></view></view>
+					<button v-for="item in home.otherActive" :key="item.id" class="other-thread" @tap="switchThread(item)"><view><text>{{ item.itemName }}</text><text>{{ item.currentStep }}</text></view><text>切换 ›</text></button>
+				</view>
+			</template>
+
+			<view v-if="!loading && !loadError" class="footer-links">
+				<button @tap="openReview"><view><text>阶段回看</text><text>做了什么、留下什么、继续还是调整</text></view><text>›</text></button>
+				<button @tap="openDirections"><view><text>五类 20 个长期方向</text><text>选择方向与调整关注范围</text></view><text>›</text></button>
+				<button @tap="openPrinciples"><view><text>人生 OS 原则</text><text>引用你确认过的判断原则；复利系统不会自动改写</text></view><text>›</text></button>
+			</view>
+			<view v-if="!loading" class="privacy-note"><view></view><text>{{ home.privacy || '复利系统仅本人可见，不进入发现。' }}</text></view>
 		</view>
 	</view>
 </template>
 
 <script>
-import { compoundCheckIn, compoundToday, compoundUndo } from '@/api/compound-system';
+import {
+	compoundBlocker,
+	compoundContinue,
+	compoundDiaryDismiss,
+	compoundDiaryReview,
+	compoundDiaryReviewConfirm,
+	compoundHome,
+	compoundResultConfirm,
+	compoundResultDraft,
+	compoundStarter,
+	compoundThreadPrimary,
+	compoundThreads
+} from '@/api/compound-system';
+import { transcribeVoiceBase, uploadImage, uploadVoice } from '@/api/upload';
+import indexConfig from '@/config/index.config';
+
+const MAX_RECORD_SECONDS = 600;
 
 export default {
 	data() {
@@ -181,383 +161,367 @@ export default {
 			statusBarHeight: 0,
 			loading: true,
 			loadError: false,
-			saving: false,
-			showYogaPractice: false,
-			yogaFinished: false,
-			date: '',
-			progress: { completed: 0, total: 0 },
-			rituals: [],
-			dimensions: [],
-			recommendations: [],
-			system: {},
-			bodyPractice: {}
+			working: false,
+			starting: false,
+			startingThread: false,
+			home: { needsOnboarding: true, current: null, otherActive: [], diarySuggestions: [], recentResults: [], directionCandidates: [], directionCount: 20, privacy: '' },
+			starterItem: null,
+			starterDraft: null,
+			composerMode: '',
+			blockerText: '',
+			resultText: '',
+			resultDraft: null,
+			resultCloseMode: 'CONTINUE',
+			diaryReviewDraft: null,
+			isRecording: false,
+			recordSeconds: 0,
+			recordStartedAt: 0,
+			recordTimer: null,
+			recorderManager: null,
+			h5Recorder: null,
+			h5Stream: null,
+			h5Chunks: [],
+			uploading: false,
+			uploadProgress: 0,
+			uploadLabel: '',
+			attachments: [],
+			voiceMediaId: '',
+			voiceNote: '',
+			resultStates: [
+				{ value: 'PREPARING', label: '准备做' },
+				{ value: 'DONE', label: '已经做' },
+				{ value: 'EFFECTIVE', label: '有效果' },
+				{ value: 'UNVERIFIED', label: '尚未验证' }
+			],
+			closeModes: [
+				{ value: 'CONTINUE', label: '继续' },
+				{ value: 'PAUSE', label: '暂缓' },
+				{ value: 'END', label: '结束' }
+			]
 		};
 	},
 	computed: {
-		progressPercent() {
-			if (!this.progress.total) return 0;
-			return Math.round(this.progress.completed / this.progress.total * 100);
-		},
-		dateLabel() {
-			if (!this.date) return '';
-			const parts = this.date.split('-');
-			return `${Number(parts[1])}月${Number(parts[2])}日`;
+		current() { return this.home.current || null; },
+		visibleCandidates() { return (this.home.directionCandidates || []).slice(0, 7); },
+		latestWork() {
+			if (!this.current) return null;
+			return (this.current.recentEvents || []).find(item => item.status === 'CONFIRMED' && ['CONTINUE', 'BLOCKER'].includes(item.kind)) || null;
 		}
 	},
 	onLoad() {
-		const systemInfo = uni.getSystemInfoSync();
-		this.statusBarHeight = systemInfo.statusBarHeight || 0;
+		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
+		this.initPlatformRecorder();
 	},
-	onShow() {
-		this.loadToday();
-	},
+	onShow() { this.loadHome(); },
+	onUnload() { this.releaseRecorder(); },
 	methods: {
-		applyPayload(payload) {
-			this.date = payload.date || '';
-			this.progress = payload.progress || { completed: 0, total: 0 };
-			this.rituals = payload.rituals || [];
-			this.dimensions = payload.dimensions || [];
-			this.recommendations = payload.recommendations || [];
-			this.system = payload.system || {};
-			this.bodyPractice = payload.bodyPractice || {};
-		},
-		async loadToday() {
+		async loadHome() {
 			this.loading = true;
 			this.loadError = false;
 			try {
-				const response = await this.$http.get(compoundToday);
-				this.applyPayload(response.data || {});
+				const response = await this.$http.get(compoundHome);
+				this.home = { ...this.home, ...(response.data || {}) };
+				const selectedKey = uni.getStorageSync('compoundStartItemKey');
+				if (selectedKey) {
+					uni.removeStorageSync('compoundStartItemKey');
+					const selected = (this.home.directionCandidates || []).find(item => item.stableKey === selectedKey);
+					if (selected) await this.prepareStarter(selected);
+				}
 			} catch (error) {
 				this.loadError = true;
-				uni.showToast({ title: '暂时无法读取复利记录', icon: 'none' });
-			} finally {
-				this.loading = false;
-			}
+				console.error('加载复利系统失败', error);
+			} finally { this.loading = false; }
 		},
-		startBodyCheckIn() {
-			uni.showActionSheet({
-				itemList: ['拉伸', '瑜伽'],
-				success: modeResult => {
-					const mode = modeResult.tapIndex === 1 ? 'yoga' : 'stretch';
-					uni.showActionSheet({
-						itemList: ['5 分钟最低版', '15 分钟标准版', '30 分钟完整版'],
-						success: durationResult => this.submitCheckIn('body', mode, [5, 15, 30][durationResult.tapIndex])
-					});
-				}
+		candidateReason(item) {
+			if (item.isWeekFocus) return '你此前把它放进了本周关注';
+			if (item.relatedRecordCount) return `已有 ${item.relatedRecordCount} 条相关记录可接着用`;
+			return item.minimumAction;
+		},
+		modeLabel(mode) { return { MAINTENANCE: '持续维护', SITUATIONAL: '情境练习', OUTCOME: '成果积累' }[mode] || '持续推进'; },
+		async prepareStarter(item) {
+			if (this.starting) return;
+			this.starting = true;
+			try {
+				const response = await this.$http.post(compoundStarter, { itemKey: item.stableKey });
+				this.starterItem = response.data.item;
+				this.starterDraft = response.data.draft;
+			} catch (error) { uni.showToast({ title: '暂时没能整理起点', icon: 'none' }); }
+			finally { this.starting = false; }
+		},
+		resetStarter() { this.starterItem = null; this.starterDraft = null; },
+		async startThread() {
+			if (this.startingThread || !this.starterItem || !this.starterDraft.desiredOutcome.trim() || !this.starterDraft.currentStep.trim()) return;
+			this.startingThread = true;
+			try {
+				await this.$http.post(compoundThreads, { itemKey: this.starterItem.stableKey, ...this.starterDraft });
+				this.resetStarter();
+				await this.loadHome();
+				uni.showToast({ title: '已经从这一步开始', icon: 'success' });
+			} catch (error) { uni.showToast({ title: '起点没有保存，请重试', icon: 'none' }); }
+			finally { this.startingThread = false; }
+		},
+		openComposer(mode) {
+			this.composerMode = this.composerMode === mode ? '' : mode;
+			this.resultDraft = null;
+			this.diaryReviewDraft = null;
+		},
+		closeComposer() { if (this.isRecording) this.stopRecording(); this.composerMode = ''; },
+		async continueWork() {
+			if (!this.current || this.working) return;
+			this.working = true;
+			this.composerMode = '';
+			try { await this.$http.post(compoundContinue(this.current.id), {}); await this.loadHome(); }
+			catch (error) { uni.showToast({ title: '这次协助没有完成，请重试', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async submitBlocker() {
+			if (!this.current || this.working || !this.blockerText.trim()) return;
+			this.working = true;
+			try {
+				await this.$http.post(compoundBlocker(this.current.id), { blocker: this.blockerText });
+				this.blockerText = '';
+				this.composerMode = '';
+				await this.loadHome();
+			} catch (error) { uni.showToast({ title: '卡点暂时没有处理好', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async prepareResult() {
+			if (!this.current || this.working) return;
+			this.working = true;
+			const mediaIds = this.attachments.map(item => item.id).concat(this.voiceMediaId ? [this.voiceMediaId] : []);
+			try {
+				const response = await this.$http.post(compoundResultDraft(this.current.id), { text: this.resultText, mediaIds });
+				this.resultDraft = response.data.event;
+				this.resultCloseMode = 'CONTINUE';
+				this.composerMode = '';
+			} catch (error) { uni.showToast({ title: '结果暂时没有整理好', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async confirmResult() {
+			if (!this.current || !this.resultDraft || this.working) return;
+			this.working = true;
+			try {
+				await this.$http.post(compoundResultConfirm(this.current.id, this.resultDraft.id), { ...this.resultDraft.payload, closeMode: this.resultCloseMode });
+				this.resultDraft = null;
+				this.resultText = '';
+				this.attachments = [];
+				this.voiceMediaId = '';
+				this.voiceNote = '';
+				await this.loadHome();
+				uni.showToast({ title: '结果与下一步已保存', icon: 'success' });
+			} catch (error) { uni.showToast({ title: '结果没有确认成功', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async reviewDiary(item) {
+			if (!this.current || this.working) return;
+			this.working = true;
+			try {
+				const response = await this.$http.post(compoundDiaryReview(this.current.id, item.linkId), {});
+				this.diaryReviewDraft = response.data.event;
+			} catch (error) { uni.showToast({ title: '这次日记暂时没有回看完成', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async confirmDiaryReview() {
+			if (!this.current || !this.diaryReviewDraft || this.working) return;
+			this.working = true;
+			try {
+				await this.$http.post(compoundDiaryReviewConfirm(this.current.id, this.diaryReviewDraft.id), this.diaryReviewDraft.payload);
+				this.diaryReviewDraft = null;
+				await this.loadHome();
+				uni.showToast({ title: '已经接到下一次尝试', icon: 'success' });
+			} catch (error) { uni.showToast({ title: '这次回看没有确认成功', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async dismissDiary(item) {
+			if (!this.current || this.working) return;
+			this.working = true;
+			try { await this.$http.post(compoundDiaryDismiss(this.current.id, item.linkId), {}); await this.loadHome(); }
+			catch (error) { uni.showToast({ title: '暂时没能忽略这条关联', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async switchThread(item) {
+			try { await this.$http.post(compoundThreadPrimary(item.id), {}); await this.loadHome(); }
+			catch (error) { uni.showToast({ title: '暂时无法切换', icon: 'none' }); }
+		},
+		initPlatformRecorder() {
+			// #ifndef H5
+			if (typeof uni.getRecorderManager !== 'function') return;
+			this.recorderManager = uni.getRecorderManager();
+			this.recorderManager.onStop(result => this.finishPlatformRecording(result));
+			this.recorderManager.onError(() => this.recordingFailed());
+			// #endif
+		},
+		async toggleRecording() {
+			if (this.isRecording) { this.stopRecording(); return; }
+			// #ifdef H5
+			await this.startH5Recording();
+			// #endif
+			// #ifndef H5
+			if (!this.recorderManager) { uni.showToast({ title: '当前设备不支持录音', icon: 'none' }); return; }
+			this.recorderManager.start({ duration: MAX_RECORD_SECONDS * 1000, sampleRate: 16000, numberOfChannels: 1, encodeBitRate: 64000, format: 'mp3' });
+			this.beginRecording();
+			// #endif
+		},
+		async startH5Recording() {
+			try {
+				if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') throw new Error('unsupported');
+				this.h5Stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+				const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(type => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type));
+				this.h5Chunks = [];
+				this.h5Recorder = mimeType ? new MediaRecorder(this.h5Stream, { mimeType }) : new MediaRecorder(this.h5Stream);
+				this.h5Recorder.ondataavailable = event => { if (event.data && event.data.size) this.h5Chunks.push(event.data); };
+				this.h5Recorder.onstop = () => this.finishH5Recording(new Blob(this.h5Chunks, { type: this.h5Recorder.mimeType || 'audio/webm' }));
+				this.h5Recorder.start(500);
+				this.beginRecording();
+			} catch (error) { this.recordingFailed(); }
+		},
+		beginRecording() {
+			this.isRecording = true;
+			this.recordSeconds = 0;
+			this.recordStartedAt = Date.now();
+			this.recordTimer = setInterval(() => {
+				this.recordSeconds = Math.min(MAX_RECORD_SECONDS, Math.floor((Date.now() - this.recordStartedAt) / 1000));
+				if (this.recordSeconds >= MAX_RECORD_SECONDS) this.stopRecording();
+			}, 500);
+		},
+		stopRecording() {
+			if (!this.isRecording) return;
+			this.isRecording = false;
+			clearInterval(this.recordTimer);
+			this.recordTimer = null;
+			// #ifdef H5
+			if (this.h5Recorder && this.h5Recorder.state !== 'inactive') this.h5Recorder.stop();
+			// #endif
+			// #ifndef H5
+			if (this.recorderManager) this.recorderManager.stop();
+			// #endif
+		},
+		async finishPlatformRecording(result) {
+			if (!result || !result.tempFilePath) return this.recordingFailed();
+			try {
+				this.beginUpload('正在保存语音');
+				const response = await this.$http.upload(uploadVoice, { filePath: result.tempFilePath, name: 'file', getTask: task => this.trackUpload(task) });
+				await this.finishVoiceUpload(response);
+			} catch (error) { this.recordingFailed(); }
+		},
+		async finishH5Recording(blob) {
+			this.releaseMicrophone();
+			if (!blob || !blob.size) return this.recordingFailed();
+			try {
+				this.beginUpload('正在保存语音');
+				const response = await this.uploadH5Blob(blob);
+				await this.finishVoiceUpload(response);
+			} catch (error) { this.recordingFailed(); }
+		},
+		uploadH5Blob(blob) {
+			return new Promise((resolve, reject) => {
+				const form = new FormData();
+				const type = String(blob.type || 'audio/webm').split(';')[0];
+				const extension = type === 'audio/mp4' ? 'm4a' : (type.split('/')[1] || 'webm');
+				form.append('file', blob, `compound-${Date.now()}.${extension}`);
+				const request = new XMLHttpRequest();
+				request.open('POST', `${indexConfig.baseUrl}${uploadVoice}`, true);
+				request.timeout = 120000;
+				request.setRequestHeader('x-api-key', uni.getStorageSync('accessToken'));
+				request.upload.onprogress = event => { if (event.lengthComputable) this.uploadProgress = Math.min(99, Math.round(event.loaded / event.total * 100)); };
+				request.onerror = reject;
+				request.ontimeout = reject;
+				request.onload = () => { try { const payload = JSON.parse(request.responseText || '{}'); payload.code === 200 ? resolve(payload) : reject(new Error(payload.message)); } catch (error) { reject(error); } };
+				request.send(form);
 			});
 		},
-		openYogaPractice() {
-			if (!this.bodyPractice.videoUrl) {
-				uni.showToast({ title: '跟练视频暂时不可用', icon: 'none' });
-				return;
-			}
-			this.yogaFinished = false;
-			this.showYogaPractice = true;
+		async finishVoiceUpload(response) {
+			if (!response || response.code !== 200 || !response.data || !response.data.id) throw new Error('voice upload failed');
+			this.voiceMediaId = response.data.id;
+			this.uploadLabel = '正在转写语音';
+			this.uploadProgress = 72;
+			try {
+				const transcript = await this.$http.post(`${transcribeVoiceBase}/${this.voiceMediaId}/transcribe`, {});
+				if (transcript.data && transcript.data.text) {
+					this.resultText += `${this.resultText.trim() ? '\n\n' : ''}${transcript.data.text}`;
+					this.voiceNote = '语音已保存并转写，可继续修改文字。';
+				} else this.voiceNote = '语音已保存，转写暂时没有返回文字。';
+			} catch (error) { this.voiceNote = '语音已保存；转写暂时不可用，你仍然可以直接记录结果。'; }
+			this.uploadProgress = 100;
+			this.uploading = false;
 		},
-		closeYogaPractice() {
-			this.showYogaPractice = false;
-			this.yogaFinished = false;
+		recordingFailed() {
+			this.isRecording = false;
+			this.uploading = false;
+			clearInterval(this.recordTimer);
+			this.releaseMicrophone();
+			uni.showToast({ title: '录音没有成功，请再试一次', icon: 'none' });
 		},
-		finishYogaPractice() {
-			this.yogaFinished = true;
-			uni.showToast({ title: '跟练完成，可以打卡', icon: 'none' });
-		},
-		completeYogaCheckIn() {
-			if (!this.yogaFinished) return;
-			this.submitCheckIn('body', 'yoga', Number(this.bodyPractice.durationMinutes) || 24);
-		},
-		checkInPrayer() {
-			this.submitCheckIn('prayer', 'reading', 1);
-		},
-		checkInFinancial() {
-			uni.showModal({
-				title: '确认本月已执行？',
-				content: '只确认你按既定规则完成，不评价短期涨跌，也不记录金额。',
-				confirmText: '确认执行',
-				confirmColor: '#233b2b',
-				success: result => {
-					if (result.confirm) this.submitCheckIn('financial', 'scheduled_investment', 0);
+		beginUpload(label) { this.uploading = true; this.uploadLabel = label; this.uploadProgress = 3; },
+		trackUpload(task) { if (task && typeof task.onProgressUpdate === 'function') task.onProgressUpdate(event => { this.uploadProgress = Math.min(99, Number(event.progress) || 0); }); },
+		async chooseAttachment() {
+			try {
+				const selected = await new Promise((resolve, reject) => uni.chooseImage({ count: 9 - this.attachments.length, sizeType: ['compressed'], success: resolve, fail: reject }));
+				const paths = selected.tempFilePaths || [];
+				for (let index = 0; index < paths.length; index += 1) {
+					this.beginUpload(`正在保存照片 ${index + 1}/${paths.length}`);
+					const response = await this.$http.upload(uploadImage, { filePath: paths[index], name: 'file', getTask: task => this.trackUpload(task) });
+					if (response.code === 200 && response.data && response.data.id) this.attachments.push({ id: response.data.id, url: response.data.url });
 				}
-			});
+				this.uploadProgress = 100;
+			} catch (error) { if (!String(error.errMsg || error).includes('cancel')) uni.showToast({ title: '照片没有保存成功', icon: 'none' }); }
+			finally { this.uploading = false; }
 		},
-		async submitCheckIn(ritualKey, mode, durationMinutes) {
-			if (this.saving) return;
-			this.saving = true;
-			try {
-				const response = await this.$http.post(compoundCheckIn, { ritualKey, mode, durationMinutes });
-				this.applyPayload(response.data || {});
-				if (ritualKey === 'body') this.closeYogaPractice();
-				uni.showToast({ title: '又存下一份本金', icon: 'success' });
-			} catch (error) {
-				uni.showToast({ title: '记录失败，请稍后重试', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async undoCheckIn(ritualKey) {
-			if (this.saving) return;
-			this.saving = true;
-			try {
-				const response = await this.$http.post(compoundUndo, { ritualKey });
-				this.applyPayload(response.data || {});
-			} catch (error) {
-				uni.showToast({ title: '撤销失败，请稍后重试', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		goBack() {
-			const pages = getCurrentPages();
-			if (pages.length > 1) uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/shroom/me' }) });
-			else uni.switchTab({ url: '/pages/shroom/me' });
-		}
+		releaseMicrophone() { if (this.h5Stream) this.h5Stream.getTracks().forEach(track => track.stop()); this.h5Stream = null; },
+		releaseRecorder() { if (this.isRecording) this.stopRecording(); clearInterval(this.recordTimer); this.releaseMicrophone(); },
+		formatDuration(seconds) { const total = Math.max(0, Number(seconds) || 0); return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`; },
+		eventTime(value) { return String(value || '').replace('T', ' ').slice(0, 16); },
+		openDirections() { uni.navigateTo({ url: '/pages/shroom/life-os-plan?select=1' }); },
+		openReview() { uni.navigateTo({ url: '/pages/shroom/life-os-weekly' }); },
+		openPrinciples() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
+		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack(); else uni.switchTab({ url: '/pages/diary/index' }); }
 	}
 };
 </script>
 
 <style lang="scss" scoped>
-.compound-page {
-	box-sizing: border-box;
-	width: 100%;
-	min-height: 100vh;
-	background: #f1f8e9;
-	color: #172019;
-}
-
+button { margin: 0; padding: 0; line-height: 1.25; background: transparent; border: 0; }
+button::after { border: 0; }
+textarea { box-sizing: border-box; width: 100%; min-height: 112rpx; padding: 20rpx; border: 1rpx solid rgba(27,39,30,.12); border-radius: 20rpx; background: rgba(255,255,255,.74); color: #18231b; font-size: 21rpx; line-height: 1.55; overflow-wrap: anywhere; }
+.compound-page { min-height: 100vh; background: #f1f8e9; color: #18231b; }
 .status-bar { background: #f1f8e9; }
-
-.page-shell {
-	box-sizing: border-box;
-	width: 100%;
-	padding: 18rpx 30rpx calc(70rpx + env(safe-area-inset-bottom));
-}
-
-.topbar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	height: 88rpx;
-	margin-bottom: 20rpx;
-}
-
-.back-button,
-.topbar-spacer {
-	width: 88rpx;
-	height: 88rpx;
-}
-
-.back-button {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin: 0;
-	padding: 0;
-	border-radius: 50%;
-	background: rgba(255, 255, 255, .78);
-	font-size: 56rpx;
-	line-height: 1;
-	color: #172019;
-}
-
-.back-button::after,
-.action-button::after,
-.text-button::after { border: 0; }
-
-.topbar-title { font-size: 27rpx; font-weight: 700; }
-
-.hero {
-	padding: 54rpx 42rpx 40rpx;
-	border-radius: 38rpx;
-	background: #172019;
-	box-shadow: 0 22rpx 60rpx rgba(23, 32, 25, .16);
-	color: #f6f8ef;
-}
-
-.hero-kicker,
-.section-kicker,
-.principle-label {
-	display: block;
-	font-size: 18rpx;
-	font-weight: 720;
-	letter-spacing: 3.2rpx;
-}
-
-.hero-kicker { color: #aebcac; }
-
-.hero-title {
-	display: block;
-	margin-top: 24rpx;
-	font-size: 58rpx;
-	font-weight: 760;
-	line-height: 1.22;
-	letter-spacing: -2rpx;
-}
-
-.hero-copy {
-	display: block;
-	margin-top: 24rpx;
-	font-size: 24rpx;
-	line-height: 1.78;
-	color: #becabd;
-}
-
-.progress-block { margin-top: 44rpx; }
-.progress-copy,
-.section-heading,
-.ritual-title-line,
-.account-title-line { display: flex; align-items: center; justify-content: space-between; }
-.progress-copy { font-size: 22rpx; color: #c8d3c5; }
-.progress-number { font-size: 31rpx; font-weight: 740; color: #fff; }
-.progress-track { height: 10rpx; margin-top: 15rpx; border-radius: 999rpx; background: rgba(255, 255, 255, .13); overflow: hidden; }
-.progress-fill { height: 100%; border-radius: inherit; background: #d9ef63; transition: width .3s ease; }
-
-.loading-card,
-.load-error-card,
-.section {
-	margin-top: 24rpx;
-	border: 1rpx solid rgba(23, 32, 25, .07);
-	border-radius: 32rpx;
-	background: rgba(255, 255, 255, .9);
-}
-
-.loading-card { display: flex; align-items: center; min-height: 160rpx; padding: 0 34rpx; font-size: 23rpx; color: #657269; }
-.load-error-card { padding: 42rpx 34rpx; }
-.load-error-title,
-.load-error-copy { display: block; }
-.load-error-title { font-size: 30rpx; font-weight: 740; }
-.load-error-copy { margin: 14rpx 0 24rpx; font-size: 22rpx; line-height: 1.7; color: #657269; }
-.loading-dot { width: 14rpx; height: 14rpx; margin-right: 18rpx; border-radius: 50%; background: #6a846d; animation: pulse 1s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .25; transform: scale(.72); } }
-
-.section { padding: 36rpx 30rpx; }
-.section-heading { align-items: flex-start; margin-bottom: 20rpx; }
-.section-kicker { color: #718075; }
-.section-title { display: block; margin-top: 9rpx; font-size: 35rpx; font-weight: 740; }
-.date-label { margin-top: 25rpx; font-size: 21rpx; color: #748078; }
-
-.ritual-row { display: flex; padding: 30rpx 0; }
-.ritual-row + .ritual-row { border-top: 1rpx solid #e7ece2; }
-.ritual-row.disabled { opacity: .52; }
-.ritual-state {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 54rpx;
-	height: 54rpx;
-	flex: 0 0 54rpx;
-	margin-right: 21rpx;
-	border: 2rpx solid #b9c5b9;
-	border-radius: 50%;
-	font-size: 26rpx;
-	font-weight: 740;
-	color: #718075;
-}
-.ritual-row.completed .ritual-state { border-color: #233b2b; background: #233b2b; color: #d9ef63; }
-.ritual-content { min-width: 0; flex: 1; }
-.ritual-title-line { align-items: flex-start; }
-.ritual-title { font-size: 28rpx; font-weight: 720; }
-.ritual-meta { max-width: 250rpx; margin-left: 18rpx; font-size: 19rpx; line-height: 1.5; text-align: right; color: #758178; }
-.ritual-description,
-.account-description,
-.recommendation-copy { display: block; margin-top: 12rpx; font-size: 23rpx; line-height: 1.72; color: #657269; overflow-wrap: anywhere; }
-.ritual-description.prayer { padding: 22rpx; border-radius: 20rpx; background: #f2f5eb; font-family: serif; font-size: 27rpx; color: #37483b; }
-.ritual-actions,
-.account-action { margin-top: 20rpx; }
-.action-button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	box-sizing: border-box;
-	min-width: 190rpx;
-	height: 88rpx;
-	margin: 0;
-	padding: 0 30rpx;
-	border-radius: 999rpx;
-	font-size: 23rpx;
-	font-weight: 680;
-	line-height: 88rpx;
-}
-.action-button.primary { background: #233b2b; color: #fff; }
-.action-button.quiet { background: #edf1e9; color: #657269; }
-.action-button.outline { border: 1rpx solid #647c67; background: transparent; color: #29432f; }
-.secondary-action { margin-top: 14rpx; }
-.auto-note { display: inline-flex; margin-top: 18rpx; padding: 10rpx 15rpx; border-radius: 999rpx; background: #edf3e4; font-size: 19rpx; color: #5b6f5e; }
-
-.yoga-practice {
-	margin-top: 22rpx;
-	padding: 22rpx;
-	border-radius: 24rpx;
-	background: #172019;
-	color: #f6f8ef;
-}
-.yoga-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 18rpx; }
-.yoga-title,
-.yoga-subtitle,
-.yoga-safety,
-.yoga-credit { display: block; }
-.yoga-title { font-size: 26rpx; font-weight: 720; }
-.yoga-subtitle { margin-top: 7rpx; font-size: 19rpx; color: #aebcac; }
-.close-practice {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 88rpx;
-	height: 88rpx;
-	margin: -18rpx -16rpx 0 16rpx;
-	padding: 0;
-	border-radius: 50%;
-	background: rgba(255, 255, 255, .09);
-	font-size: 38rpx;
-	line-height: 1;
-	color: #dce4d8;
-}
-.close-practice::after { border: 0; }
-.yoga-video { display: block; width: 100%; height: 330rpx; border-radius: 18rpx; background: #080a08; overflow: hidden; }
-.yoga-safety { margin-top: 17rpx; font-size: 20rpx; line-height: 1.65; color: #bac6b8; }
-.yoga-checkin { width: 100%; margin-top: 20rpx; background: #3b463d; color: #89948a; }
-.yoga-checkin.ready { background: #d9ef63; color: #172019; }
-.yoga-credit { margin-top: 14rpx; font-size: 17rpx; line-height: 1.55; color: #849184; }
-
-.account-row { display: flex; padding: 34rpx 0; }
-.account-row + .account-row { border-top: 1rpx solid #e7ece2; }
-.account-number { width: 66rpx; flex: 0 0 66rpx; padding-top: 5rpx; font-size: 19rpx; font-weight: 720; letter-spacing: 2rpx; color: #889952; }
-.account-content { min-width: 0; flex: 1; }
-.account-title-line { align-items: flex-start; }
-.account-title { font-size: 29rpx; font-weight: 740; }
-.cadence { margin-left: 16rpx; padding: 7rpx 14rpx; border-radius: 999rpx; background: #edf3e4; font-size: 18rpx; color: #5a6f5d; }
-.cadence.attention { background: #f8e8db; color: #9c5539; }
-.cadence.done { background: #e3efdc; color: #456148; }
-.account-metric { display: block; margin-top: 20rpx; font-size: 27rpx; font-weight: 730; color: #263d2c; }
-.account-detail { display: block; margin-top: 7rpx; font-size: 20rpx; line-height: 1.6; color: #829087; }
-.text-button { display: inline-flex; min-height: 88rpx; align-items: center; margin: 0; padding: 0; background: transparent; font-size: 21rpx; color: #7a867d; }
-
-.asset-intro { display: block; margin: -2rpx 0 18rpx; font-size: 22rpx; line-height: 1.7; color: #657269; }
-.asset-grid { display: flex; flex-wrap: wrap; margin: 0 -7rpx; }
-.asset-card {
-	box-sizing: border-box;
-	width: calc(50% - 14rpx);
-	min-height: 188rpx;
-	margin: 7rpx;
-	padding: 22rpx;
-	border: 1rpx solid #dfe7dd;
-	border-radius: 22rpx;
-	background: #f6f8f3;
-}
-.asset-card.yielding { border-color: #c7dba7; background: #f0f6df; }
-.asset-title-line { display: flex; align-items: flex-start; justify-content: space-between; }
-.asset-title { max-width: 190rpx; font-size: 23rpx; font-weight: 720; line-height: 1.45; }
-.asset-state { margin-left: 8rpx; font-size: 16rpx; color: #6e7d71; }
-.asset-card.yielding .asset-state { color: #667a24; }
-.asset-metrics { margin-top: 22rpx; }
-.asset-metrics text { display: block; margin-top: 6rpx; font-size: 18rpx; color: #758178; }
-
-.recommendation-section { background: #f7f1df; }
-.recommendation-row { display: flex; padding: 28rpx 0; }
-.recommendation-row + .recommendation-row { border-top: 1rpx solid rgba(86, 76, 44, .1); }
-.recommendation-index { width: 56rpx; flex: 0 0 56rpx; font-size: 18rpx; font-weight: 720; color: #9b894d; }
-.recommendation-title { display: block; font-size: 26rpx; font-weight: 720; }
-
-.principle-card { margin-top: 24rpx; padding: 43rpx 36rpx; border-radius: 32rpx; background: #d9ef63; color: #172019; }
-.principle-label { color: #5a6727; }
-.principle-text { display: block; margin-top: 14rpx; font-size: 33rpx; font-weight: 750; line-height: 1.5; }
+.page-shell { box-sizing: border-box; width: 100%; padding: 28rpx 32rpx calc(130rpx + env(safe-area-inset-bottom)); }
+.topbar { display: flex; align-items: center; gap: 18rpx; }
+.back-button, .more-button { display: flex; width: 68rpx; height: 68rpx; flex: 0 0 68rpx; align-items: center; justify-content: center; border: 1rpx solid rgba(24,35,27,.1); border-radius: 50%; background: rgba(255,255,255,.7); color: #263128; font-size: 42rpx; }
+.more-button { font-size: 25rpx; letter-spacing: 2rpx; }
+.topbar-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4rpx; }
+.topbar-kicker, .eyebrow { color: #718075; font-size: 15rpx; font-weight: 750; letter-spacing: 2.4rpx; }
+.topbar-title { font-family: Georgia, 'Songti SC', serif; font-size: 34rpx; font-weight: 720; }
+.state-card { display: flex; min-height: 300rpx; margin-top: 30rpx; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; border-radius: 32rpx; background: rgba(255,255,255,.72); color: #667269; font-size: 19rpx; }
+.loading-dot { width: 18rpx; height: 18rpx; border-radius: 50%; background: #668166; box-shadow: 0 0 0 12rpx rgba(102,129,102,.12); }
+.pill-button { display: flex; min-height: 62rpx; padding: 0 28rpx; align-items: center; justify-content: center; border-radius: 999rpx; font-size: 18rpx; }.pill-button.dark { background: #1b2920; color: #fff; }
+.onboarding-hero { display: flex; margin-top: 42rpx; flex-direction: column; }
+.onboarding-title { margin-top: 14rpx; font-family: Georgia, 'Songti SC', serif; font-size: 51rpx; font-weight: 730; line-height: 1.14; letter-spacing: -1rpx; }
+.onboarding-copy { max-width: 620rpx; margin-top: 20rpx; color: #677369; font-size: 20rpx; line-height: 1.65; }
+.direction-picker { margin-top: 34rpx; }
+.direction-option { display: flex; box-sizing: border-box; width: 100%; min-height: 112rpx; margin-bottom: 12rpx; padding: 22rpx 23rpx; align-items: flex-start; gap: 17rpx; border-radius: 24rpx; background: rgba(255,255,255,.85); text-align: left; }
+.direction-number { padding-top: 3rpx; color: #78907d; font-size: 16rpx; font-weight: 760; }.direction-option > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }.direction-name { font-size: 22rpx; font-weight: 690; }.direction-reason { display: -webkit-box; overflow: hidden; color: #748078; font-size: 17rpx; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }.direction-arrow { color: #849087; font-size: 30rpx; }
+.all-directions { width: 100%; padding: 24rpx 0; color: #5f7063; font-size: 18rpx; }
+.starter-card, .composer-card, .draft-card, .work-card, .section-card { box-sizing: border-box; margin-top: 26rpx; padding: 28rpx; border-radius: 30rpx; background: #fff; }
+.starter-heading, .composer-head, .draft-head, .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }.starter-heading > view, .composer-head > view, .draft-head > view, .section-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }.starter-heading > view text:first-child { color: #758278; font-size: 16rpx; }.starter-heading > view text:last-child, .composer-head > view text:last-child, .draft-head > view text:last-child, .section-head > view text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 26rpx; font-weight: 700; }.starter-heading > button, .composer-head > button, .draft-head > button { color: #728077; font-size: 19rpx; }
+.field { display: flex; margin-top: 23rpx; flex-direction: column; gap: 10rpx; }.field > text { color: #59675c; font-size: 17rpx; font-weight: 680; }
+.starter-reason { display: block; margin-top: 18rpx; color: #6f7c72; font-size: 17rpx; line-height: 1.55; }
+.primary-action { display: flex; box-sizing: border-box; width: 100%; min-height: 76rpx; margin-top: 24rpx; padding: 15rpx 24rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #1b2920; color: #fff; font-size: 20rpx; font-weight: 720; }.primary-action[disabled] { opacity: .46; }
+.confirm-note, .ai-boundary { display: block; margin-top: 13rpx; color: #879188; font-size: 15rpx; line-height: 1.45; text-align: center; }
+.resume-hero { box-sizing: border-box; margin-top: 27rpx; padding: 34rpx 30rpx 29rpx; border-radius: 35rpx; background: #18251d; color: #fff; box-shadow: 0 18rpx 50rpx rgba(25,40,29,.12); }
+.resume-meta { display: flex; justify-content: space-between; gap: 18rpx; color: #9fb1a2; font-size: 15rpx; letter-spacing: 1rpx; }.resume-label { display: block; margin-top: 34rpx; color: #9eafa1; font-size: 17rpx; }.resume-title { display: block; margin-top: 8rpx; font-family: Georgia, 'Songti SC', serif; font-size: 38rpx; font-weight: 720; line-height: 1.25; }.resume-outcome { display: block; margin-top: 15rpx; color: #c4cec6; font-size: 19rpx; line-height: 1.6; }
+.continuity { margin-top: 28rpx; border-top: 1rpx solid rgba(255,255,255,.12); }.continuity-row { display: flex; padding: 20rpx 0; flex-direction: column; gap: 8rpx; border-bottom: 1rpx solid rgba(255,255,255,.1); }.continuity-label { color: #91a294; font-size: 15rpx; }.continuity-row > text:last-child { font-size: 20rpx; line-height: 1.5; overflow-wrap: anywhere; }.continuity-row.next > text:last-child { color: #e8f3df; font-weight: 680; }.continuity-row.blocked > text:last-child { color: #efcf9e; }
+.main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; margin-top: 24rpx; }.action { display: flex; min-height: 100rpx; padding: 18rpx; flex-direction: column; align-items: flex-start; justify-content: center; gap: 7rpx; border: 1rpx solid rgba(255,255,255,.13); border-radius: 22rpx; color: #fff; text-align: left; }.action.continue { grid-column: 1 / -1; background: #dff0ce; color: #18251d; }.action.selected { background: rgba(255,255,255,.12); }.action > text:first-child { font-size: 21rpx; font-weight: 720; }.action > text:last-child { color: #96a79a; font-size: 15rpx; }.action.continue > text:last-child { color: #647462; }
+.composer-card textarea { margin-top: 22rpx; }.input-tools { display: flex; gap: 12rpx; margin-top: 16rpx; }.input-tools button { display: flex; min-height: 64rpx; padding: 0 23rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #edf3e8; color: #4f6253; font-size: 17rpx; }.input-tools button.recording { background: #9e423d; color: #fff; }
+.upload-progress { display: flex; align-items: center; gap: 13rpx; margin-top: 17rpx; }.upload-progress > view { height: 8rpx; flex: 1; overflow: hidden; border-radius: 999rpx; background: #e3e9df; }.upload-progress > view > view { height: 100%; border-radius: inherit; background: #668166; }.upload-progress > text { color: #718075; font-size: 15rpx; }.attachment-row { display: flex; align-items: center; gap: 9rpx; margin-top: 16rpx; }.attachment-row image { width: 68rpx; height: 68rpx; border-radius: 14rpx; }.attachment-row text { color: #6c786f; font-size: 16rpx; }.voice-note { display: block; margin-top: 14rpx; color: #617064; font-size: 16rpx; }
+.state-options, .close-options { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 20rpx; }.state-options button, .close-options button { display: flex; min-height: 52rpx; padding: 0 18rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #eef3e9; color: #627066; font-size: 16rpx; }.state-options button.active, .close-options button.active { background: #243329; color: #fff; }.close-options > text { display: flex; align-items: center; color: #78827a; font-size: 16rpx; }
+.work-card { background: #e4edcf; }.work-heading { display: flex; justify-content: space-between; gap: 20rpx; }.work-heading text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; font-weight: 700; }.work-heading text:last-child { color: #748074; font-size: 14rpx; }.work-copy { display: block; margin-top: 18rpx; font-size: 20rpx; line-height: 1.68; white-space: pre-wrap; overflow-wrap: anywhere; }.work-detail { display: flex; margin-top: 18rpx; padding-top: 17rpx; flex-direction: column; gap: 7rpx; border-top: 1rpx solid rgba(40,60,43,.11); }.work-detail text:first-child { color: #718075; font-size: 15rpx; }.work-detail text:last-child { font-size: 18rpx; line-height: 1.5; }
+.review-block { display: flex; margin-top: 20rpx; padding: 18rpx; flex-direction: column; gap: 8rpx; border-radius: 20rpx; background: #eff5eb; }.review-block > text:first-child { color: #5f705f; font-size: 16rpx; font-weight: 700; }.review-block > text:not(:first-child) { font-size: 18rpx; line-height: 1.5; }.review-block.inference { background: #f7f1e6; }
+.section-card { margin-top: 24rpx; }.section-head > text { color: #718075; font-size: 18rpx; }.diary-prompt, .result-row { display: flex; padding: 22rpx 0; flex-direction: column; gap: 9rpx; border-top: 1rpx solid #e8ede6; }.diary-prompt:first-of-type, .result-row:first-of-type { margin-top: 16rpx; }.diary-date, .result-row text:first-child { color: #718075; font-size: 15rpx; }.diary-excerpt { font-size: 20rpx; line-height: 1.58; }.diary-question { color: #677369; font-size: 17rpx; line-height: 1.5; }.diary-prompt > view { display: flex; gap: 12rpx; margin-top: 4rpx; }.diary-prompt button { display: flex; min-height: 57rpx; padding: 0 20rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #e7efdf; color: #35483a; font-size: 16rpx; }.diary-prompt button:last-child { background: #f2f3ef; color: #778079; }
+.result-row text:nth-child(2) { font-size: 19rpx; line-height: 1.55; }.result-row text:last-child { color: #899189; font-size: 14rpx; }.other-thread { display: flex; box-sizing: border-box; width: 100%; padding: 20rpx 0; align-items: center; justify-content: space-between; gap: 17rpx; border-top: 1rpx solid #e8ede6; text-align: left; }.other-thread:first-of-type { margin-top: 12rpx; }.other-thread > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.other-thread > view text:first-child { font-size: 19rpx; font-weight: 680; }.other-thread > view text:last-child { color: #738078; font-size: 16rpx; line-height: 1.4; }.other-thread > text { color: #657568; font-size: 16rpx; }
+.footer-links { margin-top: 25rpx; overflow: hidden; border-radius: 28rpx; background: rgba(255,255,255,.7); }.footer-links > button { display: flex; box-sizing: border-box; width: 100%; padding: 23rpx 25rpx; align-items: center; justify-content: space-between; gap: 16rpx; border-top: 1rpx solid rgba(30,42,33,.08); text-align: left; }.footer-links > button:first-child { border-top: 0; }.footer-links > button > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.footer-links > button > view text:first-child { font-size: 20rpx; font-weight: 680; }.footer-links > button > view text:last-child { color: #748078; font-size: 16rpx; line-height: 1.45; }.footer-links > button > text { color: #748078; font-size: 29rpx; }
+.privacy-note { display: flex; align-items: flex-start; gap: 12rpx; padding: 24rpx 8rpx 0; color: #758178; font-size: 15rpx; line-height: 1.5; }.privacy-note > view { width: 8rpx; height: 8rpx; margin-top: 7rpx; flex: 0 0 8rpx; border-radius: 50%; background: #668166; }
+/* #ifdef H5 */
+@media (min-width: 980px) { .compound-page { box-sizing: border-box; padding-left: 96px; }.status-bar { display: none; }.page-shell { max-width: 820px; margin: 0 auto; padding: 54px 38px 100px; } }
+/* #endif */
 </style>

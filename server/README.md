@@ -29,7 +29,7 @@ Runtime configuration is provided only through environment variables:
 - `EMBEDDING_TIMEOUT_MS`, `EMBEDDING_BATCH_SIZE`
 - `MEMORY_WORKER_ENABLED`, `MEMORY_WORKER_INTERVAL_MS`
 - `FRIEND_SYNC_WORKER_ENABLED`, `FRIEND_SYNC_WORKER_INTERVAL_MS`
-- `COMPOUND_OWNER_USER_IDS`（逗号分隔的 Shroom 用户 UUID）
+- `COMPOUND_OWNER_USER_IDS`（仅旧版 `/api/compound/v1` 四账户兼容接口使用）
 - `COMPOUND_STATS_URL`, `COMPOUND_STATS_USERNAME`, `COMPOUND_STATS_PASSWORD`
 - `COMPOUND_STATS_TIMEOUT_MS`（默认 `8000`）
 
@@ -96,12 +96,14 @@ OS automatically. Only a user-confirmed publish creates the next snapshot and
 active clauses; every support/challenge reference is revalidated as belonging to
 the same account. See `../docs/LIFE_OS.md` for the full contract.
 
-The owner-private compound system is mounted at `/api/compound/v1`. It reads
-redacted AI aggregates and the authenticated user's relationship commitments,
-while storing only prayer, body, and monthly financial-rule confirmations in
-`compound_settings` and `compound_checkins`. The configured owner UUID is
-checked server-side on every request; a client-provided user identifier is never
-trusted. See `../docs/COMPOUND_SYSTEM.md`.
+The current Compounding System is mounted at `/api/compound/v2` for every
+authenticated user. It persists a user-confirmed direction, outcome, current
+step, blockers, real results, diary reviews, and evidence-linked stage reviews.
+It may read confirmed Life OS clauses as context but cannot modify them. The old
+owner-only `/api/compound/v1` four-account endpoint and its
+`compound_settings`/`compound_checkins` records remain available only for
+backward compatibility and export. Neither API accepts a client-provided user
+identifier. See `../docs/COMPOUND_SYSTEM.md`.
 
 With the account owner's explicit authorization, legacy diaries can be scanned
 once for unresolved-question candidates without rerunning the full five-view

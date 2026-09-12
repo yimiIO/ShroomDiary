@@ -27,7 +27,8 @@ router.get('/all', asyncRoute(async (req, res) => {
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
     lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses, friendSettings,
     compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, aiUsage,
-    lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews] = await Promise.all([
+    lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews,
+    compoundThreads, compoundEvents, compoundReviews] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
     db.query('SELECT id, content, deadline, tags, status, completed_at, created_at, updated_at FROM todos WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, seed_sentence, my_understanding, usage_items, tags, visibility, copied_from_id, collection_slug, editorial_source, source_diary_id, source_analysis_id, last_reviewed_at, created_at, updated_at FROM cards WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
@@ -63,7 +64,10 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query('SELECT id, item_id, diary_id, analysis_id, record_type, evidence_excerpt, summary, suggested_next_step, origin, user_confirmed, status, source_version, source_valid, created_at, updated_at FROM life_os_item_links WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, item_id, ref_type, ref_id, label, external_url, created_at, updated_at FROM life_os_item_refs WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT id, item_id, change_type, snapshot, created_at FROM life_os_item_history WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
-    db.query('SELECT id, week_start, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM life_os_weekly_reviews WHERE user_id = $1 ORDER BY week_start, created_at', [req.user.id])
+    db.query('SELECT id, week_start, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM life_os_weekly_reviews WHERE user_id = $1 ORDER BY week_start, created_at', [req.user.id]),
+    db.query('SELECT id, item_id, progress_mode, desired_outcome, context_summary, last_completed, current_step, blocker_summary, status, is_primary, started_at, last_activity_at, paused_at, ended_at, created_at, updated_at FROM compound_threads WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT id, thread_id, kind, status, actor, input_text, summary, payload, media_ids, source_diary_id, source_link_id, source_valid, created_at, updated_at FROM compound_events WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT id, scope_start, scope_end, status, result, source_refs, model_version, cost_summary, confirmed_at, created_at, updated_at FROM compound_reviews WHERE user_id = $1 ORDER BY scope_end, created_at', [req.user.id])
   ]);
   const replacements = friends.rows.map((item, index) => ({ from: item.name, to: `人物${index + 1}` }))
     .filter(item => item.from).concat([
@@ -103,7 +107,10 @@ router.get('/all', asyncRoute(async (req, res) => {
     inquirySyntheses: inquirySyntheses.rows,
     aiUsage: aiUsage.rows,
     compoundSettings: compoundSettings.rows[0] || null,
-    compoundCheckins: compoundCheckins.rows
+    compoundCheckins: compoundCheckins.rows,
+    compoundThreads: compoundThreads.rows,
+    compoundEvents: compoundEvents.rows,
+    compoundReviews: compoundReviews.rows
   };
   if (!redacted) return ok(res, payload);
   const clean = redactValue(payload, replacements);

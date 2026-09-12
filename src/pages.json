@@ -110,7 +110,7 @@
 		{
 			"path": "pages/shroom/life-os-plan",
 			"style": {
-				"navigationBarTitleText": "人生 OS",
+				"navigationBarTitleText": "长期方向",
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
@@ -120,7 +120,7 @@
 		{
 			"path": "pages/shroom/life-os-item",
 			"style": {
-				"navigationBarTitleText": "长期事项",
+				"navigationBarTitleText": "长期方向",
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
@@ -130,7 +130,7 @@
 		{
 			"path": "pages/shroom/life-os-weekly",
 			"style": {
-				"navigationBarTitleText": "每周复盘",
+				"navigationBarTitleText": "阶段回看",
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",

@@ -48,9 +48,9 @@
 			</view>
 		</view>
 
-		<view class="life-os-entry" @tap="openLifeOsPlan">
-			<view class="life-os-symbol"><text>OS</text></view>
-			<view class="life-os-entry-copy"><text>人生 OS</text><text>{{ lifeOsEntryDescription }}</text></view>
+		<view class="life-os-entry" @tap="openCompoundSystem">
+			<view class="life-os-symbol"><text>∞</text></view>
+			<view class="life-os-entry-copy"><text>复利系统</text><text>{{ compoundEntryDescription }}</text></view>
 			<text class="life-os-arrow">›</text>
 		</view>
 
@@ -207,7 +207,7 @@ import moment from '@/common/moment.js';
 import { diaryCalendar, diaryList } from '@/api/diary';
 import { todoList } from '@/api/todo';
 import { inquirySummary } from '@/api/inquiry';
-import { lifeOsPlanHome } from '@/api/shroom-system';
+import { compoundHome } from '@/api/compound-system';
 import diaryTime from '@/utils/diary-time.js';
 import diaryPreviewUtils from '@/utils/diary-preview.js';
 
@@ -236,7 +236,7 @@ export default {
 			showFullCalendarView: false,
 			pendingTodoCount: 0, // 待完成待办数量
 			inquiryOverview: null,
-			lifeOsOverview: null,
+			compoundOverview: null,
 			// 默认图片URL
 			defaultImageUrl: 'https://images.unsplash.com/photo-1493612276216-ee3925520721?w=800&h=600&fit=crop'
 		};
@@ -274,9 +274,9 @@ export default {
 		activeInquiries() {
 			return (this.inquiryOverview && Array.isArray(this.inquiryOverview.active)) ? this.inquiryOverview.active : [];
 		},
-		lifeOsEntryDescription() {
-			const count = this.lifeOsOverview && Array.isArray(this.lifeOsOverview.focus) ? this.lifeOsOverview.focus.length : 0;
-			return count ? `本周关注 ${count} 项 · 从日记积累真实进展` : '20 项长期事项 · 选择这周真正重要的 1–3 项';
+		compoundEntryDescription() {
+			const current = this.compoundOverview && this.compoundOverview.current;
+			return current ? `接着推进：${current.itemName}` : '选一件现在最值得开始的事';
 		}
 	},
 	onLoad() {
@@ -309,7 +309,7 @@ export default {
 		this.loadCalendarDates(this.selectedMonth);
 		this.loadPendingTodoCount();
 		this.loadInquiryOverview();
-		this.loadLifeOsOverview();
+		this.loadCompoundOverview();
 	},
 	methods: {
 		// 初始化日期选择器
@@ -660,15 +660,15 @@ export default {
 			}
 		},
 
-		async loadLifeOsOverview() {
-			if (!this.$mStore.getters.hasLogin) { this.lifeOsOverview = null; return; }
-			try { const res = await this.$http.get(lifeOsPlanHome); this.lifeOsOverview = res.data || null; }
-			catch (error) { console.error('加载人生 OS 概览失败', error); this.lifeOsOverview = null; }
+		async loadCompoundOverview() {
+			if (!this.$mStore.getters.hasLogin) { this.compoundOverview = null; return; }
+			try { const res = await this.$http.get(compoundHome); this.compoundOverview = res.data || null; }
+			catch (error) { console.error('加载复利系统概览失败', error); this.compoundOverview = null; }
 		},
 
-		openLifeOsPlan() {
+		openCompoundSystem() {
 			if (!this.requireLogin()) return;
-			uni.navigateTo({ url: '/pages/shroom/life-os-plan' });
+			uni.navigateTo({ url: '/pages/shroom/compound' });
 		},
 
 		openInquiries() {

@@ -79,6 +79,13 @@ async function invalidateDiaryDerivatives(client, userId, diaryId, reason) {
       WHERE user_id = $1 AND diary_id = $2 AND user_confirmed = true`,
     [userId, diaryId]
   );
+  await client.query(
+    `UPDATE compound_events SET source_valid = false,
+       status = CASE WHEN status = 'DRAFT' THEN 'DISMISSED' ELSE status END,
+       updated_at = now()
+     WHERE user_id = $1 AND source_diary_id = $2 AND source_valid`,
+    [userId, diaryId]
+  );
 }
 
 async function adoptUnconfiguredTasks(client) {

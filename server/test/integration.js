@@ -497,7 +497,70 @@ async function run() {
     const portableLifeOs = expectCode(await api('/api/life-os/v1/plan/export', { token: tokenA }));
     assert.equal(portableLifeOs.json.format, 'shroom-life-os-v1');
     assert.equal(portableLifeOs.json.sections.flatMap(section => section.items).length, 20);
-    assert.match(portableLifeOs.markdown, /# 我的人生 OS · 长期事项/);
+    assert.match(portableLifeOs.markdown, /# Shroom 复利系统 · 长期方向/);
+
+    const compoundBefore = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
+    assert.equal(compoundBefore.needsOnboarding, true);
+    assert.equal(compoundBefore.directionCount, 20);
+    const compoundThread = expectCode(await api('/api/compound/v2/threads', {
+      method: 'POST', token: tokenA, body: {
+        itemKey: '05',
+        desiredOutcome: '做出一份可核对的真实交付案例',
+        currentStep: '先列出现有的前后证据',
+        contextReason: '由集成测试用户确认'
+      }
+    }));
+    assert.equal(compoundThread.itemKey, '05');
+    assert.equal(compoundThread.progressMode, 'OUTCOME');
+    const compoundResumed = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
+    assert.equal(compoundResumed.needsOnboarding, false);
+    assert.equal(compoundResumed.current.currentStep, '先列出现有的前后证据');
+    expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}`, { token: sessionB.access_token }), 404);
+    expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/blocker`, {
+      method: 'POST', token: tokenA, body: { blocker: '' }
+    }), 400);
+
+    const owner = await pool.query('SELECT id FROM users WHERE mobile = $1', [mobileA]);
+    const compoundItem = await pool.query(
+      `SELECT id FROM life_os_items WHERE user_id = $1 AND stable_key = '05'`,
+      [owner.rows[0].id]
+    );
+    const compoundLinkId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO life_os_item_links
+        (id, user_id, item_id, diary_id, record_type, evidence_excerpt, summary, origin, status)
+       VALUES ($1, $2, $3, $4, 'ACTION', 'integration diary', '真实日记关联', 'AI', 'ACTIVE')`,
+      [compoundLinkId, owner.rows[0].id, compoundItem.rows[0].id, diary.id]
+    );
+    const compoundWithDiary = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
+    assert.equal(compoundWithDiary.diarySuggestions[0].diaryId, diary.id);
+    expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/diary-links/${compoundLinkId}/dismiss`, {
+      method: 'POST', token: tokenA, body: {}
+    }));
+    const compoundWithoutDiary = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
+    assert.equal(compoundWithoutDiary.diarySuggestions.length, 0);
+
+    const resultEventId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, input_text, summary, payload)
+       VALUES ($1, $2, $3, 'RESULT', 'DRAFT', 'AI', '已经完成证据清单', '完成证据清单', $4::jsonb)`,
+      [resultEventId, owner.rows[0].id, compoundThread.id, JSON.stringify({
+        state: 'DONE', summary: '完成证据清单', actualResult: '一份包含三条证据的清单',
+        progressSummary: '已完成第一步', nextStep: '找出缺少的结果证据', uncertainty: '', rawInput: '已经完成证据清单'
+      })]
+    );
+    const confirmedCompoundResult = expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/results/${resultEventId}/confirm`, {
+      method: 'POST', token: tokenA, body: { closeMode: 'CONTINUE' }
+    }));
+    assert.equal(confirmedCompoundResult.event.payload.state, 'DONE');
+    const compoundAfterResult = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
+    assert.equal(compoundAfterResult.current.lastCompleted, '一份包含三条证据的清单');
+    assert.equal(compoundAfterResult.current.currentStep, '找出缺少的结果证据');
+    const portableCompound = expectCode(await api('/api/compound/v2/export', { token: tokenA }));
+    assert.equal(portableCompound.json.format, 'shroom-compound-v1');
+    assert.equal(portableCompound.json.threads.length, 1);
+    assert.match(portableCompound.markdown, /Shroom 复利系统/);
 
     const aiStatus = expectCode(await api('/api/ai/v1/status', { token: tokenA }));
     if (!aiStatus.enabled) {
@@ -605,6 +668,8 @@ async function run() {
     assert.equal(exported.lifeOs.version, 1);
     assert.equal(exported.lifeOsItems.length, 20);
     assert.equal(exported.lifeOsWeekFocus.length, 2);
+    assert.equal(exported.compoundThreads.length, 1);
+    assert.ok(exported.compoundEvents.some(item => item.kind === 'RESULT'));
     assert.equal(exported.inquiries.length, 2);
     assert.equal(exported.inquiryEvidence.length, 3);
     assert.ok(exported.inquiries.some(item => item.inquiry_type === 'PHYSICAL_HEALTH'));
@@ -616,7 +681,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();

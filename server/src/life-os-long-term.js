@@ -137,7 +137,7 @@ async function listDiaryLifeOsLinks(queryable, userId, diaryId) {
   }));
 }
 
-const WEEKLY_REVIEW_PROMPT = `你是 Shroom 人生 OS 每周复盘助手。输入包含 20 项长期事项和本周已经与日记关联的记录。你只整理证据，不代替用户确认人生原则、创建待办或完成行动。
+const WEEKLY_REVIEW_PROMPT = `你是 Shroom 复利方向旧版每周回看助手。输入包含 20 个长期方向和本周已经与日记关联的记录。你只整理证据，不代替用户确认人生原则、创建待办或完成行动。
 
 规则：
 1. 只能引用输入中存在的 sourceKey 和 itemId；没有证据就留空。

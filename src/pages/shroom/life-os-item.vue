@@ -2,12 +2,12 @@
 	<view class="page">
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
 		<view class="shell" v-if="item">
-			<view class="header"><button class="back" @tap="goBack">‹</button><view class="heading"><text class="kicker">LIFE OS · {{ item.section }}</text><text class="title">{{ item.stableKey }} · {{ item.name }}</text></view></view>
+			<view class="header"><button class="back" @tap="goBack">‹</button><view class="heading"><text class="kicker">COMPOUND DIRECTION · {{ item.section }}</text><text class="title">{{ item.stableKey }} · {{ item.name }}</text></view></view>
 			<view class="state-line"><text>{{ item.status === 'PAUSED' ? '暂停维护' : '长期维护中' }}</text><text>{{ item.relatedRecordCount }} 条关联记录</text></view>
 
 			<view class="editor">
 				<text class="field-label">它是什么</text>
-				<input v-model="form.name" class="title-input" maxlength="120" placeholder="长期事项名称" />
+				<input v-model="form.name" class="title-input" maxlength="120" placeholder="长期方向名称" />
 				<textarea v-model="form.description" class="textarea" maxlength="3000" auto-height :show-confirm-bar="false" placeholder="说明为什么这件事值得长期维护，不必写成口号。" />
 				<text class="field-label">最低行动</text>
 				<textarea v-model="form.minimumAction" class="textarea compact" maxlength="2000" auto-height :show-confirm-bar="false" placeholder="即使状态一般，也做得到的最小动作。" />
@@ -98,7 +98,7 @@ export default {
 			uni.showModal({ title: isFocus ? '移出本周关注？' : '加入本周关注？', content: '只影响本周关注，不改变长期事项本身。', confirmText: '确认', success: async result => { if (!result.confirm) return; await this.$http.put(lifeOsPlanFocus, { itemKeys: next }); await this.load(); } });
 		},
 		async changeLinkType(link, recordType) { if (!link.sourceValid || link.recordType === recordType) return; try { await this.$http.patch(lifeOsPlanLink(link.id), { recordType }); await this.load(); } catch (error) { console.error('纠正记录类型失败', error); } },
-		removeLink(link) { uni.showModal({ title: '取消这条关联？', content: '不会删除日记或人生 OS 事项。', confirmText: '取消关联', success: async result => { if (!result.confirm) return; await this.$http.delete(lifeOsPlanLink(link.id)); await this.load(); } }); },
+		removeLink(link) { uni.showModal({ title: '取消这条关联？', content: '不会删除日记、复利方向或人生 OS 原则。', confirmText: '取消关联', success: async result => { if (!result.confirm) return; await this.$http.delete(lifeOsPlanLink(link.id)); await this.load(); } }); },
 		async addReference() { if (!this.assetLabel.trim() || !/^https?:\/\//i.test(this.assetUrl.trim())) return uni.showToast({ title: '请填写名称和 http(s) 链接', icon: 'none' }); this.addingReference = true; try { await this.$http.post(lifeOsPlanReferences(this.key), { refType: 'EXTERNAL_ASSET', label: this.assetLabel.trim(), externalUrl: this.assetUrl.trim() }); this.assetLabel = ''; this.assetUrl = ''; await this.load(); } catch (error) { console.error('保存引用失败', error); } finally { this.addingReference = false; } },
 		async addExistingReference(option) { if (!option || this.addingReference) return; this.addingReference = true; try { await this.$http.post(lifeOsPlanReferences(this.key), { refType: this.referenceType, refId: option.id, label: option.label }); await this.load(); uni.showToast({ title: '已关联', icon: 'success' }); } catch (error) { console.error('关联已有内容失败', error); } finally { this.addingReference = false; } },
 		removeReference(ref) { uni.showModal({ title: '移除资产引用？', content: '不会删除原始资产。', confirmText: '移除', success: async result => { if (!result.confirm) return; await this.$http.delete(lifeOsPlanReference(ref.id)); await this.load(); } }); },

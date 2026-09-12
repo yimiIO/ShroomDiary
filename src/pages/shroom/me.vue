@@ -40,18 +40,16 @@
 				</view>
 			</view>
 
-			<view v-if="hasCompoundSystemAccess" class="compound-entry" @tap="openCompoundSystem">
+			<view v-if="hasLogin" class="compound-entry" @tap="openCompoundSystem">
 				<view class="compound-symbol">∞</view>
 				<view class="compound-copy">
 					<text class="compound-kicker">PERSONAL OPERATING RHYTHM</text>
 					<text class="compound-title">复利系统</text>
 					<text class="compound-description">{{ compoundDescription }}</text>
-					<view class="compound-accounts">
-						<text>系统</text><text>金融</text><text>信用</text><text>身体</text>
-					</view>
+					<view class="compound-accounts"><text>接着做</text><text>处理卡点</text><text>记录结果</text></view>
 				</view>
 				<view class="compound-progress">
-					<text v-if="compoundOverview">{{ compoundOverview.progress.completed }}/{{ compoundOverview.progress.total }}</text>
+					<text v-if="compoundOverview && compoundOverview.current">继续</text>
 					<text v-else>进入</text>
 					<text class="compound-arrow">›</text>
 				</view>
@@ -155,7 +153,7 @@
 <script>
 import { diaryStats } from '@/api/diary';
 import { lifeOsConfig } from '@/api/shroom-system';
-import { COMPOUND_OWNER_USER_ID, compoundToday } from '@/api/compound-system';
+import { compoundHome } from '@/api/compound-system';
 import { inquirySummary } from '@/api/inquiry';
 
 export default {
@@ -175,13 +173,9 @@ export default {
 		userInfo() {
 			return this.$mStore.state.userInfo || {};
 		},
-		hasCompoundSystemAccess() {
-			return this.hasLogin && this.userInfo.id === COMPOUND_OWNER_USER_ID;
-		},
 		compoundDescription() {
-			if (!this.compoundOverview) return '让正确的事持续发生，并尽量脱离重复劳动';
-			const { completed, total } = this.compoundOverview.progress || { completed: 0, total: 0 };
-			return `今日必做 ${completed}/${total} · Codex 与每日打卡自动同步`;
+			if (!this.compoundOverview || !this.compoundOverview.current) return '选一件值得开始的事，做成一步后下次接着做';
+			return `正在推进：${this.compoundOverview.current.itemName}`;
 		},
 		displayName() {
 			return this.userInfo.nickname || this.userInfo.realname || this.userInfo.mobile || '我的 Shroom';
@@ -219,7 +213,7 @@ export default {
 			this.loadDiaryStats();
 			this.loadLifeOs();
 			this.loadInquiries();
-			if (this.hasCompoundSystemAccess) this.loadCompoundOverview();
+			this.loadCompoundOverview();
 		}
 	},
 	methods: {
@@ -249,7 +243,7 @@ export default {
 		},
 		async loadCompoundOverview() {
 			try {
-				const response = await this.$http.get(compoundToday);
+				const response = await this.$http.get(compoundHome);
 				this.compoundOverview = response.data || null;
 			} catch (error) {
 				this.compoundOverview = null;
@@ -274,7 +268,7 @@ export default {
 			uni.navigateTo({ url: '/pages/todo/list' });
 		},
 		openLifeOs() {
-			uni.navigateTo({ url: '/pages/shroom/life-os-plan' });
+			uni.navigateTo({ url: '/pages/shroom/life-os' });
 		},
 		openObservers() {
 			uni.navigateTo({ url: '/pages/shroom/observers' });

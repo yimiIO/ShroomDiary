@@ -45,6 +45,7 @@ function mapItem(row) {
     priority: Number(row.priority),
     status: row.status,
     isWeekFocus: Boolean(row.is_week_focus),
+    hasActiveThread: Boolean(row.has_active_thread),
     relatedRecordCount: Number(row.related_record_count || 0),
     updatedAt: row.updated_at
   };
@@ -103,6 +104,8 @@ async function itemRows(userId, selectedWeek = weekStart()) {
     `SELECT i.*,
             EXISTS (SELECT 1 FROM life_os_week_focus f
               WHERE f.user_id = i.user_id AND f.item_id = i.id AND f.week_start = $2::date) AS is_week_focus,
+            EXISTS (SELECT 1 FROM compound_threads t
+              WHERE t.user_id = i.user_id AND t.item_id = i.id AND t.status = 'ACTIVE') AS has_active_thread,
             (SELECT count(*)::int FROM life_os_item_links l
               WHERE l.user_id = i.user_id AND l.item_id = i.id AND l.status = 'ACTIVE' AND l.source_valid) AS related_record_count
        FROM life_os_items i
@@ -167,7 +170,7 @@ router.get('/home', asyncRoute(async (req, res) => {
       active: items.filter(item => item.status === 'ACTIVE').length,
       paused: items.filter(item => item.status === 'PAUSED').length
     },
-    privacy: '人生 OS 仅本人可见，不随日记公开，也不进入发现。'
+    privacy: '复利方向仅本人可见，不随日记公开，也不进入发现。'
   });
 }));
 
@@ -405,7 +408,7 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
   if (!isAiConfigured()) return fail(res, 503, '每周复盘 AI 尚未配置');
   const selectedWeek = weekStart();
   const [sources, rows] = await Promise.all([weeklySources(req.user.id, selectedWeek), itemRows(req.user.id, selectedWeek)]);
-  if (!sources.length) return fail(res, 400, '本周还没有与人生 OS 关联的日记记录');
+  if (!sources.length) return fail(res, 400, '本周还没有与复利方向关联的日记记录');
   const items = rows.map(mapItem);
   const raw = await callJson(WEEKLY_REVIEW_PROMPT, {
     weekStart: selectedWeek,
@@ -415,7 +418,7 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
       isWeekFocus: item.isWeekFocus, status: item.status
     })),
     records: sources
-  }, '人生 OS 每周复盘', {
+  }, '复利方向旧版每周回看', {
     temperature: 0.15,
     maxTokens: 5000,
     usageContext: { userId: req.user.id, feature: 'life_os_weekly_review', taskId: reviewId }
@@ -485,7 +488,7 @@ router.post('/reviews/:id/confirm', asyncRoute(async (req, res) => {
 
 function lifeOsMarkdown(payload) {
   const lines = [
-    '# 我的人生 OS · 长期事项', '',
+    '# Shroom 复利系统 · 长期方向', '',
     `> 导出时间：${payload.exportedAt}`, '',
     '这是长期方向与证据连接，不是每日必须完成的打卡表。'
   ];

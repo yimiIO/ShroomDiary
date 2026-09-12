@@ -76,7 +76,7 @@ test('life OS is reviewed as confirmed clauses and cards are not actions', () =>
   assert.match(me, /带到下一次相似时刻的理解/);
 });
 
-test('life OS long-term layer is lightweight, evidence-linked and user-confirmed', () => {
+test('compound directions stay secondary while Life OS remains a separate principle module', () => {
   const home = source('src/pages/diary/index.vue');
   const plan = source('src/pages/shroom/life-os-plan.vue');
   const item = source('src/pages/shroom/life-os-item.vue');
@@ -87,17 +87,20 @@ test('life OS long-term layer is lightweight, evidence-linked and user-confirmed
   const pages = JSON.parse(source('src/pages.json'));
 
   assert.match(home, /life-os-entry/);
-  assert.match(plan, /本周关注/);
-  assert.match(plan, /20 COMPOUNDING THREADS/);
-  assert.match(plan, /最近关联记录/);
-  assert.match(plan, /判断原则与版本/);
-  assert.match(plan, /导出 JSON/);
+	assert.match(home, /复利系统/);
+	assert.match(plan, /当前关注范围/);
+	assert.match(plan, /selectDirection\(item\)/);
+	assert.match(plan, /compoundStartItemKey/);
+	assert.match(plan, /FIVE AREAS · 20 DIRECTIONS/);
+	assert.match(plan, /最近关联记录/);
+	assert.match(plan, /判断原则与版本/);
+	assert.match(plan, /导出 JSON/);
   assert.match(item, /这里没有“永久完成”/);
   assert.match(item, /取消关联/);
   assert.match(item, /原文已变更/);
-  assert.match(weekly, /可编辑草稿/);
-  assert.match(weekly, /不会创建待办或正式原则/);
-  assert.match(analysis, /普通关联已自动保存为“AI 关联”/);
+	assert.match(weekly, /确认前可以修改/);
+	assert.match(weekly, /不会自动停止推进、创建待办或修改人生 OS/);
+	assert.match(analysis, /进入后才能把它接入正在推进的事/);
   assert.match(prompt, /最多 3 条/);
   assert.match(prompt, /不是 ACTION/);
   assert.equal((defaults.match(/\['\d{2}',/g) || []).length, 20);
@@ -107,34 +110,33 @@ test('life OS long-term layer is lightweight, evidence-linked and user-confirmed
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
 });
 
-test('personal compound system is account-gated and keeps four cadences separate', () => {
-  const me = source('src/pages/shroom/me.vue');
-  const compound = source('src/pages/shroom/compound.vue');
-  const compoundRoute = source('server/src/routes/compound.js');
-  const pages = source('src/pages.json');
-  const api = source('src/api/compound-system.js');
+test('compound system resumes real work and persists blockers, results and diary reviews', () => {
+	const me = source('src/pages/shroom/me.vue');
+	const compound = source('src/pages/shroom/compound.vue');
+	const compoundRoute = source('server/src/routes/compound-progress.js');
+	const pages = source('src/pages.json');
+	const api = source('src/api/compound-system.js');
 
-  assert.match(me, /hasCompoundSystemAccess/);
-  assert.match(me, /COMPOUND_OWNER_USER_ID/);
-  assert.match(me, /复利系统/);
-  assert.match(pages, /pages\/shroom\/compound/);
-  assert.match(api, /\/compound\/v1\/today/);
-  for (const label of ['系统复利', '金融复利', '信用复利', '身体复利']) {
-    assert.match(compoundRoute, new RegExp(label));
-  }
-  assert.match(compound, /\[5, 15, 30\]/);
-  assert.match(compound, /由 Codex 记录自动判断/);
-  assert.match(compound, /六类复利本金/);
-  assert.match(compound, /重新读取/);
-  assert.doesNotMatch(compound, /setTimeout\(\(\) => this\.goBack/);
-  assert.match(compound, /只确认你按既定规则完成/);
-  assert.match(compound, /跟练结束后可打卡/);
-  assert.match(compound, /@ended="finishYogaPractice"/);
-  assert.match(compoundRoute, /bodyPractice: DAILY_YOGA_PRACTICE/);
-  const compoundSystem = source('server/src/compound-system.js');
-  assert.match(compoundSystem, /durationMinutes: 24/);
-  assert.match(compoundSystem, /fit-for-duty-yoga-24min-h264\.mp4/);
-  assert.match(compoundSystem, /https:\/\/img\.surfplus\.xyz\/shroom\/compound-system\/yoga/);
+	assert.doesNotMatch(me, /hasCompoundSystemAccess|COMPOUND_OWNER_USER_ID/);
+	assert.match(me, /复利系统/);
+	assert.match(pages, /pages\/shroom\/compound/);
+	assert.match(api, /\/compound\/v2\/home/);
+	assert.match(compound, /先选一件/);
+	assert.match(compound, /继续推进/);
+	assert.match(compound, /我卡住了/);
+	assert.match(compound, /记录结果/);
+	assert.match(compound, /实际发生了什么/);
+	assert.match(compound, /进入后才能把它接入正在推进的事|回看这次/);
+	assert.match(compound, /人生 OS 原则/);
+	assert.match(compound, /语音记录/);
+	assert.match(compound, /添加照片/);
+	assert.match(compound, /重新读取/);
+	assert.doesNotMatch(compound, /setTimeout\(\(\) => this\.goBack/);
+	assert.match(compoundRoute, /compound_threads/);
+	assert.match(compoundRoute, /compound_events/);
+	assert.match(compoundRoute, /status = 'DRAFT'/);
+	assert.match(compoundRoute, /source_diary_id/);
+	assert.doesNotMatch(compoundRoute, /req\.body\.userId/);
 });
 
 test('diary writing has no manual tags and archive themes open semantic cached reviews', () => {

@@ -69,6 +69,7 @@ async function mapAnalysisWithCandidates(row, userId, queryable = db) {
     : [[], []];
   analysis.inquiryCandidates = inquiryCandidates;
   analysis.lifeOsLinks = lifeOsLinks;
+  analysis.compoundLinks = lifeOsLinks;
   return analysis;
 }
 
@@ -215,7 +216,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       observations,
       existingCards: cards,
       existingInquiries,
-      lifeOsItems: lifeOsItemsResult.rows
+      compoundDirections: lifeOsItemsResult.rows
     }, '行动与菇卡整理', {
       usageContext: { userId, feature: 'diary_observation_followup', diaryId, analysisId }
     });
@@ -226,7 +227,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       followup.inquiryCandidates,
       existingInquiries
     );
-    const lifeOsLinks = normalizeLifeOsLinks(followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
+    const lifeOsLinks = normalizeLifeOsLinks(followup.compoundLinks || followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
     return db.transaction(async client => {

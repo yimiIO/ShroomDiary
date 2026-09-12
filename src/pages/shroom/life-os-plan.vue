@@ -4,33 +4,34 @@
 		<view class="shell">
 			<view class="header">
 				<button class="back" aria-label="返回" @tap="goBack">‹</button>
-				<view class="heading"><text class="kicker">LIFE OS · LONG HORIZON</text><text class="title">人生 OS</text><text class="subtitle">长期维护重要的事，不把生活变成每日打卡。</text></view>
+				<view class="heading"><text class="kicker">COMPOUND DIRECTIONS</text><text class="title">长期方向</text><text class="subtitle">五类 20 项是选择与归档，不是二十条待办或每日打卡。</text></view>
 			</view>
 
-			<view class="privacy"><view></view><text>{{ overview.privacy || '人生 OS 仅本人可见，不随日记公开，也不进入发现。' }}</text></view>
+			<view class="privacy"><view></view><text>{{ selectionMode ? '选择一个方向后会返回复利系统，由你确认目标和最小一步。' : '复利方向及相关记录仅本人可见，不随日记公开，也不进入发现。' }}</text></view>
 
 			<view class="focus-panel">
-				<view class="section-head"><view><text class="section-kicker">THIS WEEK</text><text class="section-title">本周关注</text></view><button @tap="toggleFocusEditor">{{ editingFocus ? '取消' : '调整' }}</button></view>
+				<view class="section-head"><view><text class="section-kicker">CURRENT FOCUS</text><text class="section-title">当前关注范围</text></view><button @tap="toggleFocusEditor">{{ editingFocus ? '取消' : '调整' }}</button></view>
 				<view v-if="focus.length" class="focus-list">
 					<view v-for="item in focus" :key="item.stableKey" class="focus-item" @tap="openItem(item)">
 						<text class="focus-number">{{ item.stableKey }}</text><view><text>{{ item.name }}</text><text>{{ item.currentNextStep || item.minimumAction || '进入后写下这周最小的一步' }}</text></view><text>›</text>
 					</view>
 				</view>
-				<view v-else class="focus-empty"><text>这周还没有选择重点</text><text>可以空着，也可以只选 1–3 项真正值得注意的长期事项。</text></view>
+				<view v-else class="focus-empty"><text>还没有单独标记关注方向</text><text>开始推进时不需要先配置这里；需要时再选 1–3 项。</text></view>
 				<view v-if="editingFocus" class="focus-editor">
-					<text class="focus-guidance">选择 1–3 项。保存前不会改变本周重点。</text>
+					<text class="focus-guidance">选择 1–3 项。这里只调整关注范围，不会自动创建待办。</text>
 					<view v-for="item in activeItems" :key="item.stableKey" class="focus-choice" :class="{ selected: focusKeys.includes(item.stableKey) }" @tap="toggleFocus(item)"><view>{{ focusKeys.includes(item.stableKey) ? '✓' : '' }}</view><text>{{ item.stableKey }} · {{ item.name }}</text></view>
-					<button class="primary" :disabled="savingFocus" @tap="saveFocus">{{ savingFocus ? '保存中…' : `确认本周重点 · ${focusKeys.length}/3` }}</button>
+					<button class="primary" :disabled="savingFocus" @tap="saveFocus">{{ savingFocus ? '保存中…' : `确认关注范围 · ${focusKeys.length}/3` }}</button>
 				</view>
 			</view>
 
 			<view class="items-panel">
-				<view class="section-head"><view><text class="section-kicker">20 COMPOUNDING THREADS</text><text class="section-title">长期事项</text></view><text>{{ overview.counts.total || 20 }} 项</text></view>
+				<view class="section-head"><view><text class="section-kicker">FIVE AREAS · 20 DIRECTIONS</text><text class="section-title">全部长期方向</text></view><text>{{ overview.counts.total || 20 }} 项</text></view>
 				<view v-for="group in overview.sections" :key="group.section" class="group">
 					<view class="group-head" @tap="toggleSection(group.section)"><view><text>{{ group.section }}</text><text>{{ activeCount(group.items) }} 项维护中</text></view><text>{{ openSections.includes(group.section) ? '−' : '+' }}</text></view>
 					<view v-if="openSections.includes(group.section)" class="group-items">
 						<view v-for="item in group.items" :key="item.stableKey" class="item-row" :class="{ paused: item.status === 'PAUSED' }" @tap="openItem(item)">
 							<text class="item-number">{{ item.stableKey }}</text><view><text>{{ item.name }}</text><text>{{ item.currentNextStep || item.minimumAction || '尚未设置最小行动' }}</text></view><view class="item-meta"><text v-if="item.isWeekFocus">本周</text><text v-if="item.relatedRecordCount">{{ item.relatedRecordCount }} 条记录</text><text v-if="item.status === 'PAUSED'">已暂停</text></view>
+							<button v-if="selectionMode && item.status === 'ACTIVE'" class="select-direction" :disabled="item.hasActiveThread" @tap.stop="selectDirection(item)">{{ item.hasActiveThread ? '推进中' : '选择' }}</button>
 						</view>
 					</view>
 				</view>
@@ -44,7 +45,7 @@
 				<view v-else class="quiet-empty">日记分析发现真实相关的计划、行动、结果或观察后，会在这里留下可纠正的关联。</view>
 			</view>
 
-			<view class="review-panel" @tap="openWeekly"><view><text class="section-kicker">WEEKLY REVIEW</text><text class="section-title">每周复盘</text><text>{{ reviewDescription }}</text></view><text>›</text></view>
+			<view class="review-panel" @tap="openWeekly"><view><text class="section-kicker">EVIDENCE REVIEW</text><text class="section-title">阶段回看</text><text>按真实推进与结果，决定继续、调整还是停止。</text></view><text>›</text></view>
 			<view class="principles-link" @tap="openPrinciples"><view><text>判断原则与版本</text><text>管理比 20 项更抽象、需要你确认签发的判断标准</text></view><text>›</text></view>
 			<view class="export-row"><button @tap="exportData('json')">导出 JSON</button><button @tap="exportData('markdown')">导出 Markdown</button></view>
 		</view>
@@ -52,7 +53,8 @@
 </template>
 
 <script>
-import { lifeOsPlanExport, lifeOsPlanFocus, lifeOsPlanHome } from '@/api/shroom-system';
+import { compoundExport } from '@/api/compound-system';
+import { lifeOsPlanFocus, lifeOsPlanHome } from '@/api/shroom-system';
 
 export default {
 	data() {
@@ -60,6 +62,7 @@ export default {
 			statusBarHeight: 0,
 			overview: { privacy: '', focus: [], sections: [], recentRecords: [], latestReview: null, counts: {} },
 			openSections: ['健康与生活'],
+			selectionMode: false,
 			editingFocus: false,
 			focusKeys: [],
 			savingFocus: false
@@ -74,12 +77,12 @@ export default {
 			return review.status === 'DRAFT' ? '有一份待确认草稿' : `最近确认：${review.weekStart}`;
 		}
 	},
-	onLoad() { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; },
+	onLoad(options) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.selectionMode = options && options.select === '1'; },
 	onShow() { this.load(); },
 	methods: {
 		async load() {
 			try { const res = await this.$http.get(lifeOsPlanHome); this.overview = { ...this.overview, ...(res.data || {}) }; }
-			catch (error) { console.error('加载人生 OS 失败', error); }
+			catch (error) { console.error('加载复利方向失败', error); }
 		},
 		activeCount(items) { return (items || []).filter(item => item.status === 'ACTIVE').length; },
 		toggleSection(section) { this.openSections = this.openSections.includes(section) ? this.openSections.filter(item => item !== section) : [...this.openSections, section]; },
@@ -92,20 +95,27 @@ export default {
 		async saveFocus() {
 			if (this.savingFocus) return;
 			this.savingFocus = true;
-			try { await this.$http.put(lifeOsPlanFocus, { itemKeys: this.focusKeys }); this.editingFocus = false; await this.load(); uni.showToast({ title: '本周重点已保存', icon: 'success' }); }
-			catch (error) { console.error('保存本周重点失败', error); }
+			try { await this.$http.put(lifeOsPlanFocus, { itemKeys: this.focusKeys }); this.editingFocus = false; await this.load(); uni.showToast({ title: '关注范围已保存', icon: 'success' }); }
+			catch (error) { console.error('保存关注范围失败', error); }
 			finally { this.savingFocus = false; }
 		},
 		recordTypeLabel(value) { return { PLAN: '计划', ACTION: '已行动', RESULT: '结果', OBSERVATION: '观察', INQUIRY: '疑问' }[value] || value; },
 		openItem(item) { if (item && item.stableKey) uni.navigateTo({ url: `/pages/shroom/life-os-item?key=${item.stableKey}` }); },
+		selectDirection(item) {
+			if (!item || !item.stableKey || item.hasActiveThread) return;
+			uni.setStorageSync('compoundStartItemKey', item.stableKey);
+			const pages = getCurrentPages();
+			if (pages.length > 1) uni.navigateBack();
+			else uni.redirectTo({ url: `/pages/shroom/compound?itemKey=${item.stableKey}` });
+		},
 		openDiary(item) { if (item && item.diaryId) uni.navigateTo({ url: `/pages/diary/edit?id=${item.diaryId}` }); },
 		openWeekly() { uni.navigateTo({ url: '/pages/shroom/life-os-weekly' }); },
 		openPrinciples() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
 		async exportData(kind) {
 			try {
-				const res = await this.$http.get(lifeOsPlanExport);
+				const res = await this.$http.get(compoundExport);
 				const content = kind === 'json' ? JSON.stringify(res.data.json, null, 2) : res.data.markdown;
-				const filename = `shroom-life-os-${Date.now()}.${kind === 'json' ? 'json' : 'md'}`;
+				const filename = `shroom-compound-${Date.now()}.${kind === 'json' ? 'json' : 'md'}`;
 				// #ifdef H5
 				const blob = new Blob([content], { type: kind === 'json' ? 'application/json;charset=utf-8' : 'text/markdown;charset=utf-8' });
 				const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url);
@@ -113,7 +123,7 @@ export default {
 				// #ifndef H5
 				uni.setClipboardData({ data: content, success: () => uni.showToast({ title: '已复制导出内容', icon: 'none' }) });
 				// #endif
-			} catch (error) { console.error('导出人生 OS 失败', error); }
+			} catch (error) { console.error('导出长期方向失败', error); }
 		},
 		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack(); else uni.switchTab({ url: '/pages/diary/index' }); }
 	}
@@ -163,6 +173,8 @@ button::after { border: 0; }
 .item-row.paused { opacity: .5; }.item-number { flex: 0 0 30rpx; padding-top: 2rpx; color: #809086; font-size: 16rpx; font-weight: 720; }
 .item-row > view:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.item-row > view:nth-child(2) text:first-child { font-size: 21rpx; font-weight: 670; }.item-row > view:nth-child(2) text:last-child { display: -webkit-box; overflow: hidden; color: #758078; font-size: 17rpx; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .item-meta { display: flex; max-width: 110rpx; flex-direction: column; align-items: flex-end; gap: 5rpx; }.item-meta text { color: #718075; font-size: 14rpx; white-space: nowrap; }
+.select-direction { display: flex; min-height: 52rpx; padding: 0 18rpx; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 999rpx; background: #243329; color: #fff; font-size: 15rpx; }
+.select-direction[disabled] { background: #e7ece5; color: #7c877e; }
 .record { padding: 22rpx 0; border-top: 1rpx solid #e9ede7; }.record:first-child { margin-top: 15rpx; }.record > view { display: flex; justify-content: space-between; gap: 14rpx; }.record > view text:first-child { font-size: 19rpx; font-weight: 680; }.record > view text:last-child { flex: 0 0 auto; color: #7c887f; font-size: 15rpx; }.record > text { display: -webkit-box; margin-top: 10rpx; overflow: hidden; color: #59655c; font-size: 19rpx; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .quiet-empty { margin-top: 20rpx; color: #7a867d; font-size: 18rpx; line-height: 1.6; }
 .review-panel, .principles-link { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 24rpx; padding: 27rpx 29rpx; border-radius: 29rpx; background: #e6edcf; }
