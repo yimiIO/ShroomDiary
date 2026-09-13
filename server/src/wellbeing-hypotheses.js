@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { mapWellbeingRecord } = require('./wellbeing-records');
 
-const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v5';
+const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v6';
 const WELLBEING_HYPOTHESIS_DOMAINS = ['PSYCHOLOGICAL', 'PHYSICAL'];
 const WELLBEING_HYPOTHESIS_KINDS = [
   'PSYCHOLOGICAL_CONCEPT',
@@ -26,7 +26,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 7. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
 8. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
 9. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
-10. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 4 项，重复问题合并。不要用“情绪问题”“健康问题”“压力反应”之类无法帮助用户区分和验证的笼统名称。
+10. 不按数量凑结果，也不为了控制比例删掉真实且有用的方向。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 8 项，重复问题合并。不要用“情绪问题”“健康问题”“压力反应”之类无法帮助用户区分和验证的笼统名称。
 11. 在 FINAL/SYNTHESIS 阶段先做覆盖和优先级检查：优先保留紧急风险、跨时间重复/持续、功能影响、客观异常和能改变下一步观察或专业评估的方向。一次性、影响较小的反应不能因为“更容易命名”而挤掉长期重要模式。同一个核心问题的不同表现合并为一项。
 12. 心理领域在不输出中间思考的前提下，完整核对情绪/兴趣/精力与功能、焦虑与回避、重大生活事件与应激、睡眠、物质/药物、情绪调节及社交模式；身体领域核对症状部位与时程、客观测量/检查、生活与环境因素以及常见鉴别方向。这是防漏检清单，不是输出清单；没有证据的方向不得输出。
 13. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
@@ -372,7 +372,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
     return request(
       { analysisStage: 'FINAL', domainScope: scope.domain, records: scope.records, dismissedFeedback },
       scope.domain === 'PSYCHOLOGICAL' ? '心理问题可能性识别' : '身体问题可能性识别',
-      3200
+      4200
     );
   }
   const batches = [];
@@ -380,7 +380,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
   const batchResults = await Promise.allSettled(batches.map((records, index) => request(
     { analysisStage: 'CANDIDATE', domainScope: scope.domain, records, dismissedFeedback },
     `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题候选 ${index + 1}/${batches.length}`,
-    2400
+    3200
   )));
   const drafts = batchResults.flatMap(result => result.status === 'fulfilled' && Array.isArray(result.value.hypotheses)
     ? result.value.hypotheses : []);
@@ -402,7 +402,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
       candidateHypotheses: drafts.map(compactHypothesisDraft),
       records: evidenceIndex,
       dismissedFeedback
-    }, `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题全局合并`, 3000);
+    }, `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题全局合并`, 4200);
   } catch (error) {
     return { hypotheses: drafts };
   }
@@ -449,7 +449,7 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
     .filter(item => item.domain === domain)
     .sort((left, right) => (strengthRank[right.evidenceStrength] - strengthRank[left.evidenceStrength])
       || (right.supportingEvidence.length - left.supportingEvidence.length))
-    .slice(0, 4));
+    .slice(0, 8));
   const sourceUpdatedAt = rows.reduce((latest, row) => {
     const value = new Date(row.updated_at || 0);
     return value > latest ? value : latest;
