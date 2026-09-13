@@ -63,7 +63,7 @@
 
 <script>
 import moment from '@/common/moment.js';
-import { wellbeingDetail, wellbeingList, wellbeingSummary } from '@/api/wellbeing';
+import { wellbeingList, wellbeingStatus, wellbeingSummary } from '@/api/wellbeing';
 
 const emptyDraft = () => ({ recordedOn: moment().format('YYYY-MM-DD'), note: '', psychologicalFeelings: '', physicalSymptoms: '', sleepHours: '', sleepQuality: '', behaviors: '', measurements: '', testResults: '' });
 
@@ -125,7 +125,7 @@ export default {
 		async updateStatus(item, action) {
 			if (!item || this.processingId) return;
 			this.processingId = item.id;
-			try { await this.$http.patch(wellbeingDetail(item.id), { action }); await Promise.all([this.loadItems(true), this.loadSummary()]); }
+			try { await this.$http.post(wellbeingStatus(item.id), { action }); await Promise.all([this.loadItems(true), this.loadSummary()]); }
 			catch (error) { console.error('更新身心记录失败', error); }
 			finally { this.processingId = ''; }
 		},

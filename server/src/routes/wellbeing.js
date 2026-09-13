@@ -113,7 +113,7 @@ router.post('/', asyncRoute(async (req, res) => {
   return ok(res, mapWellbeingRecord(result.rows[0]), '身心记录已保存');
 }));
 
-router.patch('/:id', asyncRoute(async (req, res) => {
+async function updateWellbeingStatus(req, res) {
   const id = uuid(req.params.id);
   if (!id) return fail(res, 404, '身心记录不存在');
   const action = String(req.body.action || '');
@@ -134,6 +134,11 @@ router.patch('/:id', asyncRoute(async (req, res) => {
   );
   if (!result.rowCount) return fail(res, 404, '身心记录不存在');
   return ok(res, mapWellbeingRecord(result.rows[0]), action === 'confirm' ? '已确认这条观察' : '记录已更新');
-}));
+}
+
+// POST is the canonical cross-platform status action. Keep PATCH for older
+// H5 builds that may still be cached on users' devices.
+router.post('/:id/status', asyncRoute(updateWellbeingStatus));
+router.patch('/:id', asyncRoute(updateWellbeingStatus));
 
 module.exports = router;

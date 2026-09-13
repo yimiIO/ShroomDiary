@@ -162,7 +162,7 @@
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
-import { wellbeingDetail } from '@/api/wellbeing';
+import { wellbeingStatus } from '@/api/wellbeing';
 
 export default {
 	components: { HealthConsentSheet },
@@ -289,7 +289,7 @@ export default {
 				if (!this.wellbeingRecord || this.processingWellbeing) return;
 				this.processingWellbeing = true;
 				try {
-					const res = await this.$http.patch(wellbeingDetail(this.wellbeingRecord.id), { action });
+					const res = await this.$http.post(wellbeingStatus(this.wellbeingRecord.id), { action });
 					this.wellbeingRecord = action === 'dismiss' ? null : res.data;
 					uni.showToast({ title: action === 'confirm' ? '已保存到身心记录' : '已忽略', icon: action === 'confirm' ? 'success' : 'none' });
 				} catch (error) { console.error('更新身心记录失败', error); }

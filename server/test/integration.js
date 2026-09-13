@@ -354,6 +354,14 @@ async function run() {
     }));
     assert.equal(wellbeingRecord.observation.severity, 10);
     assert.equal(wellbeingRecord.observation.sleep.hours, 5.5);
+    const archivedWellbeing = expectCode(await api(`/api/wellbeing/v1/${wellbeingRecord.id}/status`, {
+      method: 'POST', token: tokenA, body: { action: 'archive' }
+    }));
+    assert.equal(archivedWellbeing.status, 'ARCHIVED');
+    const restoredWellbeing = expectCode(await api(`/api/wellbeing/v1/${wellbeingRecord.id}/status`, {
+      method: 'POST', token: tokenA, body: { action: 'restore' }
+    }));
+    assert.equal(restoredWellbeing.status, 'CONFIRMED');
     const healthEvidence = expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}/evidence`, {
       method: 'POST', token: tokenA,
       body: {
@@ -834,7 +842,7 @@ async function run() {
 
     console.log(JSON.stringify({
       ok: true,
-      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-body-practice', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo-title-only-idempotency', 'todo-undated-start', 'todo-project-identity', 'todo-recurrence-idempotency', 'todo-recurrence-scope', 'todo-result-media-and-supplement', 'todo-action-record-undo', 'todo-project-archive-safety', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
+      checks: ['auth', 'refresh', 'refresh-retry-header-precedence', 'refresh-multi-tab-grace', 'scoped-agent-token', 'private-media', 'private-voice', 'voice-only-diary', 'transcription-disabled-safe', 'diary-isolation', 'diary-calendar', 'diary-dates', 'search', 'inquiry-candidate-confirmation', 'inquiry-validation', 'inquiry-isolation', 'inquiry-diary-link', 'inquiry-evidence', 'inquiry-status', 'inquiry-cost-ledger', 'health-inquiry-consent', 'health-inquiry-isolation', 'health-observation', 'wellbeing-status', 'health-summary-export', 'friend-header-compatibility', 'friend-rules', 'friend-isolation', 'friend-import-idempotency', 'legacy-score-preservation', 'friend-write-operations', 'life-os-versioning', 'life-os-long-term', 'life-os-long-term-isolation', 'life-os-long-term-export', 'compound-onboarding', 'compound-cross-session', 'compound-isolation', 'compound-diary-dismiss', 'compound-result-confirmation', 'compound-body-practice', 'compound-export', 'ai-status-and-isolation', ...(process.env.TEST_SKIP_PAID_AI === '1' ? [] : ['ai-five-view-flow']), 'reminder-rules', 'relationship-review', 'todo-title-only-idempotency', 'todo-undated-start', 'todo-project-identity', 'todo-recurrence-idempotency', 'todo-recurrence-scope', 'todo-result-media-and-supplement', 'todo-action-record-undo', 'todo-project-archive-safety', 'cards', 'public-card-detail', 'discovery', 'resonance-toggle', 'favorite-toggle', 'card-copy-idempotency', 'data-export', 'redacted-export']
     }));
   } finally {
     await cleanup();
