@@ -21,6 +21,7 @@ const { publicObserver, resolvedObserver } = require('../observer-presets');
 const { findDiaryWellbeingRecord, syncDiaryWellbeingRecord } = require('../wellbeing-records');
 const { hasDiaryHealthExtraction, legacyHealthObservation, normalizeDiaryHealthExtraction } = require('../diary-health');
 const { WELLBEING_REVIEW_VERSION, reviewDiaryWellbeing } = require('../wellbeing-review');
+const { listDiarySourceActivities } = require('../data-sources');
 
 const router = express.Router();
 router.use(requireUser);
@@ -50,6 +51,7 @@ function mapAnalysis(row) {
     views: row.five_views || {},
     observers: snapshot,
     observations,
+    sourceActivities: Array.isArray(row.source_activities) ? row.source_activities : [],
     todoCandidates: row.todo_candidates || [],
     cardSuggestion: row.card_suggestion && Object.keys(row.card_suggestion).length ? row.card_suggestion : null,
     friendChanges: row.friend_changes || [],
@@ -79,7 +81,7 @@ async function mapAnalysisWithCandidates(row, userId, queryable = db) {
 }
 
 const analysisFields = `id, diary_id, engine_version, five_views, observer_snapshot, observations,
-  todo_candidates, card_suggestion, friend_changes, cost_summary, status, error_message,
+  source_activities, todo_candidates, card_suggestion, friend_changes, cost_summary, status, error_message,
   started_at, finished_at, created_at, updated_at`;
 
 async function ownedDiary(userId, diaryId) {
@@ -139,9 +141,10 @@ async function latestFriendChanges(userId, diaryId) {
   return Array.isArray(result.rows[0]?.friend_changes) ? result.rows[0].friend_changes : [];
 }
 
-function viewInput(diary, os, observer) {
+function viewInput(diary, os, observer, sourceActivities = []) {
   const payload = {
-    diary: { content: diary.content, mood: diary.mood, occurredAt: diary.occurred_at }
+    diary: { content: diary.content, mood: diary.mood, occurredAt: diary.occurred_at },
+    sourceActivities
   };
   if (['compound', 'life_os'].includes(observer.renderType)) payload.lifeOs = os || '';
   return payload;
@@ -176,7 +179,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
     await ensureDefaultLifeOsItems(db, userId);
     const diary = await ownedDiary(userId, diaryId);
     if (!diary) throw Object.assign(new Error('日记不存在'), { code: 'SHROOM_AI_INPUT' });
-    const [os, cards, stored, existingInquiries, lifeOsItemsResult] = await Promise.all([
+    const [os, cards, stored, existingInquiries, lifeOsItemsResult, sourceActivities] = await Promise.all([
       lifeOs(userId),
       cardHistory(userId, diary.linked_cards),
       db.query('SELECT observer_snapshot FROM diary_analysis WHERE id = $1 AND user_id = $2', [analysisId, userId]),
@@ -186,7 +189,8 @@ async function executeAnalysis(userId, analysisId, diaryId) {
                 current_next_step AS "currentNextStep", status
            FROM life_os_items WHERE user_id = $1 ORDER BY priority, original_number`,
         [userId]
-      )
+      ),
+      listDiarySourceActivities(db, userId, diary.diary_date, { aiOnly: true })
     ]);
     let observers = Array.isArray(stored.rows[0]?.observer_snapshot) ? stored.rows[0].observer_snapshot : [];
     if (!observers.length) observers = await activeObserverSnapshot(userId);
@@ -197,7 +201,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       }
       const result = await callJson(
         observer.prompt,
-        viewInput(diary, os, observer),
+        viewInput(diary, os, observer, sourceActivities),
         observer.name,
         {
           usageContext: {
@@ -218,7 +222,8 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       if (view) fiveViews[`v${view}`] = { ...observation.result, view };
     }
     const followup = await callJson(FOLLOWUP_PROMPT, {
-      diary: viewInput(diary, os, observers[0]).diary,
+      diary: viewInput(diary, os, observers[0], sourceActivities).diary,
+      sourceActivities,
       fiveViews,
       observations,
       existingCards: cards,
@@ -270,11 +275,12 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       const result = await client.query(
         `UPDATE diary_analysis SET status = 'done', five_views = $3::jsonb, observations = $4::jsonb,
            todo_candidates = $5::jsonb, card_suggestion = $6::jsonb, friend_changes = $7::jsonb,
-           cost_summary = $8::jsonb,
+           cost_summary = $8::jsonb, source_activities = $9::jsonb,
            finished_at = now(), updated_at = now()
          WHERE id = $1 AND user_id = $2 RETURNING ${analysisFields}`,
         [analysisId, userId, JSON.stringify(fiveViews), JSON.stringify(observations), JSON.stringify(candidates),
-          JSON.stringify(cardSuggestion), JSON.stringify(friendChanges), JSON.stringify(costSummary)]
+          JSON.stringify(cardSuggestion), JSON.stringify(friendChanges), JSON.stringify(costSummary),
+          JSON.stringify(sourceActivities)]
       );
       await syncDiaryCandidates(client, {
         userId,
@@ -322,13 +328,14 @@ async function startAnalysis(req, res) {
   const result = await db.query(
     `INSERT INTO diary_analysis
       (id, user_id, diary_id, engine_version, status, five_views, observer_snapshot, observations,
-       todo_candidates, card_suggestion, friend_changes, cost_summary)
+       todo_candidates, card_suggestion, friend_changes, cost_summary, source_activities)
      VALUES ($1, $2, $3, $4, 'pending', '{}'::jsonb, $5::jsonb, '[]'::jsonb,
-       '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb)
+       '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb)
      ON CONFLICT (user_id, diary_id) DO UPDATE SET
        id = EXCLUDED.id, engine_version = EXCLUDED.engine_version, status = 'pending',
        five_views = '{}'::jsonb, observer_snapshot = EXCLUDED.observer_snapshot, observations = '[]'::jsonb,
        todo_candidates = '[]'::jsonb, card_suggestion = '{}'::jsonb, cost_summary = '{}'::jsonb,
+       source_activities = '[]'::jsonb,
        error_message = NULL, started_at = NULL, finished_at = NULL, updated_at = now()
      RETURNING ${analysisFields}`,
     [taskId, req.user.id, diary.id, VERSION, JSON.stringify(observers)]
@@ -350,7 +357,7 @@ router.get('/status', asyncRoute(async (req, res) => ok(res, {
   enabled: isAiConfigured(),
   model: isAiConfigured() ? config.aiModel : null,
   engineVersion: VERSION,
-  privacy: '只有用户主动发起分析时，日记正文和自己的菇卡摘要才会发送给已配置的模型服务。'
+  privacy: '只有用户主动发起分析时，日记正文、自己的菇卡摘要和当天已授权的数据源线索才会发送给已配置的模型服务。'
 })));
 
 router.get('/observers', asyncRoute(async (req, res) => {

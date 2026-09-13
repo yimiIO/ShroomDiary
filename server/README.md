@@ -77,6 +77,16 @@ Trusted personal agents use separately revocable, hashed and resource-scoped API
 tokens from `api_tokens`; never put an account password or browser refresh token
 in an agent configuration file.
 
+User-level external data sources are separate from both personal Agent tokens and
+the Compounding System. The first connector is Codex: the user creates a short-lived
+pairing code under `My -> Data & Connections`, then the local `shroom-codex` command
+uses Codex app-server over stdio and sends only redacted task metadata. Shroom never
+accepts a caller-supplied user id for these writes and stores only a hash of the
+connector token. Run `npm link` in `server/`, pair once, then schedule
+`shroom-codex sync` daily; the connector reads the user's 24/72/168-hour preference
+from Shroom and exits without opening Codex when the interval is not due. See
+`../docs/DATA_SOURCES.md` for the collection, deletion, export and AI-use contract.
+
 See `STORAGE.md` for the single-source storage boundary and the distinction
 between runtime data and one-time migration inputs.
 

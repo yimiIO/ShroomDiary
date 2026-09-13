@@ -4,6 +4,9 @@
   "private": true,
   "description": "Independent API for Shroom diary, cards and social discovery",
   "main": "src/server.js",
+  "bin": {
+    "shroom-codex": "scripts/shroom-codex.js"
+  },
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test test/*.test.js",

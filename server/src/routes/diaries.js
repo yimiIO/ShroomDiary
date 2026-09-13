@@ -12,6 +12,7 @@ const {
 } = require('../memory-store');
 const { enqueueFriendSync, removeDiaryFriendEffects } = require('../friend-sync');
 const { invalidateDiaryInquiryEvidence } = require('../inquiry-store');
+const { listDiarySourceActivities } = require('../data-sources');
 const { asyncRoute, fail, ok, pageParams, requireUser, text, visibility } = require('../http');
 
 const router = express.Router();
@@ -201,7 +202,7 @@ router.get('/index', asyncRoute(async (req, res) => {
   const values = [req.user.id, pageSize, offset];
   const dateClause = date ? `AND (occurred_at AT TIME ZONE 'Asia/Shanghai')::date = $4::date` : '';
   if (date) values.push(date);
-  const [items, total, actions] = await Promise.all([
+  const [items, total, actions, activities] = await Promise.all([
     db.query(
       `SELECT ${selectFields} FROM diaries
         WHERE user_id = $1 AND deleted_at IS NULL ${dateClause}
@@ -223,7 +224,8 @@ router.get('/index', asyncRoute(async (req, res) => {
          AND e.valid AND e.event_date = $2::date
        ORDER BY e.created_at DESC`,
       [req.user.id, date]
-    ) : Promise.resolve({ rows: [] })
+    ) : Promise.resolve({ rows: [] }),
+    date ? listDiarySourceActivities(db, req.user.id, date) : Promise.resolve([])
   ]);
   return ok(res, {
     list: items.rows.map(mapDiary), total: total.rows[0].total, page, pageSize,
@@ -234,7 +236,8 @@ router.get('/index', asyncRoute(async (req, res) => {
       result: row.result_text || row.payload?.result || '',
       projectName: row.project_name || '',
       completedAt: row.created_at
-    }))
+    })),
+    activityRecords: activities
   });
 }));
 

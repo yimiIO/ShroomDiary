@@ -17,6 +17,7 @@ Shroom 的远景是成为每个人长期陪伴的 AI 伙伴：在尊重隐私和
 ## 核心体验
 
 - **跨端日记**：按天与时段记录文字、图片和语音，支持日历、归档、搜索与分页回看。
+- **用户数据源**：用户可在「数据与连接」中配对 Codex，把最小任务事实作为独立的日记线索，并单独控制时间线可见性与 AI 读取权限。
 - **高精度语音转写**：原始录音先私密保存，转写结果是可编辑草稿，不会直接覆盖正文。
 - **日记记忆**：基于 PostgreSQL + pgvector 的语义检索，用相关日记作为证据回答长期问题，并明确引用来源。
 - **未解之问**：把一次讨论回答不了的困惑保存下来，经用户确认持续关联日记与新线索，再形成带支持、反例和未知项的阶段理解。
@@ -34,7 +35,7 @@ Shroom 的远景是成为每个人长期陪伴的 AI 伙伴：在尊重隐私和
 
 Shroom 不是医疗诊断工具，也不替用户下最终结论。AI 生成的情绪理解、关系判断和人生 OS 建议都应被视为可检查的候选解释。产品不会偷偷采集浏览器历史，也不会因为一次分析就自动改写用户的人生原则或公开私人内容。
 
-更完整的产品定义见 [docs/PRODUCT.md](./docs/PRODUCT.md)，待办与项目见 [docs/TODO_PROJECTS.md](./docs/TODO_PROJECTS.md)，复利系统见 [docs/COMPOUND_SYSTEM.md](./docs/COMPOUND_SYSTEM.md)，长期问题机制见 [docs/INQUIRIES.md](./docs/INQUIRIES.md)，菇卡与人生 OS 的边界见 [docs/LIFE_OS.md](./docs/LIFE_OS.md)，记忆检索架构见 [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md)。
+更完整的产品定义见 [docs/PRODUCT.md](./docs/PRODUCT.md)，用户数据源见 [docs/DATA_SOURCES.md](./docs/DATA_SOURCES.md)，待办与项目见 [docs/TODO_PROJECTS.md](./docs/TODO_PROJECTS.md)，复利系统见 [docs/COMPOUND_SYSTEM.md](./docs/COMPOUND_SYSTEM.md)，长期问题机制见 [docs/INQUIRIES.md](./docs/INQUIRIES.md)，菇卡与人生 OS 的边界见 [docs/LIFE_OS.md](./docs/LIFE_OS.md)，记忆检索架构见 [server/REFLECTION_ARCHITECTURE.md](./server/REFLECTION_ARCHITECTURE.md)。
 
 ## 技术架构
 

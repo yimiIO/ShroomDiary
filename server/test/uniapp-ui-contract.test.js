@@ -31,6 +31,28 @@ test('todo creation stays page-local, title-first and exposes visible success st
   assert.match(analysis, /createdTodoNotice/);
 });
 
+test('Codex is a user-level Shroom data source with explicit provenance and controls', () => {
+  const settings = source('src/pages/shroom/data-sources.vue');
+  const me = source('src/pages/shroom/me.vue');
+  const diary = source('src/pages/diary/index.vue');
+  const analysis = source('src/pages/shroom/ai-analysis.vue');
+  const route = source('server/src/routes/data-sources.js');
+  const migration = source('server/sql/031_data_sources.sql');
+
+  assert.match(me, /数据与连接/);
+  assert.match(settings, /不属于 AI 复利/);
+  assert.match(settings, /菇日记 · Codex 数据源/);
+  assert.match(settings, /显示在日记时间线/);
+  assert.match(settings, /允许用于 AI 日记分析/);
+  assert.match(settings, /断开并删除已同步记录/);
+  assert.match(diary, /来自已连接的数据源/);
+  assert.match(analysis, /外部观测，不是你亲笔写下的日记/);
+  assert.match(route, /x-shroom-source-token/);
+  assert.doesNotMatch(route, /req\.body\.userId/);
+  assert.match(migration, /data_source_connections/);
+  assert.match(migration, /external_activity_events/);
+});
+
 test('todo execution layer has current views, projects, recurrence and reversible action records', () => {
   const list = source('src/pages/todo/list.vue');
   const edit = source('src/pages/todo/edit.vue');

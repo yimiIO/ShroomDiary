@@ -23,6 +23,11 @@
 			</view>
 
 			<view v-else-if="analysis.status === 'done'">
+				<view class="source-context" v-if="analysis.sourceActivities && analysis.sourceActivities.length">
+					<view class="source-context-head"><view><text>CONNECTED CONTEXT</text><text>这份分析读取了 {{ analysis.sourceActivities.length }} 条 Codex 任务线索</text></view><text>CODEX</text></view>
+					<view class="source-context-item" v-for="item in analysis.sourceActivities" :key="item.id"><text>{{ item.title }}</text><text>{{ sourceActivityMeta(item) }}</text></view>
+					<text class="source-context-note">它们是外部观测，不是你亲笔写下的日记；任务运行时间也不等于专注时间。</text>
+				</view>
 				<scroll-view class="lens-scroll" scroll-x :show-scrollbar="false"><view class="lens-tabs"><view v-for="tab in tabs" :key="tab.id" :class="{ active: activeView === tab.id, disabled: tab.disabled }" @tap="selectView(tab)"><text>{{ tab.index }}</text><text>{{ tab.name }}</text></view></view></scroll-view>
 
 				<view class="view-sheet" v-if="viewType === 'first_principles'">
@@ -227,6 +232,12 @@ export default {
 			if (!summary || !summary.estimated || summary.costCny === null) return '暂时无法估价';
 			const cost = Number(summary.costCny);
 			return '约 ¥' + cost.toFixed(cost >= 0.01 ? 2 : 4);
+		},
+		sourceActivityMeta(item) {
+			const parts = [];
+			if (item.projectName) parts.push(item.projectName);
+			if (item.taskRuntimeMinutes !== null && item.taskRuntimeMinutes !== undefined) parts.push(`任务运行 ${item.taskRuntimeMinutes} 分钟`);
+			return parts.join(' · ');
 		},
 		toggleCandidate(item) { if (!item.createdTodoId) item.selected = !item.selected; },
 			async createTodos() {
@@ -498,6 +509,16 @@ button::after { border: 0; }
 .card-reason { display: block; margin-top: 21rpx; font-size: 21rpx; line-height: 1.65; color: #58645b; }
 .new-card-draft { margin-top: 22rpx; padding: 26rpx; border-radius: 25rpx; background: #172019; color: #fff; }
 .draft-label { display: block; font-size: 15rpx; font-weight: 710; letter-spacing: 2rpx; color: #9eada0; }
+.source-context { display: flex; margin-bottom: 22rpx; padding: 25rpx; flex-direction: column; border: 1rpx solid rgba(23,32,25,.08); border-radius: 25rpx; background: #edf2e8; }
+.source-context-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
+.source-context-head > view { display: flex; flex-direction: column; gap: 6rpx; }
+.source-context-head > view text:first-child, .source-context-head > text { color: #75816f; font-size: 14rpx; font-weight: 750; letter-spacing: 2rpx; }
+.source-context-head > view text:last-child { font-size: 21rpx; font-weight: 680; line-height: 1.5; }
+.source-context-item { display: flex; padding: 15rpx 0; flex-direction: column; gap: 5rpx; border-top: 1rpx solid rgba(23,32,25,.07); }
+.source-context-item:first-of-type { margin-top: 15rpx; }
+.source-context-item text:first-child { font-size: 19rpx; font-weight: 650; }
+.source-context-item text:last-child { color: #778178; font-size: 16rpx; }
+.source-context-note { margin-top: 8rpx; color: #7e877d; font-size: 16rpx; line-height: 1.6; }
 .draft-seed { display: block; margin-top: 17rpx; font-size: 27rpx; font-weight: 710; line-height: 1.55; }
 .draft-understanding { display: block; margin-top: 14rpx; font-size: 19rpx; line-height: 1.65; color: #bcc7bd; }
 .draft-usage { display: flex; margin-top: 18rpx; flex-direction: column; gap: 10rpx; }

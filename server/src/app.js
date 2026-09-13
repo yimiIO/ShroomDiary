@@ -22,6 +22,7 @@ const compoundRoutes = require('./routes/compound');
 const compoundProgressRoutes = require('./routes/compound-progress');
 const inquiryRoutes = require('./routes/inquiries');
 const wellbeingRoutes = require('./routes/wellbeing');
+const dataSourceRoutes = require('./routes/data-sources');
 const { isAiConfigured } = require('./ai-engine');
 const { embeddingProfile, isEmbeddingConfigured } = require('./embedding-provider');
 const { isTranscriptionConfigured } = require('./transcription');
@@ -43,7 +44,7 @@ app.use(cors({
     if (!origin || allowedOrigins.has(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed'));
   },
-  allowedHeaders: ['Content-Type', 'x-api-key', 'x-rfdiary-token'],
+  allowedHeaders: ['Content-Type', 'x-api-key', 'x-rfdiary-token', 'x-shroom-source-token'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400
 }));
@@ -117,6 +118,7 @@ app.use('/api/compound/v1', compoundRoutes);
 app.use('/api/compound/v2', compoundProgressRoutes);
 app.use('/api/inquiries/v1', inquiryRoutes);
 app.use('/api/wellbeing/v1', wellbeingRoutes);
+app.use('/api/data-sources/v1', dataSourceRoutes);
 
 const publicDir = process.env.STATIC_DIR || path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir, { index: 'index.html', maxAge: '1h' }));
@@ -156,6 +158,8 @@ app.use((error, req, res, next) => {
   if (['SHROOM_COS_CONFIG', 'SHROOM_COS_UNAVAILABLE'].includes(error.code)) return fail(res, 503, error.message);
   if (error.code === 'SHROOM_API_SCOPE') return fail(res, 403, error.message);
   if (error.code === 'SHROOM_TODO_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_DATA_SOURCE_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_DATA_SOURCE_RATE') return fail(res, 429, error.message);
   if (['SHROOM_AI_FAILED', 'SHROOM_AI_INPUT'].includes(error.code)) return fail(res, 503, error.message);
   if (error.code === 'SHROOM_REFLECTION_INPUT') return fail(res, 400, error.message);
   if (String(error.code || '').startsWith('SHROOM_EMBEDDING_')) return fail(res, 503, error.message);

@@ -28,7 +28,8 @@ router.get('/all', asyncRoute(async (req, res) => {
     lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses, friendSettings,
     compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, wellbeingRecords, aiUsage,
     lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews,
-    compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents] = await Promise.all([
+    compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents,
+    dataSourceConnections, externalActivities] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
     db.query(`SELECT id, content, description, project_id, scheduled_date, deadline, tags, status,
       recurrence_rule_id, occurrence_date, compound_item_id, source_type, source_ref_id,
@@ -51,7 +52,7 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query(`SELECT id, base_version, trigger_type, status, summary, payload, source_refs,
       result, created_at, resolved_at FROM life_os_review_proposals WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query('SELECT period, payload, created_at, updated_at FROM monthly_relationship_reviews WHERE user_id = $1 ORDER BY period', [req.user.id]),
-    db.query('SELECT diary_id, engine_version, five_views, observer_snapshot, observations, todo_candidates, card_suggestion, friend_changes, cost_summary, status, created_at, updated_at FROM diary_analysis WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT diary_id, engine_version, five_views, observer_snapshot, observations, source_activities, todo_candidates, card_suggestion, friend_changes, cost_summary, status, created_at, updated_at FROM diary_analysis WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT source_version, source_created_at, settings, updated_at FROM friend_asset_settings WHERE user_id = $1', [req.user.id]),
     db.query('SELECT morning_prayer, financial_plan, created_at, updated_at FROM compound_settings WHERE user_id = $1', [req.user.id]),
     db.query('SELECT ritual_key, period_key, checkin_date, mode, duration_minutes, note, created_at, updated_at FROM compound_checkins WHERE user_id = $1 ORDER BY checkin_date, ritual_key', [req.user.id]),
@@ -82,7 +83,15 @@ router.get('/all', asyncRoute(async (req, res) => {
       created_at, updated_at FROM todo_recurrence_rules WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query(`SELECT id, todo_id, event_type, payload, event_date, source_diary_id,
       source_compound_thread_id, visible_in_diary, valid, created_at, invalidated_at
-      FROM todo_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id])
+      FROM todo_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
+    db.query(`SELECT id, provider, display_name, device_name, connection_mode, status,
+      sync_interval_hours, include_in_diary, ai_allowed, scopes, last_cursor, last_sync_at,
+      last_error, connected_at, paused_at, disconnected_at, created_at, updated_at
+      FROM data_source_connections WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
+    db.query(`SELECT id, connection_id, provider, external_id, activity_type, title,
+      project_label, source_kind, started_at, completed_at, task_runtime_seconds,
+      active_seconds_estimate, outcome_status, metadata, created_at, updated_at
+      FROM external_activity_events WHERE user_id = $1 ORDER BY completed_at`, [req.user.id])
   ]);
   const replacements = friends.rows.map((item, index) => ({ from: item.name, to: `人物${index + 1}` }))
     .filter(item => item.from).concat([
@@ -129,12 +138,21 @@ router.get('/all', asyncRoute(async (req, res) => {
     compoundReviews: compoundReviews.rows,
     todoProjects: todoProjects.rows,
     todoRecurrenceRules: todoRecurrenceRules.rows,
-    todoEvents: todoEvents.rows
+    todoEvents: todoEvents.rows,
+    dataSourceConnections: dataSourceConnections.rows,
+    externalActivities: externalActivities.rows
   };
   if (!redacted) return ok(res, payload);
   const clean = redactValue(payload, replacements);
   clean.diaries = clean.diaries.map(item => ({ ...item, images: [], voice: null }));
   clean.friends = clean.friends.map(item => ({ ...item, contact: {} }));
+  clean.dataSourceConnections = clean.dataSourceConnections.map(item => ({ ...item, device_name: '' }));
+  clean.externalActivities = clean.externalActivities.map((item, index) => ({
+    ...item,
+    external_id: `codex-task-${index + 1}`,
+    title: `Codex 任务 ${index + 1}`,
+    project_label: ''
+  }));
   return ok(res, clean);
 }));
 

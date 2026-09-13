@@ -104,6 +104,16 @@
 			</button>
 		</view>
 
+		<view class="source-activities" v-if="activityRecords.length">
+			<view class="source-activities-heading"><view><text>FROM CONNECTED SOURCES</text><text>来自已连接的数据源</text></view><text>{{ activityRecords.length }} 条</text></view>
+			<view class="source-activity" v-for="record in activityRecords" :key="record.id">
+				<text class="source-mark">C</text>
+				<view><text>{{ record.title }}</text><text>{{ activityMeta(record) }}</text></view>
+				<text>CODEX</text>
+			</view>
+			<text class="source-caveat">Codex 任务运行时间不等于你的人工专注时间。</text>
+		</view>
+
 		<view class="wellbeing-glimpse" v-if="wellbeingOverview && wellbeingOverview.records && wellbeingOverview.records.length" @tap="openWellbeing">
 			<view class="wellbeing-glimpse-top"><view><text>BODY & MIND</text><text>{{ wellbeingCardTitle }}</text></view><text>›</text></view>
 			<text class="wellbeing-glimpse-copy">{{ wellbeingRecordPreview(wellbeingOverview.records[0]) }}</text>
@@ -222,6 +232,7 @@ export default {
 			calendarRequestSequence: 0,
 			timeSlots: [],
 			actionRecords: [],
+			activityRecords: [],
 			visitorCount: 0,
 			showFullCalendarView: false,
 			pendingTodoCount: 0, // 待完成待办数量
@@ -440,6 +451,7 @@ export default {
 			if (!this.$mStore.getters.hasLogin) {
 				this.diaryList = [];
 				this.actionRecords = [];
+				this.activityRecords = [];
 				this.initDates();
 				this.initTimeSlots();
 				return;
@@ -457,6 +469,7 @@ export default {
 				if (res.code === 200) {
 					this.diaryList = res.data.list || [];
 					this.actionRecords = res.data.actionRecords || [];
+					this.activityRecords = res.data.activityRecords || [];
 					this.initDates();
 					this.initTimeSlots();
 				} else {
@@ -468,11 +481,20 @@ export default {
 			} catch (error) {
 				console.error('加载日记失败', error);
 				this.actionRecords = [];
+				this.activityRecords = [];
 				uni.showToast({
 					title: '加载失败',
 					icon: 'none'
 				});
 			}
+		},
+
+		activityMeta(record) {
+			const parts = [];
+			if (record.projectName) parts.push(record.projectName);
+			if (record.taskRuntimeMinutes !== null && record.taskRuntimeMinutes !== undefined) parts.push(`任务运行 ${record.taskRuntimeMinutes} 分钟`);
+			parts.push({ COMPLETED: '已完成', INTERRUPTED: '已中断', FAILED: '未完成' }[record.outcomeStatus] || '已记录');
+			return parts.join(' · ');
 		},
 
 		async loadCalendarDates(month = moment(this.selectedDate).format('YYYY-MM')) {
@@ -967,6 +989,20 @@ export default {
 .action-records button > view text:last-child { overflow: hidden; color: #7d867e; font-size: 17rpx; text-overflow: ellipsis; white-space: nowrap; }
 .action-mark { display: flex; width: 34rpx; height: 34rpx; align-items: center; justify-content: center; border-radius: 50%; background: #dfe8bd; color: #435334; font-size: 17rpx; }
 .action-records button > text:last-child { color: #879088; font-size: 25rpx; }
+
+.source-activities { display: flex; margin: 0 40rpx 25rpx; padding: 22rpx; flex-direction: column; border: 1rpx solid rgba(47,64,51,.08); border-radius: 22rpx; background: #edf2e8; }
+.source-activities-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
+.source-activities-heading > view { display: flex; flex-direction: column; gap: 5rpx; }
+.source-activities-heading > view text:first-child { color: #75816f; font-size: 14rpx; font-weight: 750; letter-spacing: 2rpx; }
+.source-activities-heading > view text:last-child { color: #354139; font-size: 21rpx; font-weight: 680; }
+.source-activities-heading > text { color: #79847b; font-size: 16rpx; }
+.source-activity { display: flex; align-items: center; gap: 13rpx; min-height: 72rpx; border-top: 1rpx solid rgba(47,64,51,.08); }
+.source-activity > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }
+.source-activity > view text:first-child { overflow: hidden; color: #354139; font-size: 20rpx; text-overflow: ellipsis; white-space: nowrap; }
+.source-activity > view text:last-child { color: #7b857d; font-size: 16rpx; }
+.source-activity > text:last-child { color: #778272; font-size: 13rpx; font-weight: 750; letter-spacing: 1rpx; }
+.source-mark { display: flex; width: 34rpx; height: 34rpx; flex: 0 0 34rpx; align-items: center; justify-content: center; border-radius: 10rpx; background: #172019; color: #edf4e8; font-family: Georgia, serif; font-size: 17rpx; }
+.source-caveat { margin-top: 8rpx; padding-top: 13rpx; border-top: 1rpx solid rgba(47,64,51,.08); color: #858c83; font-size: 15rpx; line-height: 1.5; }
 
 .wellbeing-glimpse {
 	margin: 0 40rpx 28rpx;

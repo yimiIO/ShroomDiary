@@ -145,6 +145,7 @@
 							<text>实名公开</text>
 						</view>
 					</view>
+					<view class="export-row" @tap="openDataSources"><view><text>数据与连接</text><text>管理 Codex 等菇日记数据源</text></view><text>›</text></view>
 					<view class="export-row" @tap="openExport"><view><text>带走我的数据</text><text>完整备份或生成脱敏副本</text></view><text>›</text></view>
 				</view>
 			</view>
@@ -307,6 +308,9 @@ export default {
 		},
 		openExport() {
 			uni.navigateTo({ url: '/pages/shroom/export' });
+		},
+		openDataSources() {
+			uni.navigateTo({ url: '/pages/shroom/data-sources' });
 		},
 		logout() {
 			uni.showModal({
