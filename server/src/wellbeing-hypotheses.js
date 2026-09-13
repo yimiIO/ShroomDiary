@@ -28,6 +28,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 9. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 4 项，重复问题合并。
 10. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
 11. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
+12. 输出要短而具体：每项最多 4 条支持证据、3 个具名方向、4 个缺失信息和 3 个下一步观察；每段解释不超过 160 个汉字。
 
 只返回 JSON，不要 Markdown：
 {"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
@@ -158,14 +159,19 @@ function normalizeWellbeingHypotheses(value, records = []) {
 
 function recordForModel(row) {
   const mapped = mapWellbeingRecord(row);
+  const observation = Object.fromEntries(Object.entries(mapped.observation || {}).filter(([, value]) => {
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === 'object') return Object.values(value).some(item => item !== null && item !== '' && (!Array.isArray(item) || item.length));
+    return value !== null && value !== '';
+  }));
   return {
     id: mapped.id,
     date: mapped.recordedOn,
     confirmationStatus: mapped.status,
     categories: mapped.categories,
-    observation: mapped.observation,
-    whyUseful: mapped.whyUseful,
-    sourceExcerpt: bounded(mapped.sourceExcerpt, 900)
+    observation,
+    whyUseful: bounded(mapped.whyUseful, 300),
+    sourceExcerpt: bounded(mapped.sourceExcerpt, 500)
   };
 }
 
@@ -288,18 +294,18 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
   const scopes = [
     {
       domain: 'PSYCHOLOGICAL',
-      records: records.filter(record => record.categories.some(category => ['PSYCHOLOGICAL', 'SLEEP', 'HABIT'].includes(category)))
+      records: records.filter(record => record.categories.some(category => ['PSYCHOLOGICAL', 'SLEEP'].includes(category)))
     },
     {
       domain: 'PHYSICAL',
-      records: records.filter(record => record.categories.some(category => ['PHYSICAL', 'SLEEP', 'HABIT', 'MEASUREMENT', 'TEST_RESULT'].includes(category)))
+      records: records.filter(record => record.categories.some(category => ['PHYSICAL', 'SLEEP', 'MEASUREMENT', 'TEST_RESULT'].includes(category)))
     }
   ].filter(scope => scope.records.length);
   const settled = await Promise.allSettled(scopes.map(scope => callJson(
     WELLBEING_HYPOTHESIS_PROMPT,
     { domainScope: scope.domain, records: scope.records, dismissedFeedback: feedbackResult.rows },
     scope.domain === 'PSYCHOLOGICAL' ? '心理问题可能性识别' : '身体问题可能性识别',
-    { maxTokens: 4200, temperature: 0.1, usageContext: { userId, feature: `wellbeing_hypothesis_${scope.domain.toLowerCase()}` } }
+    { maxTokens: 3200, temperature: 0.1, usageContext: { userId, feature: `wellbeing_hypothesis_${scope.domain.toLowerCase()}` } }
   )));
   const reviewedDomains = [];
   const rawHypotheses = [];
