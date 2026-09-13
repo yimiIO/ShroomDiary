@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { mapWellbeingRecord } = require('./wellbeing-records');
 
-const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v4';
+const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v5';
 const WELLBEING_HYPOTHESIS_DOMAINS = ['PSYCHOLOGICAL', 'PHYSICAL'];
 const WELLBEING_HYPOTHESIS_KINDS = [
   'PSYCHOLOGICAL_CONCEPT',
@@ -27,10 +27,12 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 8. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
 9. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
 10. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 4 项，重复问题合并。不要用“情绪问题”“健康问题”“压力反应”之类无法帮助用户区分和验证的笼统名称。
-11. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
-12. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
-13. 输出要短而具体：每项最多 4 条支持证据、3 个具名方向、4 个缺失信息和 3 个下一步观察；每段解释不超过 160 个汉字。
-14. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
+11. 在 FINAL/SYNTHESIS 阶段先做覆盖和优先级检查：优先保留紧急风险、跨时间重复/持续、功能影响、客观异常和能改变下一步观察或专业评估的方向。一次性、影响较小的反应不能因为“更容易命名”而挤掉长期重要模式。同一个核心问题的不同表现合并为一项。
+12. 心理领域在不输出中间思考的前提下，完整核对情绪/兴趣/精力与功能、焦虑与回避、重大生活事件与应激、睡眠、物质/药物、情绪调节及社交模式；身体领域核对症状部位与时程、客观测量/检查、生活与环境因素以及常见鉴别方向。这是防漏检清单，不是输出清单；没有证据的方向不得输出。
+13. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
+14. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
+15. 输出要短而具体：每项最多 4 条支持证据、3 个具名方向、4 个缺失信息和 3 个下一步观察；每段解释不超过 160 个汉字。
+16. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
 
 只返回 JSON，不要 Markdown：
 {"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
