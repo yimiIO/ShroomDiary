@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { mapWellbeingRecord } = require('./wellbeing-records');
 
-const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v2';
+const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v3';
 const WELLBEING_HYPOTHESIS_DOMAINS = ['PSYCHOLOGICAL', 'PHYSICAL'];
 const WELLBEING_HYPOTHESIS_KINDS = [
   'PSYCHOLOGICAL_CONCEPT',
@@ -17,22 +17,23 @@ const WELLBEING_HYPOTHESIS_STATUSES = ['PENDING', 'OBSERVING', 'DISMISSED', 'ARC
 const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性整理器”。你读取的是用户多次日记中已经抽出的观察，不是完整病历。你的价值是把零散事实整理成“可能需要留意什么问题”，明确叫出有意义的心理学概念、症状模式或医学排查方向；不能只复述“有压力、失眠、疼痛”。
 
 这不是诊断。你必须遵守：
-1. 只使用 records 中用户本人的观察。每个 supportingEvidence.recordId 和 challengingEvidence.recordId 必须来自输入；说明它为何支持或不支持，不能补造病史、持续时间、症状、检查或因果。
-2. 每个候选必须有一个明确、可理解的问题名称，并在 namedPossibilities 中列出它具体可能涉及的概念或医学方向。name 用“日记中出现的模式：具体方向”的用户语言，而不是再把现象重复一遍。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血需要排查”。不能只写“持续低落”“身体不舒服”而不说明它可能指向什么。这些只是格式示例，不得因为示例而输出。
-3. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，kind 只能是 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，不能把人写成已患某病；但如果某个临床方向确实值得进一步筛查，必须在 namedPossibilities 中明确列为 RULE_OUT（例如“抑郁相关症状需评估”），不能用“持续低落”这种泛称把真正需要用户知道的方向藏起来。
-4. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 namedPossibilities，不能假装只有一个答案。证据能直接支持的设为 PRIMARY_DIRECTION；仅值得排除但当前证据不足的设为 RULE_OUT，并明确缺少什么。
-5. evidenceStrength 只是“现有日记证据的一致程度”，不是患病概率。LIMITED 也可以保留，只要它能告诉用户下一步记录或就医时该核对什么。
-6. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
-7. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
-8. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
-9. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 4 项，重复问题合并。不要用“情绪问题”“健康问题”“压力反应”之类无法帮助用户区分和验证的笼统名称。
-10. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
-11. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
-12. 输出要短而具体：每项最多 4 条支持证据、3 个具名方向、4 个缺失信息和 3 个下一步观察；每段解释不超过 160 个汉字。
-13. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
+1. 只使用 records 中用户本人的观察。先做“主体归属”检查：出现姓名、他/她、亲友、案件当事人或其他人称时，不得把对方的症状当成用户症状；归属不能确定就不使用。用户曾确认整条记录，也不等于其中每个症状都属于用户。
+2. 每个 supportingEvidence 和 challengingEvidence 必须输出 recordId 以及该记录 evidenceItems 中一段连续、逐字的 excerpt；若手动记录没有 evidenceItems，则逐字引用 sourceExcerpt。说明它为何支持或不支持。不能补造病史、持续时间、症状、检查或因果。
+3. 每个候选必须有一个明确、可理解的问题名称，并在 namedPossibilities 中列出它具体可能涉及的概念或医学方向。name 用“日记中出现的模式：具体方向”的用户语言，而不是再把现象重复一遍。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血需要排查”。不能只写“持续低落”“身体不舒服”而不说明它可能指向什么。这些只是格式示例，不得因为示例而输出。
+4. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，kind 只能是 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，不能把人写成已患某病；但如果某个临床方向确实值得进一步筛查，必须在 namedPossibilities 中明确列为 RULE_OUT（例如“抑郁相关症状需评估”），不能用“持续低落”这种泛称把真正需要用户知道的方向藏起来。
+5. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 namedPossibilities，不能假装只有一个答案。证据能直接支持的设为 PRIMARY_DIRECTION；仅值得排除但当前证据不足的设为 RULE_OUT，并明确缺少什么。
+6. evidenceStrength 只是“现有日记证据的一致程度”，不是患病概率。LIMITED 也可以保留，只要它能告诉用户下一步记录或就医时该核对什么。
+7. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
+8. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
+9. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
+10. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 4 项，重复问题合并。不要用“情绪问题”“健康问题”“压力反应”之类无法帮助用户区分和验证的笼统名称。
+11. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
+12. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
+13. 输出要短而具体：每项最多 4 条支持证据、3 个具名方向、4 个缺失信息和 3 个下一步观察；每段解释不超过 160 个汉字。
+14. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
 
 只返回 JSON，不要 Markdown：
-{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
+{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","excerpt":"evidenceItems中的逐字原文","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","excerpt":"evidenceItems中的逐字原文","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
 
 function bounded(value, limit = 1000) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -56,6 +57,14 @@ function stableHypothesisKey(item, domain, name) {
   return `${domain.toLowerCase()}:${crypto.createHash('sha256').update(canonical).digest('hex').slice(0, 24)}`;
 }
 
+function recordEvidenceExcerpts(record) {
+  const items = Array.isArray(record?.evidenceItems) ? record.evidenceItems : [];
+  return [...new Set([
+    ...items.map(item => bounded(item?.excerpt, 600)),
+    bounded(record?.sourceExcerpt, 600)
+  ].filter(Boolean))];
+}
+
 function normalizeEvidence(value, recordMap, maxItems = 10) {
   const seen = new Set();
   const result = [];
@@ -63,8 +72,12 @@ function normalizeEvidence(value, recordMap, maxItems = 10) {
     const recordId = String(item?.recordId || item?.record_id || '');
     if (!recordMap.has(recordId) || seen.has(recordId)) continue;
     const reason = bounded(item?.reason, 500);
-    if (!reason) continue;
-    result.push({ recordId, reason });
+    const proposedExcerpt = bounded(item?.excerpt || item?.evidenceExcerpt || item?.evidence_excerpt, 600);
+    const excerpts = recordEvidenceExcerpts(recordMap.get(recordId));
+    const excerpt = proposedExcerpt && excerpts.find(source => source.includes(proposedExcerpt))
+      ? proposedExcerpt : '';
+    if (!reason || !excerpt) continue;
+    result.push({ recordId, excerpt, reason });
     seen.add(recordId);
     if (result.length >= maxItems) break;
   }
@@ -158,6 +171,33 @@ function normalizeWellbeingHypotheses(value, records = []) {
   return result;
 }
 
+function extractionEvidenceItems(extraction) {
+  const result = [];
+  const add = (type, items, field) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      const statement = bounded(item?.[field], 300);
+      const excerpt = bounded(item?.evidenceExcerpt, 600);
+      if (!statement || !excerpt) continue;
+      result.push({
+        type,
+        statement,
+        excerpt,
+        certainty: item.certainty || '',
+        ...(type === 'PHYSICAL' ? {
+          bodyAreas: item.bodyAreas || [], duration: bounded(item.duration, 120),
+          observedAt: bounded(item.observedAt, 120), severity: item.severity,
+          measurements: item.measurements || [], testResults: item.testResults || []
+        } : {})
+      });
+    }
+  };
+  add('PSYCHOLOGICAL', extraction?.psychologicalObservations, 'observation');
+  add('PHYSICAL', extraction?.physicalObservations, 'symptom');
+  add('LIFESTYLE', extraction?.lifestyleFactors, 'factor');
+  add('ENVIRONMENT', extraction?.environmentFactors, 'observation');
+  return result.slice(0, 12);
+}
+
 function recordForModel(row) {
   const mapped = mapWellbeingRecord(row);
   const observation = Object.fromEntries(Object.entries(mapped.observation || {}).filter(([, value]) => {
@@ -165,14 +205,15 @@ function recordForModel(row) {
     if (value && typeof value === 'object') return Object.values(value).some(item => item !== null && item !== '' && (!Array.isArray(item) || item.length));
     return value !== null && value !== '';
   }));
+  const evidenceItems = extractionEvidenceItems(mapped.extraction);
   return {
     id: mapped.id,
     date: mapped.recordedOn,
     confirmationStatus: mapped.status,
     categories: mapped.categories,
-    observation,
+    evidenceItems,
+    ...(!evidenceItems.length ? { observation, sourceExcerpt: bounded(mapped.sourceExcerpt, 500) } : {}),
     whyUseful: bounded(mapped.whyUseful, 300),
-    sourceExcerpt: bounded(mapped.sourceExcerpt, 500)
   };
 }
 
@@ -184,7 +225,7 @@ function mapHypothesis(row, recordMap = new Map()) {
       reason: item.reason || '',
       ...(record ? {
         recordedOn: record.recordedOn,
-        sourceExcerpt: record.sourceExcerpt,
+        sourceExcerpt: item.excerpt || record.sourceExcerpt,
         observation: record.observation,
         confirmationStatus: record.status
       } : {})
@@ -333,7 +374,8 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
     id: record.id,
     date: record.date,
     categories: record.categories,
-    sourceExcerpt: bounded(record.sourceExcerpt, 280)
+    evidenceItems: record.evidenceItems,
+    ...(!record.evidenceItems?.length ? { sourceExcerpt: bounded(record.sourceExcerpt, 500) } : {})
   }));
   try {
     return await request({
