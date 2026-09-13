@@ -17,6 +17,7 @@ test('reviewer only keeps grounded self-observations with an explicit user value
     decision: 'KEEP',
     diaryId: 'd1',
     confidence: 0.91,
+    qualityChecks: { selfExperience: true, wellbeingSignal: true, longitudinalValue: true, evidenceGrounded: true, notDerived: true },
     healthValueTypes: ['STATE', 'TRIGGER_CONTEXT', 'NOT_ALLOWED'],
     whyUseful: '同时保留了睡眠缩短和头痛，便于后续核对是否反复同现。',
     healthExtraction: {
@@ -38,11 +39,19 @@ test('reviewer rejects its own rejection, wrong diary ids and invented evidence'
   assert.equal(normalizeReviewedWellbeing({ decision: 'REJECT' }, diary), null);
   assert.equal(normalizeReviewedWellbeing({
     decision: 'KEEP', diaryId: 'd2', whyUseful: '有助于看到变化',
+    confidence: 0.9, qualityChecks: { selfExperience: true, wellbeingSignal: true, longitudinalValue: true, evidenceGrounded: true, notDerived: true },
     healthExtraction: { physicalObservations: [{ symptom: '疲惫', evidenceExcerpt: '今天我有些疲惫' }] }
   }, diary), null);
   assert.equal(normalizeReviewedWellbeing({
     decision: 'KEEP', diaryId: 'd1', whyUseful: '有助于看到变化',
+    confidence: 0.9, qualityChecks: { selfExperience: true, wellbeingSignal: true, longitudinalValue: true, evidenceGrounded: true, notDerived: true },
     healthExtraction: { physicalObservations: [{ symptom: '头痛', evidenceExcerpt: '我今天头痛' }] }
+  }, diary), null);
+  assert.equal(normalizeReviewedWellbeing({
+    decision: 'KEEP', diaryId: 'd1', confidence: 0.77,
+    qualityChecks: { selfExperience: true, wellbeingSignal: true, longitudinalValue: true, evidenceGrounded: true, notDerived: true },
+    whyUseful: '有助于看到变化',
+    healthExtraction: { physicalObservations: [{ symptom: '疲惫', evidenceExcerpt: '今天我有些疲惫' }] }
   }, diary), null);
 });
 

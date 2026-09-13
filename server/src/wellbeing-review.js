@@ -7,7 +7,8 @@ const {
   normalizeDiaryHealthExtraction
 } = require('./diary-health');
 
-const WELLBEING_REVIEW_VERSION = 'wellbeing-value-review-2026-09-13-v3';
+const WELLBEING_REVIEW_VERSION = 'wellbeing-value-review-2026-09-13-v4';
+const MIN_WELLBEING_REVIEW_CONFIDENCE = 0.78;
 const WELLBEING_VALUE_TYPES = [
   'BASELINE',
   'STATE',
@@ -39,10 +40,15 @@ userFeedback 是该用户近期主动否决的例子和原因，用来理解他�
 3. 普通情绪也可以有价值，前提是它有明确强度、变化、反复、触发背景、功能影响或其他可用线索，而不只是一个无背景的情绪词。
 4. evidenceExcerpt 必须是日记中连续出现的逐字原文。事实与用户假设必须分开；同时发生不证明因果；不诊断疾病或人格。
 5. whyUseful 用1–2句说明“这条能帮用户看到什么，以后可以怎样核对”，不得复述原文或制造诊断。
+环境、人际事件、工作事件和生活选择本身都不是身心记录；只有它们与明确的本人心理/身体状态同现时，才能作为背景附带保留。不得在 whyUseful 里用“以后也许能核对”为本来没有身心价值的内容硬造价值。
+
+心理观察至少需要以下之一：有明确强度/持续时间/变化/反复性的情绪与压力；对睡眠、食欲、精力、认知或日常功能的影响；用户自己明确识别的反复性自动反应。一次性紧张、不自信、不舍、兴趣下降、对他人/业务的评价、一般自我批评，若没有上述特征，不保留。
 
 必须拒绝：纯知识、哲学或业务思考；纯计划/待办/完成汇报；别人的症状；没有当下亲身经验的摘抄；AI 分析结果或二次总结；泛化的自我批评；仅有争吵/工作挫折而没有可观察身心变化的内容。
 
-只返回 JSON：{"records":[{"decision":"KEEP","diaryId":"真实日记ID","confidence":0.0,"healthValueTypes":["STATE"],"whyUseful":"为什么值得留下","healthExtraction":{"psychologicalObservations":[],"physicalObservations":[],"lifestyleFactors":[],"environmentFactors":[],"missingInformation":[],"redFlags":[]}}]}。被拒绝的日记不放进 records。`;
+输出前必须对每条 KEEP 分别核对五项：是用户本人亲历、有实际身心信号、有长期观察价值、所有证据逐字来自原文、不是摘抄/AI/二次总结。任一项不能确定就 REJECT。confidence 表示对“完全符合以上产品标准”的信心，低于 0.78 不得 KEEP。
+
+只返回 JSON：{"records":[{"decision":"KEEP","diaryId":"真实日记ID","confidence":0.0,"qualityChecks":{"selfExperience":true,"wellbeingSignal":true,"longitudinalValue":true,"evidenceGrounded":true,"notDerived":true},"healthValueTypes":["STATE"],"whyUseful":"为什么值得留下","healthExtraction":{"psychologicalObservations":[],"physicalObservations":[],"lifestyleFactors":[],"environmentFactors":[],"missingInformation":[],"redFlags":[]}}]}。被拒绝的日记不放进 records。`;
 
 function bounded(value, limit = 1200) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -77,6 +83,11 @@ function normalizeReviewedWellbeing(value, diary) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   if (String(input.decision || '').toUpperCase() !== 'KEEP') return null;
   if (!diary || String(input.diaryId || input.diary_id || '') !== String(diary.id || '')) return null;
+  const checks = input.qualityChecks || input.quality_checks || {};
+  if (!['selfExperience', 'wellbeingSignal', 'longitudinalValue', 'evidenceGrounded', 'notDerived']
+    .every(key => checks[key] === true)) return null;
+  const confidence = normalizeConfidence(input.confidence);
+  if (confidence === null || confidence < MIN_WELLBEING_REVIEW_CONFIDENCE) return null;
   const extraction = normalizeDiaryHealthExtraction(
     input.healthExtraction || input.health_extraction || input.extraction || {},
     { diaryContent: diary.content }
@@ -97,7 +108,7 @@ function normalizeReviewedWellbeing(value, diary) {
     sourceExcerpt,
     healthValueTypes,
     whyUseful,
-    confidence: normalizeConfidence(input.confidence),
+    confidence,
     reviewVersion: WELLBEING_REVIEW_VERSION,
     sourceFingerprint: wellbeingSourceFingerprint(diary.content)
   };
@@ -144,6 +155,7 @@ async function reviewDiaryWellbeing(callJson, {
 
 module.exports = {
   WELLBEING_CANDIDATE_PROMPT,
+  MIN_WELLBEING_REVIEW_CONFIDENCE,
   WELLBEING_REVIEW_PROMPT,
   WELLBEING_REVIEW_VERSION,
   WELLBEING_VALUE_TYPES,
