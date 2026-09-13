@@ -19,7 +19,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 这不是诊断。你必须遵守：
 1. 只使用 records 中用户本人的观察。每个 supportingEvidence.recordId 和 challengingEvidence.recordId 必须来自输入；说明它为何支持或不支持，不能补造病史、持续时间、症状、检查或因果。
 2. 每个候选必须有一个明确、可理解的问题名称，并在 namedPossibilities 中列出它具体可能涉及的概念或医学方向。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血需要排查”。不能只写“持续低落”“身体不舒服”而不说明它可能指向什么。这些只是格式示例，不得因为示例而输出。
-3. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，只能输出 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，如“持续低落倾向”“反刍思维”“情绪调节困难”，不得写成抑郁症、焦虑症等疾病。
+3. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，kind 只能是 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，不能把人写成已患某病；但如果某个临床方向确实值得进一步筛查，必须在 namedPossibilities 中明确列为 RULE_OUT（例如“抑郁相关症状需评估”），不能用“持续低落”这种泛称把真正需要用户知道的方向藏起来。
 4. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 namedPossibilities，不能假装只有一个答案。证据能直接支持的设为 PRIMARY_DIRECTION；仅值得排除但当前证据不足的设为 RULE_OUT，并明确缺少什么。
 5. evidenceStrength 只是“现有日记证据的一致程度”，不是患病概率。LIMITED 也可以保留，只要它能告诉用户下一步记录或就医时该核对什么。
 6. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
@@ -153,7 +153,7 @@ function normalizeWellbeingHypotheses(value, records = []) {
       reviewVersion: WELLBEING_HYPOTHESIS_REVIEW_VERSION
     });
     seen.add(hypothesisKey);
-    if (result.length >= 8) break;
+    if (result.length >= 16) break;
   }
   return result;
 }
@@ -383,7 +383,13 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
   if (!reviewedDomains.length) {
     throw Object.assign(new Error('身心问题可能性识别暂时没有完成，请稍后重试'), { code: 'SHROOM_AI_FAILED' });
   }
-  const hypotheses = normalizeWellbeingHypotheses(rawHypotheses, records);
+  const normalizedHypotheses = normalizeWellbeingHypotheses(rawHypotheses, records);
+  const strengthRank = { STRONG: 3, MODERATE: 2, LIMITED: 1 };
+  const hypotheses = reviewedDomains.flatMap(domain => normalizedHypotheses
+    .filter(item => item.domain === domain)
+    .sort((left, right) => (strengthRank[right.evidenceStrength] - strengthRank[left.evidenceStrength])
+      || (right.supportingEvidence.length - left.supportingEvidence.length))
+    .slice(0, 4));
   const sourceUpdatedAt = rows.reduce((latest, row) => {
     const value = new Date(row.updated_at || 0);
     return value > latest ? value : latest;
