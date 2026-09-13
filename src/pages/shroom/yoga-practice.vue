@@ -21,15 +21,22 @@
 
 				<view v-if="activeSegment" class="lesson-card">
 					<view class="lesson-heading">
-						<view><text class="lesson-index">{{ activeIndexLabel }}</text><text class="lesson-title">{{ activeSegment.title }}</text></view>
+						<view><text class="lesson-index">{{ activeIndexLabel }}</text><text class="lesson-title">{{ activeSegment.title }}</text><text class="lesson-title-en">{{ activeSegment.titleEn }}</text></view>
 						<text class="clip-duration">{{ clipDurationLabel }}</text>
+					</view>
+					<view class="audio-toolbar">
+						<view><text>讲解语言</text><text>首次跟随系统，切换后记住选择</text></view>
+						<view class="language-switch" role="group" aria-label="视频讲解语言">
+							<button :class="{ active: audioLocale === 'zh' }" :aria-pressed="audioLocale === 'zh'" @tap="switchAudioLocale('zh')">中文</button>
+							<button :class="{ active: audioLocale === 'en' }" :aria-pressed="audioLocale === 'en'" @tap="switchAudioLocale('en')">EN</button>
+						</view>
 					</view>
 					<view class="video-wrap">
 						<video
-							:key="activeSegment.id"
+							:key="activeSegment.id + '-' + audioLocale"
 							id="yoga-lesson-video"
 							class="lesson-video"
-							:src="practice.videoUrl"
+							:src="activeVideoUrl"
 							:poster="practice.posterUrl"
 							:initial-time="activeSegment.startSeconds"
 							:controls="false"
@@ -40,10 +47,19 @@
 							@timeupdate="handleTimeUpdate"
 							@error="handleVideoError"
 						></video>
-						<button class="clip-control" @tap="toggleClip"><text>{{ clipPlaying ? '暂停精讲' : (clipEnded ? '重看这个动作' : '播放动作精讲') }}</text><text>{{ clipElapsedLabel }} / {{ clipLengthLabel }}</text></button>
-						<view class="clip-progress"><view :style="{ width: clipProgress + '%' }"></view></view>
-						<view v-if="clipEnded" class="clip-finished"><text>动作片段已播完</text><text>现在可以按自己的节奏练习</text></view>
 					</view>
+					<view class="clip-controls">
+						<button class="clip-control" :aria-label="clipPlaying ? '暂停视频' : '播放这个动作'" @tap="toggleClip">
+							<text>{{ clipPlaying ? 'Ⅱ 暂停视频' : (clipEnded ? '↻ 重看这个动作' : '▶ 播放这个动作') }}</text>
+							<text>{{ clipElapsedLabel }} / {{ clipLengthLabel }}</text>
+						</button>
+						<view class="clip-progress"><view :style="{ width: clipProgress + '%' }"></view></view>
+					</view>
+					<view v-if="activeCaption" class="caption-card" aria-live="polite">
+						<text class="caption-primary">{{ audioLocale === 'zh' ? activeCaption.zh : activeCaption.en }}</text>
+						<text class="caption-secondary">{{ audioLocale === 'zh' ? activeCaption.en : activeCaption.zh }}</text>
+					</view>
+					<view v-if="clipEnded" class="clip-finished"><text>动作片段已播完</text><text>现在可以按自己的节奏练习</text></view>
 
 					<text class="focus">{{ activeSegment.focus }}</text>
 					<view class="steps"><view v-for="(step, index) in activeSegment.steps" :key="index"><text>{{ index + 1 }}</text><text>{{ step }}</text></view></view>
@@ -99,6 +115,8 @@ export default {
 			clipEnded: false,
 			clipPlaying: false,
 			currentVideoTime: 0,
+			audioLocale: 'zh',
+			systemLanguage: 'zh',
 			timerState: 'idle',
 			timerRemaining: 0,
 			timerHandle: null
@@ -112,6 +130,12 @@ export default {
 		clipProgress() { if (!this.activeSegment || !this.clipLength) return 0; return Math.max(0, Math.min(100, (this.currentVideoTime - this.activeSegment.startSeconds) / this.clipLength * 100)); },
 		clipElapsedLabel() { if (!this.activeSegment) return '00:00'; return this.formatTimer(Math.max(0, Math.min(this.clipLength, this.currentVideoTime - this.activeSegment.startSeconds))); },
 		clipLengthLabel() { return this.formatTimer(this.clipLength); },
+		activeVideoUrl() { return (this.practice.videoUrls && this.practice.videoUrls[this.audioLocale]) || this.practice.videoUrl || ''; },
+		activeCaption() {
+			if (!this.activeSegment || !Array.isArray(this.activeSegment.captions) || !this.activeSegment.captions.length) return null;
+			const relativeTime = Math.max(0, this.currentVideoTime - this.activeSegment.startSeconds);
+			return [...this.activeSegment.captions].reverse().find(caption => relativeTime >= Number(caption.atSeconds || 0)) || this.activeSegment.captions[0];
+		},
 		practiceDurationLabel() { return this.activeSegment ? this.formatTimer(this.activeSegment.practiceSeconds) : ''; },
 		timerLabel() { return this.formatTimer(this.timerRemaining || (this.activeSegment ? this.activeSegment.practiceSeconds : 0)); },
 		timerTitle() { return this.timerState === 'finished' ? '自主练习时间到了' : (this.timerState === 'running' ? '不用看屏幕，跟着呼吸练' : (this.timerState === 'paused' ? '计时已暂停' : '看懂后，再开始自主练习')); },
@@ -119,11 +143,24 @@ export default {
 		dateLabel() { return this.date ? this.date.slice(5).replace('-', '.') : ''; }
 	},
 	onLoad() {
-		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
+		const systemInfo = uni.getSystemInfoSync();
+		this.statusBarHeight = systemInfo.statusBarHeight || 0;
+		this.systemLanguage = this.detectAudioLocale(systemInfo);
+		let savedLocale = '';
+		try { savedLocale = uni.getStorageSync('shroom_yoga_audio_locale') || ''; } catch (_) {}
+		this.audioLocale = ['zh', 'en'].includes(savedLocale) ? savedLocale : this.systemLanguage;
 		this.loadPractice();
 	},
 	onUnload() { this.clearTimer(); this.pauseVideo(); },
 	methods: {
+		detectAudioLocale(systemInfo = {}) {
+			let locale = systemInfo.language || systemInfo.locale || '';
+			// #ifdef H5
+			if (!locale && typeof navigator !== 'undefined') locale = navigator.language || '';
+			// #endif
+			try { if (!locale && typeof uni.getLocale === 'function') locale = uni.getLocale() || ''; } catch (_) {}
+			return /^zh(?:[-_]|$)/i.test(String(locale)) ? 'zh' : 'en';
+		},
 		async loadPractice() {
 			this.loading = true;
 			this.loadError = false;
@@ -135,7 +172,10 @@ export default {
 				this.practicedSegmentIds = data.completedSegmentIds || [];
 				this.completed = Boolean(data.completed);
 				this.durationMinutes = Number(data.durationMinutes || 0);
-				if (!this.activeSegmentId && this.practice.segments.length) this.activeSegmentId = this.practice.segments[0].id;
+				if (!this.activeSegmentId && this.practice.segments.length) {
+					this.activeSegmentId = this.practice.segments[0].id;
+					this.currentVideoTime = this.practice.segments[0].startSeconds;
+				}
 				this.resetTimer();
 			} catch (error) {
 				this.loadError = true;
@@ -169,6 +209,18 @@ export default {
 				context.seek(this.activeSegment.startSeconds);
 			}
 			context.play();
+		},
+		switchAudioLocale(locale) {
+			if (!['zh', 'en'].includes(locale) || locale === this.audioLocale || !this.activeSegment) return;
+			const relativeTime = Math.max(0, Math.min(this.clipLength, this.currentVideoTime - this.activeSegment.startSeconds));
+			this.pauseVideo();
+			this.audioLocale = locale;
+			try { uni.setStorageSync('shroom_yoga_audio_locale', locale); } catch (_) {}
+			this.currentVideoTime = this.activeSegment.startSeconds + relativeTime;
+			this.clipEnded = false;
+			this.clipPlaying = false;
+			this.$nextTick(() => { try { this.videoContext().seek(this.currentVideoTime); } catch (_) {} });
+			uni.showToast({ title: locale === 'zh' ? '已切换中文讲解' : 'English narration selected', icon: 'none' });
 		},
 		handleVideoError() { uni.showToast({ title: '视频暂时无法播放，可以先按文字要点练习', icon: 'none' }); },
 		selectSegment(segment) {
@@ -244,8 +296,10 @@ button::after { border: 0; }
 .topbar-kicker, .eyebrow { color: #718075; font-size: 15rpx; font-weight: 760; letter-spacing: 2.4rpx; }.topbar-title { font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; font-weight: 720; }.date { color: #718075; font-size: 17rpx; }
 .state-card { display: flex; min-height: 330rpx; margin-top: 28rpx; flex-direction: column; align-items: center; justify-content: center; gap: 20rpx; border-radius: 30rpx; background: rgba(255,255,255,.75); color: #68746c; font-size: 19rpx; }.state-card button { padding: 18rpx 25rpx; border-radius: 999rpx; background: #1b2920; color: #fff; font-size: 18rpx; }
 .hero { display: flex; margin-top: 46rpx; flex-direction: column; }.hero-title { margin-top: 14rpx; font-family: Georgia, 'Songti SC', serif; font-size: 47rpx; font-weight: 730; line-height: 1.17; letter-spacing: -1rpx; }.hero-copy { max-width: 650rpx; margin-top: 19rpx; color: #637067; font-size: 19rpx; line-height: 1.68; }.today-record { display: flex; align-items: center; gap: 10rpx; margin-top: 18rpx; color: #527047; font-size: 17rpx; }.today-record view { width: 9rpx; height: 9rpx; border-radius: 50%; background: #668b59; }
-.lesson-card, .segment-section, .record-card { box-sizing: border-box; margin-top: 30rpx; padding: 27rpx; border-radius: 31rpx; background: rgba(255,255,255,.86); box-shadow: 0 15rpx 45rpx rgba(38,55,42,.06); }.lesson-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }.lesson-heading > view { display: flex; min-width: 0; flex-direction: column; gap: 7rpx; }.lesson-index { color: #718075; font-size: 14rpx; font-weight: 750; letter-spacing: 2rpx; }.lesson-title { font-family: Georgia, 'Songti SC', serif; font-size: 29rpx; font-weight: 720; }.clip-duration { flex: 0 0 auto; padding: 9rpx 13rpx; border-radius: 999rpx; background: #e6efd9; color: #536a4c; font-size: 14rpx; }
-.video-wrap { position: relative; margin-top: 22rpx; overflow: hidden; border-radius: 23rpx; background: #152019; }.lesson-video { display: block; width: 100%; height: 370rpx; }.clip-control { position: absolute; right: 17rpx; bottom: 18rpx; left: 17rpx; z-index: 2; display: flex; min-height: 62rpx; padding: 0 18rpx; align-items: center; justify-content: space-between; gap: 15rpx; border-radius: 18rpx; background: rgba(16,28,20,.88); color: #fff; text-align: left; }.clip-control text:first-child { font-size: 17rpx; font-weight: 700; }.clip-control text:last-child { color: #c7d2c9; font: 600 14rpx/1 Georgia, serif; }.clip-progress { position: absolute; right: 35rpx; bottom: 15rpx; left: 35rpx; z-index: 3; height: 4rpx; overflow: hidden; border-radius: 999rpx; background: rgba(255,255,255,.2); }.clip-progress view { height: 100%; border-radius: inherit; background: #dff0ce; }.clip-finished { position: absolute; right: 17rpx; top: 17rpx; left: 17rpx; display: flex; padding: 15rpx 18rpx; flex-direction: column; gap: 4rpx; border-radius: 16rpx; background: rgba(16,28,20,.88); color: #fff; }.clip-finished text:first-child { font-size: 17rpx; font-weight: 700; }.clip-finished text:last-child { color: #c5d0c7; font-size: 14rpx; }
+.lesson-card, .segment-section, .record-card { box-sizing: border-box; margin-top: 30rpx; padding: 27rpx; border-radius: 31rpx; background: rgba(255,255,255,.86); box-shadow: 0 15rpx 45rpx rgba(38,55,42,.06); }.lesson-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }.lesson-heading > view { display: flex; min-width: 0; flex-direction: column; gap: 7rpx; }.lesson-index { color: #718075; font-size: 18rpx; font-weight: 750; letter-spacing: 2rpx; }.lesson-title { font-family: Georgia, 'Songti SC', serif; font-size: 34rpx; font-weight: 720; }.lesson-title-en { color: #819087; font-size: 21rpx; line-height: 1.35; }.clip-duration { flex: 0 0 auto; padding: 9rpx 13rpx; border-radius: 999rpx; background: #e6efd9; color: #536a4c; font-size: 20rpx; }
+.audio-toolbar { display: flex; margin-top: 22rpx; align-items: center; justify-content: space-between; gap: 16rpx; }.audio-toolbar > view:first-child { display: flex; min-width: 0; flex-direction: column; gap: 5rpx; }.audio-toolbar > view:first-child text:first-child { font-size: 25rpx; font-weight: 700; }.audio-toolbar > view:first-child text:last-child { color: #7b877f; font-size: 19rpx; }.language-switch { display: flex; flex: 0 0 auto; padding: 5rpx; border-radius: 999rpx; background: #edf1e9; }.language-switch button { min-width: 86rpx; min-height: 68rpx; padding: 0 18rpx; border-radius: 999rpx; color: #6d786f; font-size: 22rpx; font-weight: 700; }.language-switch button.active { background: #1c2b21; color: #fff; box-shadow: 0 5rpx 14rpx rgba(28,43,33,.17); }
+.video-wrap { margin-top: 22rpx; overflow: hidden; border-radius: 23rpx; background: #152019; }.lesson-video { display: block; width: 100%; height: 370rpx; }.clip-controls { box-sizing: border-box; width: 100%; margin-top: 13rpx; padding: 0 22rpx 17rpx; border-radius: 20rpx; background: #19271e; }.clip-control { display: flex; box-sizing: border-box; width: 100%; min-height: 96rpx; padding: 0; align-items: center; justify-content: space-between; gap: 18rpx; color: #fff; text-align: left; }.clip-control text:first-child { font-size: 30rpx; font-weight: 760; }.clip-control text:last-child { flex: 0 0 auto; color: #c7d2c9; font: 600 22rpx/1 Georgia, serif; }.clip-progress { width: 100%; height: 7rpx; overflow: hidden; border-radius: 999rpx; background: rgba(255,255,255,.2); }.clip-progress view { height: 100%; border-radius: inherit; background: #dff0ce; }.clip-finished { display: flex; margin-top: 12rpx; padding: 17rpx 19rpx; flex-direction: column; gap: 5rpx; border-radius: 16rpx; background: #e4eddc; color: #42553f; }.clip-finished text:first-child { font-size: 24rpx; font-weight: 700; }.clip-finished text:last-child { color: #6d7b6e; font-size: 21rpx; }
+.caption-card { display: flex; min-height: 108rpx; margin-top: 12rpx; padding: 17rpx 19rpx; flex-direction: column; align-items: center; justify-content: center; gap: 6rpx; border: 1rpx solid #e2e8df; border-radius: 17rpx; background: #f7f9f5; text-align: center; }.caption-primary { color: #26342a; font-size: 27rpx; font-weight: 690; line-height: 1.5; }.caption-secondary { color: #77837a; font-size: 21rpx; line-height: 1.45; }
 .focus { display: block; margin-top: 22rpx; font-size: 20rpx; font-weight: 680; line-height: 1.55; }.steps { margin-top: 17rpx; }.steps view { display: flex; align-items: flex-start; gap: 13rpx; margin-top: 11rpx; }.steps view > text:first-child { display: flex; width: 32rpx; height: 32rpx; flex: 0 0 32rpx; align-items: center; justify-content: center; border-radius: 50%; background: #e3ecd7; color: #4e6547; font-size: 14rpx; font-weight: 750; }.steps view > text:last-child { padding-top: 3rpx; color: #5e6a62; font-size: 18rpx; line-height: 1.5; }.caution { display: flex; margin-top: 19rpx; padding: 16rpx 18rpx; flex-direction: column; gap: 5rpx; border-radius: 17rpx; background: #f4efe5; }.caution text:first-child { color: #8c6c4b; font-size: 14rpx; font-weight: 720; }.caution text:last-child { color: #6e6256; font-size: 16rpx; line-height: 1.5; }
 .practice-timer { display: flex; margin-top: 22rpx; padding: 19rpx 20rpx; align-items: center; gap: 17rpx; border-radius: 20rpx; background: #eef3e9; }.practice-timer > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.practice-timer > view text:first-child { font-size: 18rpx; font-weight: 700; }.practice-timer > view text:last-child { color: #738078; font-size: 14rpx; line-height: 1.4; }.timer-value { flex: 0 0 auto; font: 700 28rpx/1 Georgia, serif; letter-spacing: 1rpx; }.practice-timer.running { background: #1c2b21; color: #fff; }.practice-timer.running > view text:last-child { color: #aebcaf; }.practice-timer.finished { background: #e3efd1; }
 .primary-action, .secondary-action, .record-button { display: flex; box-sizing: border-box; width: 100%; min-height: 76rpx; margin-top: 17rpx; padding: 15rpx 22rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #1b2920; color: #fff; font-size: 19rpx; font-weight: 720; }.primary-action.timer-running { background: #e8eee3; color: #465448; }.primary-action.complete-action { background: #5e794d; }.secondary-action { margin-top: 10rpx; border: 1rpx solid rgba(27,41,32,.12); background: transparent; color: #425047; }

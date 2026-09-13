@@ -185,7 +185,11 @@ async function buildPayload(userId) {
     dimensions,
     recommendations: recommendations.slice(0, 3),
     system,
-    bodyPractice: DAILY_YOGA_PRACTICE,
+    bodyPractice: {
+      title: DAILY_YOGA_PRACTICE.title,
+      subtitle: DAILY_YOGA_PRACTICE.subtitle,
+      durationMinutes: DAILY_YOGA_PRACTICE.durationMinutes
+    },
     prayerConfigured: prayerEnabled
   };
 }

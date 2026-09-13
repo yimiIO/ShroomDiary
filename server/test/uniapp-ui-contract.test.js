@@ -86,7 +86,15 @@ test('compound system opens a segmented self-paced yoga practice', () => {
   assert.match(compound, /每日自主练习/);
   assert.match(yoga, /initial-time/);
   assert.match(yoga, /:controls="false"/);
-  assert.match(yoga, /暂停精讲/);
+  assert.match(yoga, /暂停视频/);
+  assert.match(yoga, /<\/view>\s*<view class="clip-controls">[\s\S]*▶ 播放这个动作/);
+  assert.match(yoga, /switchAudioLocale/);
+  assert.match(yoga, /activeVideoUrl/);
+  assert.match(yoga, /detectAudioLocale\(systemInfo\)/);
+  assert.match(yoga, /getStorageSync\('shroom_yoga_audio_locale'\)/);
+  assert.match(yoga, /setStorageSync\('shroom_yoga_audio_locale', locale\)/);
+  assert.match(yoga, /activeCaption\.zh/);
+  assert.match(yoga, /activeCaption\.en/);
   assert.match(yoga, /@timeupdate="handleTimeUpdate"/);
   assert.match(yoga, /开始自主练习/);
   assert.match(yoga, /记录今天的练习/);

@@ -87,6 +87,26 @@ async function readPrivateObject(key) {
   return Buffer.isBuffer(result.Body) ? result.Body : Buffer.from(result.Body || '');
 }
 
+function signPrivateObjectUrl(key, expires = 6 * 60 * 60) {
+  if (!key) throw new Error('Private media key is required');
+  const client = requireCos();
+  return new Promise((resolve, reject) => {
+    client.getObjectUrl({
+      Bucket: config.cos.bucket,
+      Region: config.cos.region,
+      Key: key,
+      Sign: true,
+      Expires: Math.max(60, Number(expires) || 60)
+    }, (error, data) => {
+      if (!error && data && data.Url) return resolve(data.Url);
+      return reject(Object.assign(new Error('Shroom 私有媒体链接暂时不可用'), {
+        code: 'SHROOM_COS_SIGNING_UNAVAILABLE',
+        cause: error
+      }));
+    });
+  });
+}
+
 async function deletePrivateObject(key) {
   if (!isCosConfigured() || !key) return;
   await cosCall('deleteObject', {
@@ -101,5 +121,6 @@ module.exports = {
   deletePrivateObject,
   isCosConfigured,
   readPrivateObject,
+  signPrivateObjectUrl,
   uploadPrivateImage
 };

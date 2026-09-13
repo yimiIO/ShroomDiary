@@ -6,6 +6,7 @@ const {
   DAILY_YOGA_PRACTICE,
   bodyStreak,
   normalizeYogaSelection,
+  presentYogaPractice,
   summarizeCompoundTasks
 } = require('../src/compound-system');
 
@@ -61,6 +62,18 @@ test('daily yoga is taught as short movement lessons followed by self practice',
     assert.ok(segment.practiceSeconds >= 30);
     assert.ok(segment.steps.length >= 2);
   }
+  assert.ok(DAILY_YOGA_PRACTICE.videoKeys.zh);
+  assert.ok(DAILY_YOGA_PRACTICE.videoKeys.en);
+  assert.ok(DAILY_YOGA_PRACTICE.segments.some(segment => segment.id === 'child-pose'));
+  assert.ok(!DAILY_YOGA_PRACTICE.segments.some(segment => segment.id === 'plank-transition'));
+  for (const segment of DAILY_YOGA_PRACTICE.segments) {
+    assert.ok(segment.titleEn);
+    assert.ok(segment.focusEn);
+    assert.ok(segment.stepsEn.length >= 2);
+    assert.ok(segment.cautionEn);
+    assert.ok(segment.captions.length >= 3);
+    assert.ok(segment.captions.every(caption => caption.zh && caption.en));
+  }
   const selection = normalizeYogaSelection([
     DAILY_YOGA_PRACTICE.segments[0].id,
     DAILY_YOGA_PRACTICE.segments[0].id,
@@ -68,4 +81,13 @@ test('daily yoga is taught as short movement lessons followed by self practice',
   ]);
   assert.deepEqual(selection.segmentIds, [DAILY_YOGA_PRACTICE.segments[0].id]);
   assert.ok(selection.durationMinutes >= 1);
+});
+
+test('daily yoga presents expiring media URLs without exposing storage keys', async () => {
+  const practice = await presentYogaPractice(async key => `signed://${key}`);
+  assert.match(practice.videoUrls.zh, /fit-for-duty-yoga-24min-zh\.mp4/);
+  assert.match(practice.videoUrls.en, /fit-for-duty-yoga-24min-en\.mp4/);
+  assert.match(practice.posterUrl, /fit-for-duty-yoga-poster\.jpg/);
+  assert.equal(practice.videoKeys, undefined);
+  assert.equal(practice.posterKey, undefined);
 });

@@ -7,7 +7,8 @@ const { callJson, isAiConfigured } = require('../ai-engine');
 const { usageSummary } = require('../ai-usage');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
 const { ensureDefaultLifeOsItems, SECTIONS } = require('../life-os-long-term');
-const { DAILY_YOGA_PRACTICE, normalizeYogaSelection, shanghaiDate } = require('../compound-system');
+const { normalizeYogaSelection, presentYogaPractice, shanghaiDate } = require('../compound-system');
+const { signPrivateObjectUrl } = require('../media-storage');
 const {
   BLOCKER_PROMPT,
   CONTINUE_PROMPT,
@@ -258,7 +259,7 @@ router.get('/body-practice', asyncRoute(async (req, res) => {
     completedSegmentIds: checkin ? selectedYogaSegments(checkin.note) : [],
     durationMinutes: checkin ? Number(checkin.duration_minutes || 0) : 0,
     completedAt: checkin ? checkin.updated_at || checkin.created_at : null,
-    practice: DAILY_YOGA_PRACTICE
+    practice: await presentYogaPractice(signPrivateObjectUrl)
   });
 }));
 
@@ -281,7 +282,7 @@ router.post('/body-practice/check-in', asyncRoute(async (req, res) => {
     completed: true,
     completedSegmentIds: selection.segmentIds,
     durationMinutes: selection.durationMinutes,
-    practice: DAILY_YOGA_PRACTICE
+    practice: await presentYogaPractice(signPrivateObjectUrl)
   }, '今天的自主练习已记录');
 }));
 
@@ -297,7 +298,7 @@ router.delete('/body-practice/check-in', asyncRoute(async (req, res) => {
     completed: false,
     completedSegmentIds: [],
     durationMinutes: 0,
-    practice: DAILY_YOGA_PRACTICE
+    practice: await presentYogaPractice(signPrivateObjectUrl)
   }, '今天的练习记录已撤销');
 }));
 
