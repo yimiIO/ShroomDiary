@@ -7,6 +7,7 @@ const test = require('node:test');
 const {
   WELLBEING_REVIEW_VERSION,
   WELLBEING_VALUE_TYPES,
+  looksLikeDerivedSummary,
   normalizeReviewedWellbeing,
   reviewPrompt
 } = require('../src/wellbeing-review');
@@ -32,6 +33,11 @@ test('reviewer only keeps grounded self-observations with an explicit user value
   assert.match(reviewed.whyUseful, /后续核对/u);
   assert.equal(reviewed.reviewVersion, WELLBEING_REVIEW_VERSION);
   assert.ok(WELLBEING_VALUE_TYPES.includes('RELIEF_PROTECTIVE'));
+});
+
+test('generated multi-part monthly summaries cannot become fresh wellbeing observations', () => {
+  assert.equal(looksLikeDerivedSummary('## 三月复盘 - 中篇\n### 核心产出\n- 项目'), true);
+  assert.equal(looksLikeDerivedSummary('# 三月总结与四月方向\n## 我的口述\n这个月我经常熬夜。'), false);
 });
 
 test('reviewer rejects its own rejection, wrong diary ids and invented evidence', () => {

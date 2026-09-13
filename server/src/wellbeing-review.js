@@ -7,7 +7,7 @@ const {
   normalizeDiaryHealthExtraction
 } = require('./diary-health');
 
-const WELLBEING_REVIEW_VERSION = 'wellbeing-value-review-2026-09-13-v4';
+const WELLBEING_REVIEW_VERSION = 'wellbeing-value-review-2026-09-13-v5';
 const MIN_WELLBEING_REVIEW_CONFIDENCE = 0.78;
 const WELLBEING_VALUE_TYPES = [
   'BASELINE',
@@ -45,6 +45,9 @@ userFeedback 是该用户近期主动否决的例子和原因，用来理解他�
 心理观察至少需要以下之一：有明确强度/持续时间/变化/反复性的情绪与压力；对睡眠、食欲、精力、认知或日常功能的影响；用户自己明确识别的反复性自动反应。一次性紧张、不自信、不舍、兴趣下降、对他人/业务的评价、一般自我批评，若没有上述特征，不保留。
 
 必须拒绝：纯知识、哲学或业务思考；纯计划/待办/完成汇报；别人的症状；没有当下亲身经验的摘抄；AI 分析结果或二次总结；泛化的自我批评；仅有争吵/工作挫折而没有可观察身心变化的内容。
+具体反例：火车里一次性感觉很热、给合作方转钱时不舍得、嫌咖啡贵、犹豫是否去旅行、浪况不好导致兴趣下降，通常是普通情境反应，不是值得沉淀的身心记录。含“核心产出/系统偏离/关系资产”等汇总栏位、引用其他日期内容的月度复盘，属二次总结，不得再当成新观察。
+
+即使整篇日记值得 KEEP，也必须从空白重建 healthExtraction，只放入本身通过上述标准的观察。不得整体复制第一阶段候选，也不得因为日记里有一条有价值的身体记录，就把同篇中无关的哲学、业务或旅行思考一起收录。
 
 输出前必须对每条 KEEP 分别核对五项：是用户本人亲历、有实际身心信号、有长期观察价值、所有证据逐字来自原文、不是摘抄/AI/二次总结。任一项不能确定就 REJECT。confidence 表示对“完全符合以上产品标准”的信心，低于 0.78 不得 KEEP。
 
@@ -74,6 +77,12 @@ function normalizeConfidence(value) {
   return Math.round(Math.max(0, Math.min(1, number)) * 1000) / 1000;
 }
 
+function looksLikeDerivedSummary(content) {
+  const source = String(content || '');
+  return /^##\s+.*复盘\s*[-—]\s*(?:中篇|下篇)/mu.test(source)
+    || (/核心产出/u.test(source) && /系统偏离/u.test(source) && /关系资产/u.test(source));
+}
+
 function wellbeingSourceFingerprint(content) {
   const normalized = String(content || '').normalize('NFKC').replace(/\s+/gu, '').trim();
   return normalized ? crypto.createHash('sha256').update(normalized).digest('hex') : '';
@@ -83,6 +92,7 @@ function normalizeReviewedWellbeing(value, diary) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   if (String(input.decision || '').toUpperCase() !== 'KEEP') return null;
   if (!diary || String(input.diaryId || input.diary_id || '') !== String(diary.id || '')) return null;
+  if (looksLikeDerivedSummary(diary.content)) return null;
   const checks = input.qualityChecks || input.quality_checks || {};
   if (!['selfExperience', 'wellbeingSignal', 'longitudinalValue', 'evidenceGrounded', 'notDerived']
     .every(key => checks[key] === true)) return null;
@@ -163,5 +173,6 @@ module.exports = {
   normalizeReviewedWellbeingRecords,
   reviewDiaryWellbeing,
   reviewPrompt,
-  wellbeingSourceFingerprint
+  wellbeingSourceFingerprint,
+  looksLikeDerivedSummary
 };

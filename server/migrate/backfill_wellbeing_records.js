@@ -17,8 +17,8 @@ const {
   normalizeReviewedWellbeingRecords
 } = require('../src/wellbeing-review');
 
-const MODEL_VERSION = `wellbeing-history-2026-09-13-v4:${WELLBEING_REVIEW_VERSION}`;
-const USAGE_FEATURES = ['wellbeing_historical_candidate_v4', 'wellbeing_historical_review_v4'];
+const MODEL_VERSION = `wellbeing-history-2026-09-13-v5:${WELLBEING_REVIEW_VERSION}`;
+const USAGE_FEATURES = ['wellbeing_historical_candidate_v5', 'wellbeing_historical_review_v5'];
 
 function option(name) {
   const prefix = `--${name}=`;
