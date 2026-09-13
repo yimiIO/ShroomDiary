@@ -25,8 +25,9 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 6. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
 7. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
 8. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
-9. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。最多 8 项，重复问题合并。
+9. 不按数量凑结果。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 4 项，重复问题合并。
 10. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
+11. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
 
 只返回 JSON，不要 Markdown：
 {"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
@@ -219,7 +220,7 @@ async function sourceRecords(userId) {
   return result.rows.reverse();
 }
 
-async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion = '') {
+async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion = '', reviewedDomains = WELLBEING_HYPOTHESIS_DOMAINS) {
   const db = require('./db');
   return db.transaction(async client => {
     const dismissed = await client.query(
@@ -230,8 +231,8 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
     const dismissedKeys = new Set(dismissed.rows.map(row => row.hypothesis_key));
     await client.query(
       `UPDATE wellbeing_hypotheses SET status = 'ARCHIVED', updated_at = now()
-        WHERE user_id = $1 AND status = 'PENDING'`,
-      [userId]
+        WHERE user_id = $1 AND status = 'PENDING' AND domain = ANY($2::text[])`,
+      [userId, reviewedDomains]
     );
     let stored = 0;
     for (const item of hypotheses) {
@@ -284,19 +285,39 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
     [userId]
   );
   const records = rows.map(recordForModel);
-  const raw = await callJson(
+  const scopes = [
+    {
+      domain: 'PSYCHOLOGICAL',
+      records: records.filter(record => record.categories.some(category => ['PSYCHOLOGICAL', 'SLEEP', 'HABIT'].includes(category)))
+    },
+    {
+      domain: 'PHYSICAL',
+      records: records.filter(record => record.categories.some(category => ['PHYSICAL', 'SLEEP', 'HABIT', 'MEASUREMENT', 'TEST_RESULT'].includes(category)))
+    }
+  ].filter(scope => scope.records.length);
+  const settled = await Promise.allSettled(scopes.map(scope => callJson(
     WELLBEING_HYPOTHESIS_PROMPT,
-    { records, dismissedFeedback: feedbackResult.rows },
-    '身心问题可能性识别',
-    { maxTokens: 6500, temperature: 0.1, usageContext: { userId, feature: 'wellbeing_hypothesis_review' } }
-  );
-  const hypotheses = normalizeWellbeingHypotheses(raw.hypotheses, records);
+    { domainScope: scope.domain, records: scope.records, dismissedFeedback: feedbackResult.rows },
+    scope.domain === 'PSYCHOLOGICAL' ? '心理问题可能性识别' : '身体问题可能性识别',
+    { maxTokens: 4200, temperature: 0.1, usageContext: { userId, feature: `wellbeing_hypothesis_${scope.domain.toLowerCase()}` } }
+  )));
+  const reviewedDomains = [];
+  const rawHypotheses = [];
+  settled.forEach((result, index) => {
+    if (result.status !== 'fulfilled') return;
+    reviewedDomains.push(scopes[index].domain);
+    rawHypotheses.push(...(Array.isArray(result.value.hypotheses) ? result.value.hypotheses : []));
+  });
+  if (!reviewedDomains.length) {
+    throw Object.assign(new Error('身心问题可能性识别暂时没有完成，请稍后重试'), { code: 'SHROOM_AI_FAILED' });
+  }
+  const hypotheses = normalizeWellbeingHypotheses(rawHypotheses, records);
   const sourceUpdatedAt = rows.reduce((latest, row) => {
     const value = new Date(row.updated_at || 0);
     return value > latest ? value : latest;
   }, new Date(0));
-  const stored = await storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion);
-  return { hypotheses, stored, sourceCount: records.length };
+  const stored = await storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion, reviewedDomains);
+  return { hypotheses, stored, sourceCount: records.length, reviewedDomains };
 }
 
 module.exports = {

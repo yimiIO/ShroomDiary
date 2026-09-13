@@ -32,7 +32,7 @@
 							<view class="possibility-topline"><view><text>{{ domainLabel(item.domain) }}</text><text>{{ kindLabel(item.kind) }}</text></view><text>{{ strengthLabel(item.evidenceStrength) }}</text></view>
 							<text class="possibility-name">{{ item.name }}</text>
 							<text class="possibility-statement">{{ item.possibilityStatement }}</text>
-							<view class="named-possibilities"><text class="named-label">具体可能涉及</text><view v-for="possibility in item.namedPossibilities" :key="possibility.name" class="named-row"><view><text>{{ possibility.name }}</text><text>{{ possibilityRoleLabel(possibility.role) }}</text></view><text>{{ possibility.why }}</text></view></view>
+							<view v-if="item.namedPossibilities && item.namedPossibilities.length" class="named-possibilities"><text class="named-label">具体可能涉及</text><view v-for="possibility in item.namedPossibilities" :key="possibility.name" class="named-row"><view><text>{{ possibility.name }}</text><text>{{ possibilityRoleLabel(possibility.role) }}</text></view><text>{{ possibility.why }}</text></view></view>
 							<view class="possibility-reason"><text>为什么会想到它</text><text>{{ item.whyPossible }}</text></view>
 							<button class="evidence-toggle" @tap="toggleHypothesis(item)">{{ expandedHypothesisId === item.id ? '收起判断依据' : `查看 ${item.supportingEvidence.length} 条依据与缺口` }} <text>{{ expandedHypothesisId === item.id ? '↑' : '↓' }}</text></button>
 							<view v-if="expandedHypothesisId === item.id" class="possibility-detail">
