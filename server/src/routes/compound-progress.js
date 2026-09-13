@@ -46,7 +46,9 @@ function stableKey(value) {
 
 function dateOnly(value) {
   if (!value) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
   const match = String(value).match(/^\d{4}-\d{2}-\d{2}/);
   return match ? match[0] : null;
 }
@@ -505,7 +507,7 @@ router.get('/home', asyncRoute(async (req, res) => {
     directionCandidates: directions.filter(item => item.status === 'ACTIVE' && !item.hasActiveThread),
     directionCount: directions.length,
     latestReview: latestReview.rowCount ? mapReview(latestReview.rows[0]) : null,
-    privacy: '复利系统的推进、结果与回看仅本人可见，不进入发现。'
+    privacy: '复利计划、时间配置、进度与回看仅本人可见，不进入发现。'
   });
 }));
 

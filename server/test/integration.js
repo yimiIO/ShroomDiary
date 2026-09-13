@@ -543,11 +543,15 @@ async function run() {
         outcomeEvidence: '三份案例都有用户反馈和可复用模板。',
         currentMilestone: '完成第一份案例证据链',
         currentStep: '先列出现有的前后证据',
+        cycleStart: '2026-09-01',
+        cycleEnd: '2026-11-23',
         stopList: ['不新开第四个方向']
       }
     }));
     assert.equal(compoundPlan.title, '12 周交付能力复利');
     assert.equal(compoundPlan.leadingMetric.target, 3);
+    assert.equal(compoundPlan.cycleStart, '2026-09-01');
+    assert.equal(compoundPlan.cycleEnd, '2026-11-23');
     const compoundWeek = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/week`, {
       method: 'PUT', token: tokenA, body: {
         plannedMinutes: 180,
