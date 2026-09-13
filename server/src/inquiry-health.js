@@ -203,8 +203,6 @@ function buildHealthSummary({ inquiry, evidence = [] }) {
     evidence.slice().reverse().forEach((item, index) => {
       const date = item.sourceDate || item.source_date || item.createdAt || item.created_at || '日期未记录';
       lines.push(`E${index + 1}｜${String(date).slice(0, 10)}｜${item.excerpt || ''}`);
-      const structured = healthObservationLine(item.healthObservation || item.health_observation);
-      if (structured) lines.push(`  结构化观察：${structured}`);
       const imageCount = Number(item.diaryImageCount || item.diary_image_count || 0);
       if (imageCount) lines.push(`  关联日记含 ${imageCount} 张照片`);
     });

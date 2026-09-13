@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { isHealthInquiry, normalizeHealthObservation, normalizeInquiryType } = require('./inquiry-health');
+const { normalizeInquiryType } = require('./inquiry-health');
 
 function bounded(value, limit) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -36,7 +36,6 @@ function normalizeInquiryCandidates(value, existingInquiries = []) {
       context: bounded(item.context || item.reason, 2000),
       confidence,
       inquiryType,
-      healthObservation: isHealthInquiry(inquiryType) ? normalizeHealthObservation(item.healthObservation) : {},
       suggestedInquiryId: allowedExisting.has(suggested) && (suggestedType === null || suggestedType === inquiryType)
         ? suggested : null
     });
@@ -61,7 +60,6 @@ function mapCandidate(row) {
     source: row.source,
     confidence: row.confidence === null ? null : Number(row.confidence),
     inquiryType: normalizeInquiryType(row.inquiry_type),
-    healthObservation: row.health_observation || {},
     suggestedInquiryId: row.suggested_inquiry_id || null,
     acceptedInquiryId: row.accepted_inquiry_id || null,
     evidenceCount: Number(row.evidence_count || 0),
@@ -105,12 +103,11 @@ async function syncDiaryCandidates(client, { userId, diaryId, modelVersion, cand
     const inserted = await client.query(
       `INSERT INTO inquiry_candidates
         (id, user_id, question, context, source, confidence, fingerprint,
-         suggested_inquiry_id, model_version, inquiry_type, health_observation)
-       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', $5, $6, $7, $8, $9, $10::jsonb)
+         suggested_inquiry_id, model_version, inquiry_type)
+       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', $5, $6, $7, $8, $9)
        ON CONFLICT (user_id, fingerprint) DO NOTHING RETURNING id`,
       [id, userId, candidate.question, candidate.context, candidate.confidence, fingerprint,
-        candidate.suggestedInquiryId, modelVersion, normalizeInquiryType(candidate.inquiryType),
-        JSON.stringify(candidate.healthObservation || {})]
+        candidate.suggestedInquiryId, modelVersion, normalizeInquiryType(candidate.inquiryType)]
     );
     if (!inserted.rowCount) continue;
     await client.query(

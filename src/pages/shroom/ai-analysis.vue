@@ -78,7 +78,6 @@
 						<text>需要优先关注的原文信号</text><view v-for="(item, index) in wellbeingRecord.redFlags" :key="index"><text>{{ item.signal }}</text><text>{{ item.action }}</text></view><text>这是安全提醒，不是医学诊断。</text>
 					</view>
 					<view v-if="wellbeingRecord.missingInformation && wellbeingRecord.missingInformation.length" class="wellbeing-missing"><text>以后如果顺手，可以补充</text><text v-for="(item, index) in wellbeingRecord.missingInformation" :key="index">· {{ item }}</text></view>
-					<view v-if="wellbeingRecord.healthInquiryLinks && wellbeingRecord.healthInquiryLinks.length" class="wellbeing-links"><text>这条记录可能与正在观察的问题有关</text><view v-for="item in wellbeingRecord.healthInquiryLinks" :key="item.inquiryId"><text>{{ item.reason }}</text><button :disabled="processingWellbeing || item.linked" @tap="linkWellbeing(item)">{{ item.linked ? '已关联' : '确认并关联' }}</button></view></view>
 					<view v-if="wellbeingRecord.status === 'PENDING'" class="wellbeing-actions"><button :disabled="processingWellbeing" @tap="updateWellbeing('dismiss')">不是身心记录</button><button :disabled="processingWellbeing" @tap="updateWellbeing('confirm')">确认这条观察</button></view>
 					<button v-else class="wellbeing-open" @tap="openWellbeing">✓ 已保存到身心记录 · 查看</button>
 				</view>
@@ -87,7 +86,7 @@
 					<view class="inquiry-heading"><text>这篇留下了还没想明白的事吗？</text><text>这只是 AI 提出的候选。只有你确认后，才会成为持续观察的问题。</text></view>
 					<view class="inquiry-candidate" v-for="item in inquiryCandidates" :key="item.id">
 						<text class="inquiry-mark">?</text>
-						<view class="inquiry-copy"><text v-if="item.inquiryType !== 'GENERAL'" class="health-candidate-label">{{ inquiryTypeLabel(item.inquiryType) }} · 回看时可引用独立身心记录</text><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
+						<view class="inquiry-copy"><text v-if="item.inquiryType !== 'GENERAL'" class="health-candidate-label">{{ inquiryTypeLabel(item.inquiryType) }} · 从日记原文独立积累证据</text><text>{{ item.question }}</text><text v-if="item.context">{{ item.context }}</text>
 							<view class="inquiry-actions" v-if="item.status === 'PENDING'">
 								<button class="inquiry-ignore" :disabled="processingInquiryId === item.id" @tap="ignoreInquiryCandidate(item)">忽略</button>
 								<button class="inquiry-accept" :disabled="processingInquiryId === item.id" @tap="acceptInquiryCandidate(item)">{{ item.suggestedInquiryId ? '关联已有问题' : '开始观察问题' }}</button>
@@ -163,7 +162,7 @@
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
-import { wellbeingDetail, wellbeingInquiryLink } from '@/api/wellbeing';
+import { wellbeingDetail } from '@/api/wellbeing';
 
 export default {
 	components: { HealthConsentSheet },
@@ -296,21 +295,6 @@ export default {
 				} catch (error) { console.error('更新身心记录失败', error); }
 				finally { this.processingWellbeing = false; }
 			},
-			async linkWellbeing(link) {
-				if (!link || !link.inquiryId || !this.wellbeingRecord || this.processingWellbeing) return;
-				this.processingWellbeing = true;
-				try {
-					if (this.wellbeingRecord.status === 'PENDING') {
-						const confirmed = await this.$http.patch(wellbeingDetail(this.wellbeingRecord.id), { action: 'confirm' });
-						this.wellbeingRecord = confirmed.data;
-					}
-					await this.$http.post(wellbeingInquiryLink(this.wellbeingRecord.id, link.inquiryId), {});
-					const currentLink = (this.wellbeingRecord.healthInquiryLinks || []).find(item => item.inquiryId === link.inquiryId) || link;
-					this.$set(currentLink, 'linked', true);
-					uni.showToast({ title: '已关联到长期问题', icon: 'success' });
-				} catch (error) { console.error('关联身心记录失败', error); }
-				finally { this.processingWellbeing = false; }
-			},
 			confirmHealthConsent(inquiryType) {
 				this.healthConsentType = inquiryType;
 				this.healthConsentVisible = true;
@@ -437,12 +421,6 @@ button::after { border: 0; }
 .wellbeing-alert > text:last-child { margin-top: 13rpx; }
 .wellbeing-missing { margin-top: 18rpx; padding: 17rpx; border-radius: 17rpx; background: rgba(255,255,255,.46); display: flex; flex-direction: column; gap: 7rpx; color: #697362; font-size: 17rpx; line-height: 1.5; }
 .wellbeing-missing text:first-child { color: #4f5e48; font-weight: 700; }
-.wellbeing-links { margin-top: 18rpx; padding-top: 18rpx; border-top: 1rpx solid rgba(23,32,25,.08); }
-.wellbeing-links > text { color: #536044; font-size: 18rpx; font-weight: 700; }
-.wellbeing-links > view { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 12rpx; }
-.wellbeing-links > view > text { min-width: 0; flex: 1; color: #687263; font-size: 17rpx; line-height: 1.5; }
-.wellbeing-links button { flex: 0 0 auto; min-height: 52rpx; padding: 0 16rpx; border-radius: 27rpx; background: #172019; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15rpx; }
-.wellbeing-links button[disabled] { opacity: .45; }
 .wellbeing-actions { display: flex; justify-content: flex-end; gap: 11rpx; margin-top: 20rpx; }
 .wellbeing-actions button, .wellbeing-open { min-height: 58rpx; padding: 0 19rpx; border: 1rpx solid rgba(23,32,25,.15); border-radius: 30rpx; display: flex; align-items: center; justify-content: center; color: #667064; font-size: 17rpx; }
 .wellbeing-actions button:last-child { border-color: #172019; background: #172019; color: white; font-weight: 700; }

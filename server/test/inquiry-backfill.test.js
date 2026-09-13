@@ -58,7 +58,7 @@ test('historical candidates reject low-confidence and duplicate questions', () =
   assert.equal(result.length, 1);
 });
 
-test('historical candidates preserve bounded health type and observations', () => {
+test('historical candidates preserve health type without carrying wellbeing observations', () => {
   const result = normalizeHistoricalCandidates([
     {
       question: '我的睡眠和精力变化是否长期相关',
@@ -82,11 +82,9 @@ test('historical candidates preserve bounded health type and observations', () =
   ], ['diary-a', 'diary-b'], []);
 
   assert.equal(result[0].inquiryType, 'PHYSICAL_HEALTH');
-  assert.deepEqual(result[0].healthObservation.physicalSymptoms, ['疲劳']);
-  assert.equal(result[0].healthObservation.sleep.hours, 24);
-  assert.equal(result[0].healthObservation.sleep.quality, 5);
+  assert.equal(Object.hasOwn(result[0], 'healthObservation'), false);
   assert.equal(result[1].inquiryType, 'GENERAL');
-  assert.deepEqual(result[1].healthObservation, {});
+  assert.equal(Object.hasOwn(result[1], 'healthObservation'), false);
 });
 
 test('historical candidates only suggest an existing inquiry of the same type', () => {
@@ -114,7 +112,7 @@ test('historical candidates only suggest an existing inquiry of the same type', 
   assert.equal(result[1].suggestedInquiryId, 'health-inquiry');
 });
 
-test('historical storage persists health type and observations with each owned diary link', async () => {
+test('historical storage persists health type and owned diary links without creating wellbeing data', async () => {
   const calls = [];
   const client = {
     async query(sql, values) {
@@ -138,11 +136,11 @@ test('historical storage persists health type and observations with each owned d
   });
 
   assert.equal(inserted, 1);
-  assert.match(calls[0].sql, /inquiry_type, health_observation/u);
+  assert.match(calls[0].sql, /model_version, inquiry_type/u);
+  assert.doesNotMatch(calls[0].sql, /health_observation/u);
   assert.equal(calls[0].values[8], 'PHYSICAL_HEALTH');
-  assert.deepEqual(JSON.parse(calls[0].values[9]), { physicalSymptoms: ['疲劳'] });
   const diaryLinks = calls.filter(call => /INSERT INTO inquiry_candidate_diaries/u.test(call.sql));
   const wellbeingRecords = calls.filter(call => /INSERT INTO wellbeing_records/u.test(call.sql));
   assert.deepEqual(diaryLinks.map(call => call.values[1]), ['diary-a', 'diary-b']);
-  assert.deepEqual(wellbeingRecords.map(call => call.values[2]), ['diary-a', 'diary-b']);
+  assert.equal(wellbeingRecords.length, 0);
 });

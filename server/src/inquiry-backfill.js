@@ -2,11 +2,7 @@
 
 const crypto = require('node:crypto');
 const { candidateFingerprint, normalizeQuestion } = require('./inquiry-candidates');
-const {
-  isHealthInquiry,
-  normalizeHealthObservation,
-  normalizeInquiryType
-} = require('./inquiry-health');
+const { normalizeInquiryType } = require('./inquiry-health');
 
 function bounded(value, limit) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -63,9 +59,6 @@ function normalizeHistoricalCandidates(value, allowedDiaryIds = [], allowedInqui
       confidence: Math.max(0, Math.min(1, confidence)),
       sourceDiaryIds,
       inquiryType,
-      healthObservation: isHealthInquiry(inquiryType)
-        ? normalizeHealthObservation(item.healthObservation)
-        : {},
       suggestedInquiryId: allowedInquiryTypes.has(suggested)
         && (suggestedType === null || suggestedType === inquiryType) ? suggested : null
     });
@@ -90,12 +83,11 @@ async function storeHistoricalCandidates(client, { userId, modelVersion, candida
     const result = await client.query(
       `INSERT INTO inquiry_candidates
         (id, user_id, question, context, source, confidence, fingerprint,
-         suggested_inquiry_id, model_version, inquiry_type, health_observation)
-       VALUES ($1, $2, $3, $4, 'HISTORICAL_BACKFILL', $5, $6, $7, $8, $9, $10::jsonb)
+         suggested_inquiry_id, model_version, inquiry_type)
+       VALUES ($1, $2, $3, $4, 'HISTORICAL_BACKFILL', $5, $6, $7, $8, $9)
        ON CONFLICT (user_id, fingerprint) DO NOTHING RETURNING id`,
       [id, userId, candidate.question, candidate.context, candidate.confidence, fingerprint,
-        candidate.suggestedInquiryId, modelVersion, normalizeInquiryType(candidate.inquiryType),
-        JSON.stringify(candidate.healthObservation || {})]
+        candidate.suggestedInquiryId, modelVersion, normalizeInquiryType(candidate.inquiryType)]
     );
     if (!result.rowCount) continue;
     for (const diaryId of candidate.sourceDiaryIds) {
@@ -104,20 +96,6 @@ async function storeHistoricalCandidates(client, { userId, modelVersion, candida
          VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
         [id, diaryId, userId]
       );
-      if (isHealthInquiry(candidate.inquiryType) && Object.keys(candidate.healthObservation || {}).length) {
-        await client.query(
-          `INSERT INTO wellbeing_records
-            (id, user_id, diary_id, source_type, status, recorded_on, source_label,
-             source_excerpt, observation, ai_allowed)
-           SELECT $1, $2, d.id, 'MIGRATED', 'PENDING',
-                  (d.occurred_at AT TIME ZONE 'Asia/Shanghai')::date,
-                  to_char(d.occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') || ' 的日记',
-                  d.content, $4::jsonb, false
-             FROM diaries d WHERE d.id = $3 AND d.user_id = $2 AND d.deleted_at IS NULL
-           ON CONFLICT (user_id, diary_id) WHERE diary_id IS NOT NULL DO NOTHING`,
-          [crypto.randomUUID(), userId, diaryId, JSON.stringify(candidate.healthObservation)]
-        );
-      }
     }
     inserted += 1;
   }

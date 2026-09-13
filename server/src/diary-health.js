@@ -33,7 +33,6 @@ function emptyDiaryHealthExtraction() {
     physicalObservations: [],
     lifestyleFactors: [],
     environmentFactors: [],
-    healthInquiryLinks: [],
     missingInformation: [],
     redFlags: []
   };
@@ -53,9 +52,6 @@ function normalizedItems(value, normalize, maxItems = 16) {
 function normalizeDiaryHealthExtraction(value, context = {}) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const diaryContent = String(context.diaryContent || '');
-  const existingHealthInquiries = new Set((context.existingInquiries || [])
-    .filter(item => ['PSYCHOLOGICAL', 'PHYSICAL_HEALTH'].includes(item?.inquiryType || item?.inquiry_type))
-    .map(item => String(item.id)));
   const result = emptyDiaryHealthExtraction();
 
   result.psychologicalObservations = normalizedItems(input.psychologicalObservations || input.psychological_observations, item => {
@@ -101,14 +97,6 @@ function normalizeDiaryHealthExtraction(value, context = {}) {
       ? item.category : 'OTHER';
     return { observation, category, evidenceExcerpt, certainty: certainty(item.certainty, evidenceExcerpt) };
   });
-
-  result.healthInquiryLinks = normalizedItems(input.healthInquiryLinks || input.health_inquiry_links, item => {
-    const inquiryId = String(item.inquiryId || item.inquiry_id || '');
-    const evidenceExcerpt = groundedExcerpt(item.evidenceExcerpt || item.evidence_excerpt, diaryContent);
-    const confidence = boundedNumber(item.confidence, 0, 1);
-    if (!existingHealthInquiries.has(inquiryId) || !evidenceExcerpt || confidence === null || confidence < 0.65) return null;
-    return { inquiryId, reason: text(item.reason, 500), evidenceExcerpt, confidence };
-  }, 5);
 
   result.missingInformation = stringList(input.missingInformation || input.missing_information, 12, 400);
   result.redFlags = normalizedItems(input.redFlags || input.red_flags, item => {

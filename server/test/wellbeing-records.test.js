@@ -59,21 +59,20 @@ test('wellbeing dates keep their Shanghai calendar day', () => {
   assert.equal(mapped.recordedOn, '2026-09-10');
 });
 
-test('structured diary health stays in the same wellbeing candidate with uncertainty and links', () => {
-  const inquiryId = '11111111-1111-4111-8111-111111111111';
+test('structured diary health stays in one wellbeing candidate without inquiry links', () => {
   const diary = '今天头痛，好像和只睡了四小时有关。';
   const candidate = normalizeWellbeingCandidate({
     extraction: {
       physicalObservations: [{ symptom: '头痛', evidenceExcerpt: '今天头痛', certainty: 'EXPLICIT' }],
       lifestyleFactors: [{ factor: '只睡了四小时', category: 'SLEEP', evidenceExcerpt: '好像和只睡了四小时有关', certainty: 'EXPLICIT' }],
-      healthInquiryLinks: [{ inquiryId, reason: '可能相关', evidenceExcerpt: '今天头痛', confidence: 0.8 }],
+      healthInquiryLinks: [{ inquiryId: '11111111-1111-4111-8111-111111111111', reason: '可能相关', evidenceExcerpt: '今天头痛', confidence: 0.8 }],
       missingInformation: ['缺少持续时间']
     }
-  }, diary, [{ id: inquiryId, inquiryType: 'PHYSICAL_HEALTH' }]);
+  }, diary);
 
   assert.deepEqual(candidate.categories, ['PHYSICAL', 'SLEEP']);
   assert.equal(candidate.extraction.lifestyleFactors[0].certainty, 'UNCERTAIN');
-  assert.equal(candidate.extraction.healthInquiryLinks[0].inquiryId, inquiryId);
+  assert.equal(Object.hasOwn(candidate.extraction, 'healthInquiryLinks'), false);
   assert.deepEqual(candidate.extraction.missingInformation, ['缺少持续时间']);
 });
 

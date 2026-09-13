@@ -235,11 +235,10 @@ async function run() {
     const healthCandidateId = crypto.randomUUID();
     await pool.query(
       `INSERT INTO inquiry_candidates
-        (id, user_id, question, context, source, confidence, fingerprint, model_version, inquiry_type, health_observation)
-       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', 0.86, $5, 'integration', 'PHYSICAL_HEALTH', $6::jsonb)`,
+        (id, user_id, question, context, source, confidence, fingerprint, model_version, inquiry_type)
+       VALUES ($1, $2, $3, $4, 'DIARY_ANALYSIS', 0.86, $5, 'integration', 'PHYSICAL_HEALTH')`,
       [healthCandidateId, candidateOwner.rows[0].id, '为什么我最近手心出汗变多？',
-        '这只是身体变化候选，需要本人确认。', crypto.randomBytes(32).toString('hex'),
-        JSON.stringify({ physicalSymptoms: ['手心出汗'], bodyAreas: ['手'] })]
+        '这只是身体变化候选，需要本人确认。', crypto.randomBytes(32).toString('hex')]
     );
     await pool.query(
       'INSERT INTO inquiry_candidate_diaries (candidate_id, diary_id, user_id) VALUES ($1, $2, $3)',
@@ -253,7 +252,8 @@ async function run() {
     }));
     const acceptedHealthInquiry = expectCode(await api(`/api/inquiries/v1/${acceptedHealthCandidate.inquiryId}`, { token: tokenA }));
     assert.equal(acceptedHealthInquiry.inquiryType, 'PHYSICAL_HEALTH');
-    assert.deepEqual(acceptedHealthInquiry.evidence[0].healthObservation.physicalSymptoms, ['手心出汗']);
+    assert.equal(acceptedHealthInquiry.evidence[0].diaryId, diary.id);
+    assert.equal(Object.hasOwn(acceptedHealthInquiry.evidence[0], 'healthObservation'), false);
     await pool.query('DELETE FROM inquiries WHERE id = $1 AND user_id = $2', [acceptedHealthCandidate.inquiryId, candidateOwner.rows[0].id]);
     await pool.query('DELETE FROM inquiry_candidates WHERE id = $1 AND user_id = $2', [healthCandidateId, candidateOwner.rows[0].id]);
 
@@ -341,19 +341,28 @@ async function run() {
     expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}`, {
       token: sessionB.access_token
     }), 404);
-    const healthEvidence = expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}/evidence`, {
+    const wellbeingRecord = expectCode(await api('/api/wellbeing/v1', {
       method: 'POST', token: tokenA,
       body: {
-        excerpt: '开会前手心出汗明显，睡眠不足。',
-        relation: 'CONTEXT',
-        healthObservation: {
+        recordedOn: '2026-09-04',
+        note: '开会前手心出汗明显，睡眠不足。',
+        observation: {
           physicalSymptoms: ['手心出汗'], bodyAreas: ['手'], severity: 99,
           duration: '约 20 分钟', sleep: { hours: 5.5, quality: 2 }
         }
       }
     }));
-    assert.equal(healthEvidence.healthObservation.severity, 10);
-    assert.equal(healthEvidence.healthObservation.sleep.hours, 5.5);
+    assert.equal(wellbeingRecord.observation.severity, 10);
+    assert.equal(wellbeingRecord.observation.sleep.hours, 5.5);
+    const healthEvidence = expectCode(await api(`/api/inquiries/v1/${healthInquiry.id}/evidence`, {
+      method: 'POST', token: tokenA,
+      body: {
+        excerpt: '开会前手心出汗明显，睡眠不足。',
+        relation: 'CONTEXT'
+      }
+    }));
+    assert.equal(healthEvidence.sourceType, 'NOTE');
+    assert.equal(Object.hasOwn(healthEvidence, 'wellbeingRecordId'), false);
     const physicalList = expectCode(await api('/api/inquiries/v1?status=OPEN&type=PHYSICAL_HEALTH&page=1&pageSize=20', {
       token: tokenA
     }));
@@ -813,7 +822,7 @@ async function run() {
     assert.equal(exported.inquiries.length, 2);
     assert.equal(exported.inquiryEvidence.length, 3);
     assert.ok(exported.inquiries.some(item => item.inquiry_type === 'PHYSICAL_HEALTH'));
-    assert.ok(exported.inquiryEvidence.some(item => item.source_type === 'WELLBEING'));
+    assert.ok(exported.inquiryEvidence.every(item => item.source_type !== 'WELLBEING'));
     assert.ok(exported.wellbeingRecords.some(item => item.observation.severity === 10));
     assert.equal(exported.inquirySyntheses.length, 0);
     assert.ok(exported.todoProjects.some(item => item.id === project.id));

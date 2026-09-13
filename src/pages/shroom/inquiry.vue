@@ -22,7 +22,7 @@
 
 				<view v-if="isHealth" class="health-notice">
 					<text class="health-notice-mark">i</text>
-					<text>这个问题会引用独立的身心记录来组织推理。原始记录不会因问题暂停、解决或归档而改变；分析仍不是医学诊断。</text>
+					<text>证据直接来自日记和你在本问题内补充的线索，不读取身心记录；分析是长期观察，不是医学诊断。</text>
 				</view>
 				<view v-if="isHealth" class="health-profile">
 					<view class="section-topline"><text class="section-kicker">PERSONAL BASELINE</text><button class="profile-edit" @tap="beginProfileEdit">{{ editingProfile ? '取消' : '修订' }}</button></view>
@@ -104,7 +104,7 @@
 				<view class="review-callout" :class="{ due: inquiry.reviewDue }">
 					<view class="review-copy">
 						<text class="review-title">{{ reviewTitle }}</text>
-						<text class="review-description">{{ isHealth ? 'AI 只读取你引用且允许分析的身心记录，区分基线、共同变化、支持与反对证据，不作诊断。' : 'AI 会同时寻找支持、反例和缺口，并保存为可回看的新版本。' }}</text>
+						<text class="review-description">{{ isHealth ? 'AI 只读取与本问题关联且允许分析的日记线索，区分基线、共同变化、支持与反对证据，不作诊断。' : 'AI 会同时寻找支持、反例和缺口，并保存为可回看的新版本。' }}</text>
 					</view>
 					<button class="review-button" :disabled="reviewing || inquiry.usableEvidenceCount < 2" @tap="reviewInquiry('INCREMENTAL')">{{ reviewing ? '正在核对…' : (isHealth ? '更新健康线索' : '重新看看') }}</button>
 					<view v-if="reviewing" class="progress-track"><view class="progress-fill"></view></view>
@@ -114,14 +114,14 @@
 				</view>
 
 				<view class="evidence-section">
-					<view class="section-topline"><text class="section-kicker">{{ isHealth ? 'WELLBEING EVIDENCE' : 'EVIDENCE TRAIL' }}</text><text class="section-index">{{ inquiry.evidence.length }}</text></view>
-					<text class="section-title">{{ isHealth ? '引用的身心记录' : '生活留下的线索' }}</text>
-					<text class="section-intro">{{ isHealth ? '这里只保存引用关系；身心记录仍在独立事实层中。移除引用或解决问题都不会删除原记录。' : '关联只在你确认后发生；日记关闭 AI 读取后，也不会进入复盘。' }}</text>
+					<view class="section-topline"><text class="section-kicker">EVIDENCE TRAIL</text><text class="section-index">{{ inquiry.evidence.length }}</text></view>
+					<text class="section-title">日记与生活线索</text>
+					<text class="section-intro">日记只在你确认后关联到这个问题；关闭日记的 AI 读取后，它也不会进入复盘。</text>
 
-					<button v-if="!addingEvidence && inquiry.status !== 'RESOLVED'" class="add-evidence-entry" @tap="isHealth ? chooseWellbeingEvidence() : (addingEvidence = true)">
-						<text>＋</text><view><text>{{ isHealth ? '从身心记录引用证据' : '补一条新线索' }}</text><text>{{ isHealth ? '选择已确认的心理、身体、睡眠、习惯、测量或检查记录' : '观察、行动结果、外部材料或反例' }}</text></view>
+					<button v-if="!addingEvidence && inquiry.status !== 'RESOLVED'" class="add-evidence-entry" @tap="addingEvidence = true">
+						<text>＋</text><view><text>补一条新线索</text><text>观察、行动结果、外部材料或反例</text></view>
 					</button>
-					<view v-if="addingEvidence && !isHealth" class="evidence-form">
+					<view v-if="addingEvidence" class="evidence-form">
 						<text class="field-label">这条线索是什么</text>
 						<textarea v-model="evidenceDraft.excerpt" class="evidence-input" maxlength="5000" placeholder="写下发生了什么，或粘贴一段值得保留的材料……" :show-confirm-bar="false" />
 						<view class="relation-row source-type-row">
@@ -138,7 +138,6 @@
 						<view v-for="item in inquiry.evidence" :key="item.id" class="evidence-card" @tap="openEvidence(item)">
 							<view class="evidence-topline"><text class="evidence-type">{{ evidenceTypeLabel(item.sourceType) }}</text><text>{{ item.sourceDate || formatDate(item.createdAt) }}</text></view>
 							<text class="evidence-excerpt">{{ item.excerpt }}</text>
-							<text v-if="healthObservationText(item.healthObservation)" class="structured-observation">{{ healthObservationText(item.healthObservation) }}</text>
 							<view class="evidence-footer"><text>{{ relationLabel(item.relation) }}</text><text v-if="item.diaryId && !item.aiAllowed" class="ai-locked">未授权 AI 读取</text><text v-else-if="item.sourceLabel">{{ item.sourceLabel }}</text></view>
 							<text v-if="item.diaryImageCount" class="photo-count">含 {{ item.diaryImageCount }} 张照片 · 点开查看原日记</text>
 						</view>
@@ -152,7 +151,7 @@
 					<view class="status-actions">
 						<button v-for="item in statusOptions" :key="item.value" class="status-button" :class="{ active: inquiry.status === item.value }" @tap="changeStatus(item.value)">{{ item.label }}</button>
 					</view>
-					<text class="status-note">状态不会由 AI 自动改变。暂停或想明白都会保留推理历史；引用的身心记录始终独立存在。</text>
+					<text class="status-note">状态不会由 AI 自动改变。暂停或想明白都会保留推理历史，也不会改变原日记。</text>
 				</view>
 				<view class="bottom-space"></view>
 			</view>
@@ -220,7 +219,7 @@ export default {
 		reviewTitle() {
 			if (!this.inquiry || this.inquiry.usableEvidenceCount < 2) return '再积累一条可用线索，就适合一起看';
 			if (this.inquiry.reviewDue) return '新证据已经值得重新理解';
-			return this.isHealth ? '增量更新只读取新观察和少量参照' : '需要时，再用全部线索重新核对';
+			return this.isHealth ? '增量更新只读取新日记线索和少量参照' : '需要时，再用全部线索重新核对';
 		},
 		costText() {
 			const cost = this.inquiry && this.inquiry.costSummary;
@@ -251,11 +250,11 @@ export default {
 		statusLabel(value) {
 			return { OPEN: '正在想', PAUSED: '先放一放', RESOLVED: '已经想明白' }[value] || '正在想';
 		},
-		typeLabel(value) { return { GENERAL: '生活问题', PSYCHOLOGICAL: '引用心理记录', PHYSICAL_HEALTH: '引用身体记录' }[value] || '生活问题'; },
+		typeLabel(value) { return { GENERAL: '生活问题', PSYCHOLOGICAL: '心理问题', PHYSICAL_HEALTH: '身体健康问题' }[value] || '生活问题'; },
 		confidenceLabel(value) { return { emerging: '初步判断', medium: '已有一些依据', strong: '目前证据较强' }[value] || '初步判断'; },
 		refsLabel(value) { return Array.isArray(value) && value.length ? value.join('、') : '暂无直接证据'; },
 		careUrgency(value) { return { PROMPT: '建议尽快咨询', URGENT: '建议及时就医', EMERGENCY: '建议立即求助' }[value] || '建议咨询'; },
-		evidenceTypeLabel(value) { return { DIARY: '日记', WELLBEING: '身心记录', NOTE: '观察', LINK: '外部材料', ACTION: '行动结果', REFLECTION: '讨论记录' }[value] || '线索'; },
+		evidenceTypeLabel(value) { return { DIARY: '日记', NOTE: '观察', LINK: '外部材料', ACTION: '行动结果', REFLECTION: '讨论记录' }[value] || '线索'; },
 		relationLabel(value) { return { SUPPORT: '支持当前理解', CHALLENGE: '反例 / 冲突', CONTEXT: '补充背景', UNKNOWN: '关系未确定' }[value] || '补充背景'; },
 		formatDate(value) {
 			if (!value) return '';
@@ -280,17 +279,6 @@ export default {
 			this.addingEvidence = false;
 			this.evidenceDraft = { excerpt: '', sourceLabel: '', relation: 'CONTEXT', sourceType: 'NOTE' };
 		},
-		healthObservationText(value) {
-			if (!value || typeof value !== 'object') return '';
-			const parts = [];
-			if (value.psychologicalFeelings && value.psychologicalFeelings.length) parts.push(`感受 ${value.psychologicalFeelings.join('、')}`);
-			if (value.physicalSymptoms && value.physicalSymptoms.length) parts.push(`症状 ${value.physicalSymptoms.join('、')}`);
-			if (value.bodyAreas && value.bodyAreas.length) parts.push(`部位 ${value.bodyAreas.join('、')}`);
-			if (value.severity !== null && value.severity !== undefined) parts.push(`程度 ${value.severity}/10`);
-			if (value.duration) parts.push(value.duration);
-			if (value.sleep && value.sleep.note) parts.push(`睡眠 ${value.sleep.note}`);
-			return parts.join(' · ');
-		},
 		async saveEvidence() {
 			if (!this.evidenceDraft.excerpt.trim() || this.savingEvidence) return;
 			this.savingEvidence = true;
@@ -306,10 +294,8 @@ export default {
 			}
 		},
 		openEvidence(item) {
-			if (item.wellbeingRecordId) return uni.navigateTo({ url: '/pages/shroom/wellbeing' });
 			if (item.diaryId) uni.navigateTo({ url: `/pages/diary/edit?id=${item.diaryId}` });
 		},
-		chooseWellbeingEvidence() { uni.navigateTo({ url: `/pages/shroom/wellbeing?inquiryId=${this.inquiryId}` }); },
 		beginProfileEdit() {
 			if (this.editingProfile) { this.editingProfile = false; return; }
 			this.profileDraft = {
@@ -350,7 +336,7 @@ export default {
 			if (value !== 'RESOLVED') return apply();
 			uni.showModal({
 				title: '确认已经想明白？',
-				content: this.isHealth ? '问题会结束，但引用的身心记录和推理历史都会继续保留。' : '线索和历史理解会继续保留，以后也可以重新打开。',
+				content: '问题会结束，但日记线索和历史理解会继续保留，以后也可以重新打开。',
 				confirmText: '确认',
 				success: result => { if (result.confirm) apply(); }
 			});
@@ -481,7 +467,6 @@ button::after { border: 0; }
 .evidence-topline, .evidence-footer { display: flex; justify-content: space-between; gap: 18rpx; color: #858c85; font-size: 18rpx; }
 .evidence-type { color: #61715f; font-weight: 700; }
 .evidence-excerpt { display: -webkit-box; margin-top: 13rpx; color: #303832; font-size: 22rpx; line-height: 1.65; overflow: hidden; -webkit-line-clamp: 4; -webkit-box-orient: vertical; white-space: normal; word-break: break-word; }
-.structured-observation { display: block; margin-top: 12rpx; padding: 11rpx 13rpx; border-radius: 12rpx; background: #e8eddf; color: #62705b; font-size: 18rpx; line-height: 1.55; }
 .evidence-footer { margin-top: 16rpx; padding-top: 13rpx; border-top: 1rpx solid rgba(23,32,25,.06); }
 .photo-count { display: block; margin-top: 12rpx; color: #6e7c64; font-size: 17rpx; }
 .ai-locked { color: #ad6157; }

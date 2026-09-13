@@ -14,9 +14,8 @@
 			<view class="page-shell">
 				<view class="intro">
 					<text class="intro-title">有些答案，需要生活慢慢提供证据。</text>
-					<text class="intro-copy">这里只保存需要长期回答的问题，不保存原始健康数据。日记与身心记录可以作为证据被引用。</text>
+					<text class="intro-copy">这里只保存需要长期回答的问题。身心记录与未解之问会从同一篇日记各自提取、独立理解；一边的确认和结论不会改变另一边。</text>
 				</view>
-				<button v-if="!selectionMode" class="evidence-rule" @tap="openWellbeing"><view><text>身心记录</text><text>独立保存事实与变化</text></view><text>提供证据 →</text><view><text>未解之问</text><text>组织假设与推理</text></view></button>
 
 				<view class="create-panel" :class="{ open: creating }">
 					<button v-if="!creating" class="create-entry" @tap="creating = true">
@@ -25,7 +24,7 @@
 					</button>
 					<view v-else class="create-form">
 						<text class="field-label">我想慢慢想明白</text>
-						<text class="type-explainer">这个问题回看时，主要需要哪类证据？</text>
+						<text class="type-explainer">这个问题主要在观察什么？</text>
 						<view class="type-row">
 							<button v-for="item in inquiryTypes" :key="item.value" class="type-chip" :class="{ active: draft.inquiryType === item.value }" @tap="draft.inquiryType = item.value">{{ item.label }}</button>
 						</view>
@@ -33,7 +32,7 @@
 						<text class="field-label context-label">现在已知的背景（可选）</text>
 						<textarea v-model="draft.context" class="context-input" maxlength="5000" placeholder="它从什么时候开始？目前最困惑的地方是什么？" :show-confirm-bar="false" />
 						<view v-if="isHealthType(draft.inquiryType)" class="health-profile-fields">
-							<text class="health-form-note">这里只补充问题的观察范围。具体心理、身体、睡眠和测量事实独立保存在“身心记录”。</text>
+							<text class="health-form-note">问题类型只决定这个问题如何分析，不会读取或改写身心记录。</text>
 							<text class="field-label">观察从什么时候开始（可选）</text>
 							<picker mode="date" :value="draft.observationStartedOn" @change="draft.observationStartedOn = $event.detail.value">
 								<view class="date-picker-value">{{ draft.observationStartedOn || '选择日期' }} <text>›</text></view>
@@ -130,8 +129,8 @@ export default {
 			],
 			inquiryTypes: [
 				{ value: 'GENERAL', label: '生活经历' },
-				{ value: 'PSYCHOLOGICAL', label: '心理记录' },
-				{ value: 'PHYSICAL_HEALTH', label: '身体记录' }
+				{ value: 'PSYCHOLOGICAL', label: '心理问题' },
+				{ value: 'PHYSICAL_HEALTH', label: '身体健康问题' }
 			],
 			items: [],
 			pendingCandidates: [],
@@ -212,7 +211,7 @@ export default {
 			this.loadItems();
 		},
 		typeLabel(value) {
-			return { GENERAL: '生活问题', PSYCHOLOGICAL: '引用心理记录', PHYSICAL_HEALTH: '引用身体记录' }[value] || '生活问题';
+			return { GENERAL: '生活问题', PSYCHOLOGICAL: '心理问题', PHYSICAL_HEALTH: '身体健康问题' }[value] || '生活问题';
 		},
 		isHealthType(value) { return value === 'PSYCHOLOGICAL' || value === 'PHYSICAL_HEALTH'; },
 		confirmHealthConsent(inquiryType) {
@@ -274,7 +273,6 @@ export default {
 				this.creatingInquiry = false;
 			}
 		},
-		openWellbeing() { uni.navigateTo({ url: '/pages/shroom/wellbeing' }); },
 		goBack() { uni.navigateBack(); }
 	}
 };
@@ -296,11 +294,6 @@ button::after { border: 0; }
 .intro { padding: 8rpx 8rpx 36rpx; display: flex; flex-direction: column; }
 .intro-title { font-family: Georgia, 'Songti SC', serif; font-size: 45rpx; line-height: 1.36; }
 .intro-copy { margin-top: 18rpx; color: #718075; font-size: 24rpx; line-height: 1.75; }
-.evidence-rule { width: 100%; min-height: 102rpx; margin-bottom: 20rpx; padding: 20rpx 23rpx; border-radius: 23rpx; background: #e4ecd2; display: flex; align-items: center; justify-content: space-between; gap: 13rpx; text-align: left; }
-.evidence-rule > view { min-width: 0; display: flex; flex-direction: column; }
-.evidence-rule > view text:first-child { font-size: 21rpx; font-weight: 700; }
-.evidence-rule > view text:last-child { margin-top: 6rpx; color: #74806d; font-size: 16rpx; }
-.evidence-rule > text { flex: 0 0 auto; color: #71804e; font-size: 17rpx; }
 .create-panel { border: 1rpx solid rgba(82,98,47,.18); border-radius: 30rpx; background: rgba(255,255,255,.62); overflow: hidden; }
 .create-panel.open { background: #fffdf7; }
 .create-entry { width: 100%; min-height: 142rpx; padding: 26rpx 28rpx; display: flex; align-items: center; text-align: left; }

@@ -3,7 +3,7 @@
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
 		<view class="navbar">
 			<button class="nav-back" aria-label="返回" @tap="goBack">‹</button>
-			<view class="nav-copy"><text class="nav-kicker">BODY & MIND LOG</text><text class="nav-title">{{ selectionMode ? '选择身心记录' : '身心记录' }}</text></view>
+			<view class="nav-copy"><text class="nav-kicker">BODY & MIND LOG</text><text class="nav-title">身心记录</text></view>
 			<text class="nav-private">仅自己</text>
 		</view>
 
@@ -11,22 +11,17 @@
 			<view class="page-shell">
 				<view class="hero">
 					<text class="hero-title">先保留变化，<br>不急着解释原因。</text>
-					<text class="hero-copy">心理、身体、睡眠、习惯、测量和检查结果都先作为事实独立保存。需要长期回答的问题，只引用这里的记录。</text>
-					<view class="hero-rule"><text>身心记录提供证据</text><text>未解之问组织推理</text></view>
+					<text class="hero-copy">心理、身体、睡眠、习惯、测量和检查结果都先作为事实独立保存。它不向未解之问提供证据或结论。</text>
+					<view class="hero-rule"><text>从日记独立提取</text><text>确认与问题互不影响</text></view>
 				</view>
 
-				<view v-if="!selectionMode" class="overview">
+				<view class="overview">
 					<view><text>{{ summary.confirmedCount || 0 }}</text><text>已确认记录</text></view>
 					<view><text>{{ summary.recentCount || 0 }}</text><text>近 7 天变化</text></view>
 					<view :class="{ attention: summary.pendingCount }"><text>{{ summary.pendingCount || 0 }}</text><text>等待确认</text></view>
 				</view>
 
-				<view v-if="selectionMode" class="selection-note">
-					<text>为这个问题选择事实证据</text>
-					<text>引用只建立关联，不会复制或移动原记录。以后归档或解决问题，也不会影响身心记录。</text>
-				</view>
-
-				<view v-if="!selectionMode" class="create-panel" :class="{ open: creating }">
+				<view class="create-panel" :class="{ open: creating }">
 					<button v-if="!creating" class="create-entry" @tap="creating = true"><text>＋</text><view><text>手动留下一条身心记录</text><text>测量、检查或当下变化，一句话也可以</text></view></button>
 					<view v-else class="create-form">
 						<view class="form-heading"><view><text>NEW OBSERVATION</text><text>记录事实，不填写诊断</text></view><button @tap="resetDraft">×</button></view>
@@ -54,7 +49,6 @@
 						<text class="record-summary">{{ observationText(item.observation) }}</text>
 						<text v-if="item.sourceExcerpt" class="record-excerpt">“{{ item.sourceExcerpt }}”</text>
 						<view v-if="item.status === 'PENDING'" class="record-actions"><button :disabled="processingId === item.id" @tap="updateStatus(item, 'dismiss')">不是身心记录</button><button :disabled="processingId === item.id" @tap="updateStatus(item, 'confirm')">确认这条观察</button></view>
-						<view v-else-if="selectionMode" class="record-actions select-action"><button :disabled="processingId === item.id" @tap="linkToInquiry(item)">引用为问题证据</button></view>
 						<view v-else class="record-footer"><button v-if="item.diaryId" @tap="openDiary(item)">查看原日记</button><button @tap="updateStatus(item, item.status === 'ARCHIVED' ? 'restore' : 'archive')">{{ item.status === 'ARCHIVED' ? '恢复' : '归档' }}</button></view>
 					</view>
 				</view>
@@ -69,14 +63,14 @@
 
 <script>
 import moment from '@/common/moment.js';
-import { wellbeingDetail, wellbeingInquiryLink, wellbeingList, wellbeingSummary } from '@/api/wellbeing';
+import { wellbeingDetail, wellbeingList, wellbeingSummary } from '@/api/wellbeing';
 
 const emptyDraft = () => ({ recordedOn: moment().format('YYYY-MM-DD'), note: '', psychologicalFeelings: '', physicalSymptoms: '', sleepHours: '', sleepQuality: '', behaviors: '', measurements: '', testResults: '' });
 
 export default {
 	data() {
 		return {
-			statusBarHeight: 0, selectionMode: false, inquiryId: '', items: [], total: 0, page: 1,
+			statusBarHeight: 0, items: [], total: 0, page: 1,
 			pageSize: 20, category: '', loading: false, processingId: '', creating: false, saving: false,
 			summary: {}, draft: emptyDraft(),
 			categories: [{ value: '', label: '全部' }, { value: 'PSYCHOLOGICAL', label: '心理' }, { value: 'PHYSICAL', label: '身体' }, { value: 'SLEEP', label: '睡眠' }, { value: 'HABIT', label: '习惯' }, { value: 'MEASUREMENT', label: '测量' }, { value: 'TEST_RESULT', label: '检查' }]
@@ -86,10 +80,8 @@ export default {
 		canSave() { return Boolean(this.draft.note.trim() || this.draft.psychologicalFeelings.trim() || this.draft.physicalSymptoms.trim() || this.draft.sleepHours || this.draft.sleepQuality || this.draft.behaviors.trim() || this.draft.measurements.trim() || this.draft.testResults.trim()); },
 		categoryTitle() { return this.category ? this.categoryLabel(this.category) + '记录' : '全部身心记录'; }
 	},
-	onLoad(options) {
+	onLoad() {
 		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
-		this.inquiryId = options && options.inquiryId || '';
-		this.selectionMode = Boolean(this.inquiryId);
 		this.loadSummary();
 		this.loadItems(true);
 	},
@@ -110,7 +102,7 @@ export default {
 			if (reset) { this.page = 1; this.items = []; }
 			this.loading = true;
 			try {
-				const res = await this.$http.get(wellbeingList, { page: this.page, pageSize: this.pageSize, category: this.category, status: this.selectionMode ? 'CONFIRMED' : '' });
+				const res = await this.$http.get(wellbeingList, { page: this.page, pageSize: this.pageSize, category: this.category });
 				const list = res.data && Array.isArray(res.data.list) ? res.data.list : [];
 				this.items = reset ? list : this.items.concat(list);
 				this.total = Number(res.data && res.data.total || 0);
@@ -135,13 +127,6 @@ export default {
 			this.processingId = item.id;
 			try { await this.$http.patch(wellbeingDetail(item.id), { action }); await Promise.all([this.loadItems(true), this.loadSummary()]); }
 			catch (error) { console.error('更新身心记录失败', error); }
-			finally { this.processingId = ''; }
-		},
-		async linkToInquiry(item) {
-			if (!item || !this.inquiryId || this.processingId) return;
-			this.processingId = item.id;
-			try { await this.$http.post(wellbeingInquiryLink(item.id, this.inquiryId), {}); uni.showToast({ title: '已引用为证据', icon: 'success' }); setTimeout(() => this.goBack(), 500); }
-			catch (error) { console.error('引用身心记录失败', error); }
 			finally { this.processingId = ''; }
 		},
 		categoryLabel(value) { return { PSYCHOLOGICAL: '心理', PHYSICAL: '身体', SLEEP: '睡眠', HABIT: '习惯', MEASUREMENT: '测量', TEST_RESULT: '检查' }[value] || '身心'; },
@@ -188,9 +173,6 @@ button::after { border: 0; }
 .overview > view > text:first-child { font-family: Georgia, serif; font-size: 34rpx; }
 .overview > view > text:last-child { margin-top: 7rpx; color: #798177; font-size: 17rpx; }
 .overview .attention { background: #e5eccf; }
-.selection-note { margin-top: 18rpx; padding: 25rpx 28rpx; border-radius: 24rpx; background: #e5eccf; display: flex; flex-direction: column; }
-.selection-note text:first-child { font-size: 24rpx; font-weight: 700; }
-.selection-note text:last-child { margin-top: 9rpx; color: #68705f; font-size: 19rpx; line-height: 1.6; }
 .create-panel { margin-top: 18rpx; border-radius: 26rpx; background: #fffdf7; border: 1rpx solid rgba(23,32,25,.07); overflow: hidden; }
 .create-entry { width: 100%; min-height: 105rpx; padding: 0 27rpx; display: flex; align-items: center; text-align: left; }
 .create-entry > text { width: 49rpx; height: 49rpx; border-radius: 50%; background: #dfe9bd; display: flex; align-items: center; justify-content: center; font-size: 28rpx; }
@@ -236,7 +218,7 @@ button::after { border: 0; }
 .record-excerpt { display: -webkit-box; margin-top: 15rpx; color: #777f77; font-size: 18rpx; line-height: 1.6; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .record-actions { display: flex; justify-content: flex-end; gap: 10rpx; margin-top: 21rpx; }
 .record-actions button { min-height: 60rpx; padding: 0 18rpx; border-radius: 31rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid rgba(23,32,25,.14); color: #667064; font-size: 17rpx; }
-.record-actions button:last-child, .select-action button { border-color: #172019; background: #172019; color: #fff; font-weight: 700; }
+.record-actions button:last-child { border-color: #172019; background: #172019; color: #fff; font-weight: 700; }
 .record-footer { margin-top: 18rpx; padding-top: 15rpx; border-top: 1rpx solid rgba(23,32,25,.07); display: flex; justify-content: space-between; }
 .record-footer button { color: #6f786e; font-size: 17rpx; }
 .empty { padding: 70rpx 38rpx; border-radius: 27rpx; background: rgba(255,253,247,.68); display: flex; align-items: center; flex-direction: column; text-align: center; }

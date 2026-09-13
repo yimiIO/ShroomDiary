@@ -49,11 +49,11 @@ function extractionExcerpt(extraction) {
   return '';
 }
 
-function normalizeWellbeingCandidate(value, diaryContent = '', existingInquiries = []) {
+function normalizeWellbeingCandidate(value, diaryContent = '') {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const extraction = normalizeDiaryHealthExtraction(
     input.extraction || input.healthExtraction || input.health_extraction || {},
-    { diaryContent, existingInquiries }
+    { diaryContent }
   );
   const observation = hasDiaryHealthExtraction(extraction)
     ? normalizeHealthObservation(legacyHealthObservation(extraction))
@@ -80,7 +80,6 @@ function mapWellbeingRecord(row) {
   const rawExtraction = row.extraction && typeof row.extraction === 'object' && !Array.isArray(row.extraction)
     ? row.extraction : {};
   const extraction = { ...emptyDiaryHealthExtraction(), ...rawExtraction };
-  const linkedInquiryIds = new Set((Array.isArray(row.linked_inquiry_ids) ? row.linked_inquiry_ids : []).map(String));
   const recordedOn = row.recorded_on instanceof Date
     ? row.recorded_on.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' })
     : row.recorded_on;
@@ -96,10 +95,6 @@ function mapWellbeingRecord(row) {
     extraction,
     extractionVersion: row.extraction_version || '',
     modelVersion: row.model_version || '',
-    healthInquiryLinks: extraction.healthInquiryLinks.map(item => ({
-      ...item,
-      linked: linkedInquiryIds.has(String(item.inquiryId))
-    })),
     missingInformation: extraction.missingInformation,
     redFlags: extraction.redFlags,
     categories: observationCategories(observation),
@@ -112,21 +107,18 @@ function mapWellbeingRecord(row) {
 
 async function findDiaryWellbeingRecord(queryable, userId, diaryId) {
   const result = await queryable.query(
-    `SELECT w.*,
-            COALESCE(array_agg(e.inquiry_id) FILTER (WHERE e.inquiry_id IS NOT NULL), ARRAY[]::uuid[]) AS linked_inquiry_ids
-       FROM wellbeing_records w
-       LEFT JOIN inquiry_evidence e ON e.wellbeing_record_id = w.id AND e.user_id = w.user_id
+    `SELECT w.* FROM wellbeing_records w
       WHERE w.user_id = $1 AND w.diary_id = $2 AND w.status <> 'DISMISSED'
-      GROUP BY w.id ORDER BY w.updated_at DESC LIMIT 1`,
+      ORDER BY w.updated_at DESC LIMIT 1`,
     [userId, diaryId]
   );
   return result.rowCount ? mapWellbeingRecord(result.rows[0]) : null;
 }
 
 async function syncDiaryWellbeingRecord(client, {
-  userId, diary, modelVersion = '', candidate, existingInquiries = []
+  userId, diary, modelVersion = '', candidate
 }) {
-  const normalized = normalizeWellbeingCandidate(candidate, diary.content, existingInquiries);
+  const normalized = normalizeWellbeingCandidate(candidate, diary.content);
   const existing = await client.query(
     `SELECT id, status FROM wellbeing_records
       WHERE user_id = $1 AND diary_id = $2 FOR UPDATE`,

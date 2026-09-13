@@ -30,7 +30,7 @@ test('unknown existing inquiry ids are never trusted', () => {
   assert.equal(candidate.suggestedInquiryId, null);
 });
 
-test('health candidates keep observations and only suggest an inquiry of the same type', () => {
+test('health candidates stay independent from wellbeing observations and only suggest the same type', () => {
   const physicalId = '4c374d8d-a1df-4788-b1ca-71740879ff6d';
   const [candidate] = normalizeInquiryCandidates([{
     question: '为什么我最近总是手心出汗', confidence: 0.82,
@@ -38,7 +38,7 @@ test('health candidates keep observations and only suggest an inquiry of the sam
     healthObservation: { physicalSymptoms: ['手心出汗'], bodyAreas: ['手'], severity: 7 }
   }], [{ id: physicalId, inquiryType: 'PSYCHOLOGICAL' }]);
   assert.equal(candidate.inquiryType, 'PHYSICAL_HEALTH');
-  assert.deepEqual(candidate.healthObservation.physicalSymptoms, ['手心出汗']);
+  assert.equal(Object.hasOwn(candidate, 'healthObservation'), false);
   assert.equal(candidate.suggestedInquiryId, null);
 });
 

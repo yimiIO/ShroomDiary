@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const db = require('../db');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
-const { healthObservationLine, isHealthInquiry, normalizeHealthObservation } = require('../inquiry-health');
+const { healthObservationLine, normalizeHealthObservation } = require('../inquiry-health');
 const { dateOnly, mapWellbeingRecord } = require('../wellbeing-records');
 
 const router = express.Router();
@@ -134,48 +134,6 @@ router.patch('/:id', asyncRoute(async (req, res) => {
   );
   if (!result.rowCount) return fail(res, 404, '身心记录不存在');
   return ok(res, mapWellbeingRecord(result.rows[0]), action === 'confirm' ? '已确认这条观察' : '记录已更新');
-}));
-
-router.post('/:id/inquiries/:inquiryId', asyncRoute(async (req, res) => {
-  const recordId = uuid(req.params.id);
-  const inquiryId = uuid(req.params.inquiryId);
-  if (!recordId || !inquiryId) return fail(res, 404, '记录或问题不存在');
-  const linked = await db.transaction(async client => {
-    const [recordResult, inquiryResult] = await Promise.all([
-      client.query(
-        `SELECT * FROM wellbeing_records
-          WHERE id = $1 AND user_id = $2 AND status IN ('CONFIRMED', 'ARCHIVED') FOR UPDATE`,
-        [recordId, req.user.id]
-      ),
-      client.query(
-        `SELECT id, inquiry_type FROM inquiries
-          WHERE id = $1 AND user_id = $2 AND status <> 'RESOLVED' FOR UPDATE`,
-        [inquiryId, req.user.id]
-      )
-    ]);
-    if (!recordResult.rowCount || !inquiryResult.rowCount) return null;
-    if (!isHealthInquiry(inquiryResult.rows[0].inquiry_type)) return { error: 'type' };
-    const record = recordResult.rows[0];
-    const result = await client.query(
-      `INSERT INTO inquiry_evidence
-        (id, user_id, inquiry_id, source_type, source_label, excerpt, wellbeing_record_id)
-       VALUES ($1, $2, $3, 'WELLBEING', $4, $5, $6)
-       ON CONFLICT (inquiry_id, wellbeing_record_id) WHERE wellbeing_record_id IS NOT NULL DO NOTHING
-       RETURNING id`,
-      [crypto.randomUUID(), req.user.id, inquiryId, record.source_label, record.source_excerpt, recordId]
-    );
-    if (result.rowCount) {
-      await client.query(
-        `UPDATE inquiries SET evidence_revision = evidence_revision + 1, updated_at = now()
-          WHERE id = $1 AND user_id = $2`,
-        [inquiryId, req.user.id]
-      );
-    }
-    return { linked: Boolean(result.rowCount), evidenceId: result.rows[0]?.id || null };
-  });
-  if (!linked) return fail(res, 404, '可引用的身心记录或进行中问题不存在');
-  if (linked.error === 'type') return fail(res, 400, '身心记录只能引用到身心相关的未解之问');
-  return ok(res, linked, linked.linked ? '已作为问题证据引用' : '这条记录已经引用过');
 }));
 
 module.exports = router;

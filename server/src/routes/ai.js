@@ -233,20 +233,15 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       followup.inquiryCandidates,
       existingInquiries
     );
-    const legacyHealthCandidate = inquiryCandidates.find(item => item.healthObservation
-      && Object.keys(item.healthObservation).length);
     const healthExtraction = normalizeDiaryHealthExtraction(
       followup.healthExtraction || followup.health_extraction || {},
-      { diaryContent: diary.content, existingInquiries }
+      { diaryContent: diary.content }
     );
     const wellbeingCandidate = (hasDiaryHealthExtraction(healthExtraction) ? {
       extraction: healthExtraction,
       observation: legacyHealthObservation(healthExtraction)
     } : null) || followup.wellbeingObservation || followup.wellbeingRecord
-      || (legacyHealthCandidate ? {
-        sourceExcerpt: diary.content,
-        observation: legacyHealthCandidate.healthObservation
-      } : null);
+      || null;
     const lifeOsLinks = normalizeLifeOsLinks(followup.compoundLinks || followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
@@ -270,8 +265,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
         userId,
         diary,
         modelVersion: VERSION,
-        candidate: wellbeingCandidate,
-        existingInquiries
+        candidate: wellbeingCandidate
       });
       await syncDiaryLifeOsLinks(client, {
         userId,

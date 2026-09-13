@@ -274,7 +274,7 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   assert.match(list, /loadCandidates/);
   assert.match(list, /acceptCandidate/);
   assert.match(list, /ignoreCandidate/);
-  assert.match(detail, /生活留下的线索/);
+  assert.match(detail, /日记与生活线索/);
   assert.match(detail, /状态不会由 AI 自动改变/);
   assert.match(detail, /costSummary/);
   assert.match(me, /未解之问/);
@@ -284,7 +284,7 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   assert.doesNotMatch(route, /req\.body\.userId/);
 });
 
-test('wellbeing records provide independent evidence while inquiries only organize reasoning', () => {
+test('wellbeing records and inquiries independently interpret the same diary', () => {
   const edit = source('src/pages/diary/edit.vue');
   const list = source('src/pages/shroom/inquiries.vue');
   const detail = source('src/pages/shroom/inquiry.vue');
@@ -298,23 +298,24 @@ test('wellbeing records provide independent evidence while inquiries only organi
   const wellbeingRoutes = source('server/src/routes/wellbeing.js');
   const prompt = source('server/src/ai-prompts.js');
   const migration = source('server/sql/024_wellbeing_records.sql');
+  const decouplingMigration = source('server/sql/027_decouple_inquiries_wellbeing.sql');
 
-  assert.match(wellbeing, /身心记录提供证据/);
+  assert.match(wellbeing, /从日记独立提取/);
   for (const label of ['心理', '身体', '睡眠', '习惯', '测量', '检查']) assert.match(wellbeing, new RegExp(label));
   assert.match(me, /openWellbeing/);
   assert.match(home, /wellbeing-glimpse/);
-  assert.match(list, /身心记录[\s\S]*提供证据/);
+  assert.match(list, /同一篇日记[\s\S]*独立理解/);
   assert.doesNotMatch(list, /typeFilters/);
   assert.match(list, /HealthConsentSheet/);
   assert.match(analysis, /HealthConsentSheet/);
   assert.match(analysis, /与你是否创建未解之问无关/);
   assert.doesNotMatch(list, /uni\.showModal\(/);
   assert.doesNotMatch(analysis, /uni\.showModal\([\s\S]*?健康观察/);
-  assert.match(consent, /不复制、移动或改写原始记录/);
-  assert.match(consent, /不会影响原始身心记录/);
+  assert.match(consent, /不读取、不引用、也不改写/);
+  assert.match(consent, /日记线索/);
   assert.match(consent, /不是医学诊断/);
-  assert.match(detail, /引用的身心记录/);
-  assert.match(detail, /从身心记录引用证据/);
+  assert.match(detail, /直接来自日记/);
+  assert.doesNotMatch(detail, /从身心记录引用证据/);
   assert.doesNotMatch(detail, /healthObservationPayload|健康时间线/);
   assert.match(detail, /更新健康线索/);
   assert.match(detail, /INCREMENTAL/);
@@ -328,20 +329,22 @@ test('wellbeing records provide independent evidence while inquiries only organi
   assert.match(analysis, /确认这条观察/);
   assert.match(routes, /health-summary/);
   assert.match(wellbeingRoutes, /wellbeing_records/);
-  assert.match(wellbeingRoutes, /wellbeing_record_id/);
+  assert.doesNotMatch(wellbeingRoutes, /inquiry_evidence|wellbeing_record_id/);
   assert.match(prompt, /独立的事实层/);
-  assert.match(prompt, /不承载原始身心记录/);
+  assert.match(prompt, /不受身心记录的确认/);
   assert.match(prompt, /healthExtraction/);
   assert.match(prompt, /psychologicalObservations/);
   assert.match(prompt, /physicalObservations/);
   assert.match(prompt, /lifestyleFactors/);
   assert.match(prompt, /environmentFactors/);
-  assert.match(prompt, /healthInquiryLinks/);
+  assert.doesNotMatch(prompt, /healthInquiryLinks/);
   assert.match(prompt, /missingInformation/);
   assert.match(prompt, /redFlags/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS wellbeing_records/);
   assert.match(migration, /wellbeing_record_id uuid REFERENCES wellbeing_records\(id\) ON DELETE SET NULL/);
   assert.match(migration, /source_type = 'WELLBEING'/);
+  assert.match(decouplingMigration, /DROP COLUMN IF EXISTS wellbeing_record_id/);
+  assert.match(decouplingMigration, /DROP COLUMN IF EXISTS health_observation/);
   assert.doesNotMatch(edit, /healthObservationPayload|健康表单|症状严重程度/);
   const tabBar = JSON.parse(pages).tabBar.list;
   assert.equal(tabBar.length, 4);
