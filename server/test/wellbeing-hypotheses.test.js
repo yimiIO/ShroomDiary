@@ -31,8 +31,8 @@ function valid(overrides = {}) {
       grounded: true
     },
     supportingEvidence: [
-      { recordId: 'r1', excerpt: '这两周每天都提不起兴趣', reason: '持续两周且影响工作' },
-      { recordId: 'r2', excerpt: '还是没兴趣，睡眠也很差', reason: '重复出现且影响社交' }
+      { recordId: 'r1', evidenceId: 'source:0', reason: '持续两周且影响工作' },
+      { recordId: 'r2', evidenceId: 'source:0', reason: '重复出现且影响社交' }
     ],
     challengingEvidence: [],
     alternatives: ['睡眠不足或近期生活事件'],
@@ -49,7 +49,7 @@ test('named wellbeing possibilities retain evidence and uncertainty', () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].name, '抑郁相关问题需要评估');
   assert.equal(result[0].supportingEvidence.length, 2);
-  assert.equal(result[0].supportingEvidence[0].excerpt, '这两周每天都提不起兴趣');
+  assert.equal(result[0].supportingEvidence[0].excerpt, records[0].sourceExcerpt);
   assert.equal(result[0].namedPossibilities[0].name, '抑郁相关症状');
   assert.deepEqual(result[0].alternatives, ['睡眠不足或近期生活事件']);
   assert.match(result[0].hypothesisKey, /^psychological:/u);
@@ -67,9 +67,9 @@ test('definitive diagnoses are rejected', () => {
   assert.equal(normalizeWellbeingHypotheses([valid({ possibilityStatement: '你已经确诊为抑郁症。' })], records).length, 0);
 });
 
-test('hypothesis evidence must quote an excerpt from the owned source record', () => {
+test('hypothesis evidence must select an evidence id from the owned source record', () => {
   assert.equal(normalizeWellbeingHypotheses([valid({
-    supportingEvidence: [{ recordId: 'r1', excerpt: '一段不存在的原文', reason: '不可验证' }]
+    supportingEvidence: [{ recordId: 'r1', evidenceId: 'invented:99', reason: '不可验证' }]
   })], records).length, 0);
 });
 
@@ -86,7 +86,7 @@ test('physical clinical directions require persistence or an objective finding',
 });
 
 test('prompt asks for named possibilities without turning a diary into a diagnosis', () => {
-  for (const phrase of ['主体归属', '不得把对方的症状', '逐字的 excerpt', '明确叫出', 'namedPossibilities', '日记中出现的模式', '抑郁相关症状', 'RULE_OUT', '不能用“持续低落”', '多汗症方向', '笼统名称', '替代解释', '不是患病概率', '不得给药名']) {
+  for (const phrase of ['主体归属', '不得把对方的症状', 'evidenceId', '服务器按编号回填', '明确叫出', 'namedPossibilities', '日记中出现的模式', '抑郁相关症状', 'RULE_OUT', '不能用“持续低落”', '多汗症方向', '笼统名称', '替代解释', '不是患病概率', '不得给药名']) {
     assert.match(WELLBEING_HYPOTHESIS_PROMPT, new RegExp(phrase, 'u'));
   }
 });

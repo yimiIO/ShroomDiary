@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { mapWellbeingRecord } = require('./wellbeing-records');
 
-const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v3';
+const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v4';
 const WELLBEING_HYPOTHESIS_DOMAINS = ['PSYCHOLOGICAL', 'PHYSICAL'];
 const WELLBEING_HYPOTHESIS_KINDS = [
   'PSYCHOLOGICAL_CONCEPT',
@@ -18,7 +18,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 
 这不是诊断。你必须遵守：
 1. 只使用 records 中用户本人的观察。先做“主体归属”检查：出现姓名、他/她、亲友、案件当事人或其他人称时，不得把对方的症状当成用户症状；归属不能确定就不使用。用户曾确认整条记录，也不等于其中每个症状都属于用户。
-2. 每个 supportingEvidence 和 challengingEvidence 必须输出 recordId 以及该记录 evidenceItems 中一段连续、逐字的 excerpt；若手动记录没有 evidenceItems，则逐字引用 sourceExcerpt。说明它为何支持或不支持。不能补造病史、持续时间、症状、检查或因果。
+2. 每个 supportingEvidence 和 challengingEvidence 必须输出 recordId 以及该记录 evidenceItems 中的 evidenceId；证据原文由服务器按编号回填，你不要复述或改写 excerpt。说明它为何支持或不支持。不能补造病史、持续时间、症状、检查或因果。
 3. 每个候选必须有一个明确、可理解的问题名称，并在 namedPossibilities 中列出它具体可能涉及的概念或医学方向。name 用“日记中出现的模式：具体方向”的用户语言，而不是再把现象重复一遍。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血需要排查”。不能只写“持续低落”“身体不舒服”而不说明它可能指向什么。这些只是格式示例，不得因为示例而输出。
 4. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，kind 只能是 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，不能把人写成已患某病；但如果某个临床方向确实值得进一步筛查，必须在 namedPossibilities 中明确列为 RULE_OUT（例如“抑郁相关症状需评估”），不能用“持续低落”这种泛称把真正需要用户知道的方向藏起来。
 5. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 namedPossibilities，不能假装只有一个答案。证据能直接支持的设为 PRIMARY_DIRECTION；仅值得排除但当前证据不足的设为 RULE_OUT，并明确缺少什么。
@@ -33,7 +33,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 14. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
 
 只返回 JSON，不要 Markdown：
-{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","excerpt":"evidenceItems中的逐字原文","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","excerpt":"evidenceItems中的逐字原文","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
+{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
 
 function bounded(value, limit = 1000) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -57,12 +57,13 @@ function stableHypothesisKey(item, domain, name) {
   return `${domain.toLowerCase()}:${crypto.createHash('sha256').update(canonical).digest('hex').slice(0, 24)}`;
 }
 
-function recordEvidenceExcerpts(record) {
-  const items = Array.isArray(record?.evidenceItems) ? record.evidenceItems : [];
-  return [...new Set([
-    ...items.map(item => bounded(item?.excerpt, 600)),
-    bounded(record?.sourceExcerpt, 600)
-  ].filter(Boolean))];
+function recordEvidenceItems(record) {
+  const items = (Array.isArray(record?.evidenceItems) ? record.evidenceItems : [])
+    .map(item => ({ evidenceId: bounded(item?.evidenceId, 80), excerpt: bounded(item?.excerpt, 600) }))
+    .filter(item => item.evidenceId && item.excerpt);
+  if (items.length) return items;
+  const excerpt = bounded(record?.sourceExcerpt, 600);
+  return excerpt ? [{ evidenceId: 'source:0', excerpt }] : [];
 }
 
 function normalizeEvidence(value, recordMap, maxItems = 10) {
@@ -72,12 +73,16 @@ function normalizeEvidence(value, recordMap, maxItems = 10) {
     const recordId = String(item?.recordId || item?.record_id || '');
     if (!recordMap.has(recordId) || seen.has(recordId)) continue;
     const reason = bounded(item?.reason, 500);
-    const proposedExcerpt = bounded(item?.excerpt || item?.evidenceExcerpt || item?.evidence_excerpt, 600);
-    const excerpts = recordEvidenceExcerpts(recordMap.get(recordId));
-    const excerpt = proposedExcerpt && excerpts.find(source => source.includes(proposedExcerpt))
-      ? proposedExcerpt : '';
-    if (!reason || !excerpt) continue;
-    result.push({ recordId, excerpt, reason });
+    const evidenceItems = recordEvidenceItems(recordMap.get(recordId));
+    const proposedEvidenceId = bounded(item?.evidenceId || item?.evidence_id, 80);
+    let selected = evidenceItems.find(evidence => evidence.evidenceId === proposedEvidenceId);
+    if (!selected) {
+      const proposedExcerpt = bounded(item?.excerpt || item?.evidenceExcerpt || item?.evidence_excerpt, 600);
+      selected = proposedExcerpt
+        ? evidenceItems.find(evidence => evidence.excerpt.includes(proposedExcerpt)) : null;
+    }
+    if (!reason || !selected) continue;
+    result.push({ recordId, evidenceId: selected.evidenceId, excerpt: selected.excerpt, reason });
     seen.add(recordId);
     if (result.length >= maxItems) break;
   }
@@ -174,12 +179,13 @@ function normalizeWellbeingHypotheses(value, records = []) {
 function extractionEvidenceItems(extraction) {
   const result = [];
   const add = (type, items, field) => {
-    for (const item of Array.isArray(items) ? items : []) {
+    for (const [index, item] of (Array.isArray(items) ? items : []).entries()) {
       const statement = bounded(item?.[field], 300);
       const excerpt = bounded(item?.evidenceExcerpt, 600);
       if (!statement || !excerpt) continue;
       result.push({
         type,
+        evidenceId: `${type.toLowerCase()}:${index}`,
         statement,
         excerpt,
         certainty: item.certainty || '',
@@ -195,6 +201,7 @@ function extractionEvidenceItems(extraction) {
   add('PHYSICAL', extraction?.physicalObservations, 'symptom');
   add('LIFESTYLE', extraction?.lifestyleFactors, 'factor');
   add('ENVIRONMENT', extraction?.environmentFactors, 'observation');
+  add('RISK', extraction?.redFlags, 'signal');
   return result.slice(0, 12);
 }
 
@@ -206,13 +213,19 @@ function recordForModel(row) {
     return value !== null && value !== '';
   }));
   const evidenceItems = extractionEvidenceItems(mapped.extraction);
+  if (!evidenceItems.length && mapped.sourceExcerpt) {
+    evidenceItems.push({
+      type: 'RECORD', evidenceId: 'source:0', statement: bounded(mapped.sourceExcerpt, 300),
+      excerpt: bounded(mapped.sourceExcerpt, 600), certainty: ''
+    });
+  }
   return {
     id: mapped.id,
     date: mapped.recordedOn,
     confirmationStatus: mapped.status,
     categories: mapped.categories,
     evidenceItems,
-    ...(!evidenceItems.length ? { observation, sourceExcerpt: bounded(mapped.sourceExcerpt, 500) } : {}),
+    ...(mapped.extractionVersion ? {} : { observation }),
     whyUseful: bounded(mapped.whyUseful, 300),
   };
 }
@@ -222,6 +235,7 @@ function mapHypothesis(row, recordMap = new Map()) {
     const record = recordMap.get(String(item.recordId || item.record_id || ''));
     return {
       recordId: item.recordId || item.record_id,
+      evidenceId: item.evidenceId || item.evidence_id || '',
       reason: item.reason || '',
       ...(record ? {
         recordedOn: record.recordedOn,
@@ -322,7 +336,10 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
 }
 
 function compactHypothesisDraft(item) {
-  const evidenceIds = value => (Array.isArray(value) ? value : []).map(evidence => evidence?.recordId || evidence?.record_id).filter(Boolean).slice(0, 5);
+  const evidenceRefs = value => (Array.isArray(value) ? value : []).map(evidence => ({
+    recordId: evidence?.recordId || evidence?.record_id,
+    evidenceId: evidence?.evidenceId || evidence?.evidence_id
+  })).filter(evidence => evidence.recordId && evidence.evidenceId).slice(0, 5);
   return {
     stableKey: bounded(item?.stableKey || item?.stable_key, 96),
     domain: item?.domain,
@@ -333,8 +350,8 @@ function compactHypothesisDraft(item) {
     whyPossible: bounded(item?.whyPossible, 350),
     evidenceStrength: item?.evidenceStrength,
     thresholdChecks: item?.thresholdChecks,
-    supportingRecordIds: evidenceIds(item?.supportingEvidence),
-    challengingRecordIds: evidenceIds(item?.challengingEvidence),
+    supportingEvidence: evidenceRefs(item?.supportingEvidence),
+    challengingEvidence: evidenceRefs(item?.challengingEvidence),
     alternatives: stringList(item?.alternatives, 3, 180),
     missingInformation: stringList(item?.missingInformation, 4, 180),
     nextObservations: stringList(item?.nextObservations, 3, 180),
@@ -374,8 +391,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
     id: record.id,
     date: record.date,
     categories: record.categories,
-    evidenceItems: record.evidenceItems,
-    ...(!record.evidenceItems?.length ? { sourceExcerpt: bounded(record.sourceExcerpt, 500) } : {})
+    evidenceItems: record.evidenceItems
   }));
   try {
     return await request({
