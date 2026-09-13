@@ -2,10 +2,12 @@
 
 const crypto = require('node:crypto');
 const express = require('express');
+const config = require('../config');
 const db = require('../db');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
 const { healthObservationLine, normalizeHealthObservation } = require('../inquiry-health');
 const { dateOnly, mapWellbeingRecord } = require('../wellbeing-records');
+const { mapHypothesis, refreshWellbeingHypotheses } = require('../wellbeing-hypotheses');
 
 const router = express.Router();
 router.use(requireUser);
@@ -16,6 +18,12 @@ const DISMISS_REASONS = new Set([
   'NOT_WELLBEING',
   'DUPLICATE',
   'MISUNDERSTOOD'
+]);
+const HYPOTHESIS_DISMISS_REASONS = new Set([
+  'DOES_NOT_MATCH',
+  'MISREAD_EVIDENCE',
+  'TOO_SPECULATIVE',
+  'ALREADY_RESOLVED'
 ]);
 
 function uuid(value) {
@@ -119,6 +127,94 @@ router.post('/', asyncRoute(async (req, res) => {
     [crypto.randomUUID(), req.user.id, recordedOn, sourceExcerpt, JSON.stringify(observation)]
   );
   return ok(res, mapWellbeingRecord(result.rows[0]), '身心记录已保存');
+}));
+
+async function hypothesisList(userId) {
+  const [hypotheses, meta] = await Promise.all([
+    db.query(
+      `SELECT * FROM wellbeing_hypotheses
+        WHERE user_id = $1 AND status IN ('PENDING', 'OBSERVING')
+        ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END,
+          CASE evidence_strength WHEN 'STRONG' THEN 0 WHEN 'MODERATE' THEN 1 ELSE 2 END,
+          updated_at DESC`,
+      [userId]
+    ),
+    db.query(
+      `SELECT
+         (SELECT count(*)::int FROM wellbeing_records
+           WHERE user_id = $1 AND status IN ('PENDING', 'CONFIRMED')) AS source_count,
+         (SELECT max(updated_at) FROM wellbeing_records
+           WHERE user_id = $1 AND status IN ('PENDING', 'CONFIRMED')) AS latest_source_at,
+         (SELECT max(source_updated_at) FROM wellbeing_hypotheses
+           WHERE user_id = $1) AS last_reviewed_source_at`,
+      [userId]
+    )
+  ]);
+  const recordIds = [...new Set(hypotheses.rows.flatMap(row => [
+    ...(Array.isArray(row.supporting_evidence) ? row.supporting_evidence : []),
+    ...(Array.isArray(row.challenging_evidence) ? row.challenging_evidence : []),
+    ...(Array.isArray(row.red_flags) ? row.red_flags : [])
+  ]).map(item => String(item.recordId || item.record_id || '')).filter(Boolean))];
+  const recordResult = recordIds.length ? await db.query(
+    `SELECT * FROM wellbeing_records WHERE user_id = $1 AND id = ANY($2::uuid[])`,
+    [userId, recordIds]
+  ) : { rows: [] };
+  const recordMap = new Map(recordResult.rows.map(row => {
+    const mapped = mapWellbeingRecord(row);
+    return [String(mapped.id), mapped];
+  }));
+  const state = meta.rows[0] || {};
+  const latestSourceAt = state.latest_source_at ? new Date(state.latest_source_at) : null;
+  const lastReviewedSourceAt = state.last_reviewed_source_at ? new Date(state.last_reviewed_source_at) : null;
+  return {
+    list: hypotheses.rows.map(row => mapHypothesis(row, recordMap)),
+    sourceCount: Number(state.source_count || 0),
+    reviewDue: Boolean(latestSourceAt && (!lastReviewedSourceAt || latestSourceAt > lastReviewedSourceAt)),
+    latestSourceAt: state.latest_source_at || null,
+    lastReviewedSourceAt: state.last_reviewed_source_at || null
+  };
+}
+
+router.get('/hypotheses', asyncRoute(async (req, res) => {
+  return ok(res, await hypothesisList(req.user.id));
+}));
+
+router.post('/hypotheses/refresh', asyncRoute(async (req, res) => {
+  if (req.body.healthConsent !== true) {
+    return fail(res, 400, '请确认允许 AI 基于你的私密身心记录整理可能问题');
+  }
+  const refreshed = await refreshWellbeingHypotheses(req.user.id, config.aiModel);
+  return ok(res, {
+    ...(await hypothesisList(req.user.id)),
+    reviewedSourceCount: refreshed.sourceCount,
+    storedCount: refreshed.stored
+  }, refreshed.stored ? '已形成新的身心问题候选' : '目前没有足够证据形成具名问题候选');
+}));
+
+router.post('/hypotheses/:hypothesisId/status', asyncRoute(async (req, res) => {
+  const id = uuid(req.params.hypothesisId);
+  if (!id) return fail(res, 404, '身心问题候选不存在');
+  const action = String(req.body.action || '');
+  const transitions = {
+    observe: 'OBSERVING',
+    dismiss: 'DISMISSED',
+    archive: 'ARCHIVED',
+    restore: 'OBSERVING'
+  };
+  const nextStatus = transitions[action];
+  if (!nextStatus) return fail(res, 400, '操作不正确');
+  const feedbackReason = action === 'dismiss' && HYPOTHESIS_DISMISS_REASONS.has(String(req.body.reason || ''))
+    ? String(req.body.reason) : null;
+  const result = await db.query(
+    `UPDATE wellbeing_hypotheses SET status = $3::varchar(16),
+       feedback_reason = CASE WHEN $3::varchar(16) = 'DISMISSED' THEN $4::varchar(48) ELSE NULL END,
+       confirmed_at = CASE WHEN $3::varchar(16) = 'OBSERVING' THEN COALESCE(confirmed_at, now()) ELSE confirmed_at END,
+       updated_at = now()
+      WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [id, req.user.id, nextStatus, feedbackReason]
+  );
+  if (!result.rowCount) return fail(res, 404, '身心问题候选不存在');
+  return ok(res, mapHypothesis(result.rows[0]), action === 'observe' ? '已加入持续观察' : '候选已更新');
 }));
 
 async function updateWellbeingStatus(req, res) {
