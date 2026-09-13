@@ -473,7 +473,7 @@ router.get('/home', asyncRoute(async (req, res) => {
   ]);
   const directions = rows.map(mapDirection);
   const plans = activeRows.map((row, index) => mapThread(row, index === 0 ? currentEvents : []));
-  const plannedMinutes = plans.reduce((sum, plan) => sum + (plan.week.plannedMinutes || plan.weeklyTimeBudgetMinutes), 0);
+  const plannedMinutes = plans.reduce((sum, plan) => sum + plan.week.plannedMinutes, 0);
   const actualMinutes = plans.reduce((sum, plan) => sum + plan.week.actualMinutes, 0);
   return ok(res, {
     needsOnboarding: !currentRow,
@@ -590,7 +590,7 @@ router.post('/threads', asyncRoute(async (req, res) => {
          desired_outcome, context_summary, current_step, is_primary)
        VALUES ($1, $2, $3, $4, $5,
          COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date),
-         COALESCE($7::date, (now() AT TIME ZONE 'Asia/Shanghai')::date + 83),
+         COALESCE($7::date, COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date) + 83),
          $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, true)
        RETURNING *`,
       [id, req.user.id, item.id, modeForItem(key), title || item.name, cycleStart, cycleEnd,
