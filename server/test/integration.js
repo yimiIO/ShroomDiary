@@ -529,9 +529,46 @@ async function run() {
     }));
     assert.equal(compoundThread.itemKey, '05');
     assert.equal(compoundThread.progressMode, 'OUTCOME');
+    expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}`, {
+      method: 'PATCH', token: sessionB.access_token, body: { title: '不应被写入' }
+    }), 404);
+    const compoundPlan = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}`, {
+      method: 'PATCH', token: tokenA, body: {
+        title: '12 周交付能力复利',
+        desiredOutcome: '做出三份可核对的真实交付案例',
+        compoundMechanism: '每个案例都留下可复用证据模板，让下一次交付更快。',
+        weeklyTimeBudgetMinutes: 240,
+        leadingMetricName: '已验证案例',
+        leadingMetricTarget: 3,
+        outcomeEvidence: '三份案例都有用户反馈和可复用模板。',
+        currentMilestone: '完成第一份案例证据链',
+        currentStep: '先列出现有的前后证据',
+        stopList: ['不新开第四个方向']
+      }
+    }));
+    assert.equal(compoundPlan.title, '12 周交付能力复利');
+    assert.equal(compoundPlan.leadingMetric.target, 3);
+    const compoundWeek = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/week`, {
+      method: 'PUT', token: tokenA, body: {
+        plannedMinutes: 180,
+        actions: ['核对第一条证据', '访谈一名真实用户'],
+        stopList: ['不重做无关首页']
+      }
+    }));
+    assert.equal(compoundWeek.actions.length, 2);
+    expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/week/actions/${compoundWeek.actions[0].id}`, {
+      method: 'PATCH', token: sessionB.access_token, body: { completed: true }
+    }), 404);
+    const completedWeekAction = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/week/actions/${compoundWeek.actions[0].id}`, {
+      method: 'PATCH', token: tokenA, body: { completed: true }
+    }));
+    assert.equal(completedWeekAction.action.completed, true);
     const compoundResumed = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
     assert.equal(compoundResumed.needsOnboarding, false);
     assert.equal(compoundResumed.current.currentStep, '先列出现有的前后证据');
+    assert.equal(compoundResumed.plans[0].week.plannedMinutes, 180);
+    assert.equal(compoundResumed.portfolio.plannedMinutes, 180);
+    assert.equal(compoundResumed.portfolio.actualMinutes, 0);
     expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}`, { token: sessionB.access_token }), 404);
     expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/blocker`, {
       method: 'POST', token: tokenA, body: { blocker: '' }
@@ -594,13 +631,20 @@ async function run() {
       })]
     );
     const confirmedCompoundResult = expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/results/${resultEventId}/confirm`, {
-      method: 'POST', token: tokenA, body: { closeMode: 'CONTINUE' }
+      method: 'POST', token: tokenA, body: {
+        closeMode: 'CONTINUE', spentMinutes: 45, leadingMetricDelta: 1,
+        weekActionId: compoundWeek.actions[1].id
+      }
     }));
     assert.equal(confirmedCompoundResult.event.payload.state, 'DONE');
     assert.equal(confirmedCompoundResult.event.payload.accumulationType, 'PRINCIPAL');
     const compoundAfterResult = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
     assert.equal(compoundAfterResult.current.lastCompleted, '一份包含三条证据的清单');
     assert.equal(compoundAfterResult.current.currentStep, '找出缺少的结果证据');
+    assert.equal(compoundAfterResult.current.leadingMetric.current, 1);
+    assert.equal(compoundAfterResult.current.week.actualMinutes, 45);
+    assert.equal(compoundAfterResult.current.week.actions[1].completed, true);
+    assert.equal(compoundAfterResult.portfolio.actualMinutes, 45);
 
     const reuseEventId = crypto.randomUUID();
     await pool.query(

@@ -44,6 +44,40 @@ function stableKey(value) {
   return /^(0[1-9]|1\d|20)$/.test(key) ? key : null;
 }
 
+function dateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const match = String(value).match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : null;
+}
+
+function boundedNumber(value, min, max, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function textList(value, maxItems = 8, maxLength = 300) {
+  const source = Array.isArray(value) ? value : String(value || '').split(/\r?\n/);
+  return source.map(item => text(typeof item === 'string' ? item : item?.title, maxLength))
+    .filter(Boolean).slice(0, maxItems);
+}
+
+function weekActions(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(/\r?\n/);
+  return source.map((item, index) => {
+    const sourceItem = typeof item === 'string' ? { title: item } : (item || {});
+    const title = text(sourceItem.title, 300);
+    if (!title) return null;
+    return {
+      id: text(sourceItem.id, 80) || `action-${index + 1}`,
+      title,
+      plannedMinutes: Math.round(boundedNumber(sourceItem.plannedMinutes, 0, 10080, 0)),
+      completed: sourceItem.completed === true
+    };
+  }).filter(Boolean).slice(0, 5);
+}
+
 function selectedYogaSegments(note) {
   try {
     const parsed = JSON.parse(String(note || '{}'));
@@ -90,6 +124,10 @@ function mapEvent(row) {
 }
 
 function mapThread(row, events = []) {
+  const metricTarget = Number(row.leading_metric_target || 0);
+  const metricCurrent = Number(row.leading_metric_current || 0);
+  const plannedMinutes = Number(row.week_planned_minutes || 0);
+  const actualMinutes = Number(row.week_actual_minutes || 0);
   return {
     id: row.id,
     itemId: row.item_id,
@@ -97,6 +135,29 @@ function mapThread(row, events = []) {
     itemName: row.item_name,
     section: row.section,
     progressMode: row.progress_mode,
+    title: row.title || row.item_name,
+    cycleStart: dateOnly(row.cycle_start),
+    cycleEnd: dateOnly(row.cycle_end),
+    compoundMechanism: row.compound_mechanism || '',
+    weeklyTimeBudgetMinutes: Number(row.weekly_time_budget_minutes || 0),
+    leadingMetric: {
+      name: row.leading_metric_name || '',
+      target: metricTarget,
+      current: metricCurrent,
+      progressPercent: metricTarget > 0 ? Math.min(100, Math.round(metricCurrent / metricTarget * 100)) : null
+    },
+    outcomeEvidence: row.outcome_evidence || '',
+    currentMilestone: row.current_milestone || '',
+    stopList: Array.isArray(row.stop_list) ? row.stop_list : [],
+    planVersion: Number(row.plan_version || 1),
+    week: {
+      weekStart: dateOnly(row.week_start),
+      plannedMinutes,
+      actualMinutes,
+      utilizationPercent: plannedMinutes > 0 ? Math.round(actualMinutes / plannedMinutes * 100) : 0,
+      actions: Array.isArray(row.week_actions) ? row.week_actions : [],
+      stopList: Array.isArray(row.week_stop_list) ? row.week_stop_list : []
+    },
     desiredOutcome: row.desired_outcome || '',
     contextSummary: row.context_summary || '',
     lastCompleted: row.last_completed || '',
@@ -327,9 +388,14 @@ router.delete('/body-practice/check-in', asyncRoute(async (req, res) => {
 router.get('/home', asyncRoute(async (req, res) => {
   const rows = await directionsFor(req.user.id);
   const threadRows = await db.query(
-    `SELECT t.*, i.stable_key, i.name AS item_name, i.section
+    `SELECT t.*, i.stable_key, i.name AS item_name, i.section,
+            wp.week_start, wp.planned_minutes AS week_planned_minutes,
+            wp.actual_minutes AS week_actual_minutes,
+            wp.actions AS week_actions, wp.stop_list AS week_stop_list
        FROM compound_threads t
        JOIN life_os_items i ON i.id = t.item_id AND i.user_id = t.user_id
+       LEFT JOIN compound_week_plans wp ON wp.thread_id = t.id AND wp.user_id = t.user_id
+        AND wp.week_start = date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date
       WHERE t.user_id = $1 AND t.status = 'ACTIVE'
       ORDER BY t.is_primary DESC, t.last_activity_at DESC LIMIT 3`,
     [req.user.id]
@@ -369,7 +435,7 @@ router.get('/home', asyncRoute(async (req, res) => {
       ORDER BY scope_end DESC, created_at DESC LIMIT 1`,
     [req.user.id]
   );
-  const [principalOptions, compoundEvidence, quietToday] = await Promise.all([
+  const [principalOptions, compoundEvidence, quietToday, weekWindow] = await Promise.all([
     principalOptionsFor(req.user.id, 20),
     db.query(
       `SELECT p.id, p.summary, p.payload, p.created_at,
@@ -397,13 +463,31 @@ router.get('/home', asyncRoute(async (req, res) => {
           AND payload->>'date' = $2
         LIMIT 1`,
       [req.user.id, shanghaiDate()]
+    ),
+    db.query(
+      `SELECT to_char(date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date, 'YYYY-MM-DD') AS week_start,
+              to_char((date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date + 6), 'YYYY-MM-DD') AS week_end`
     )
   ]);
   const directions = rows.map(mapDirection);
+  const plans = activeRows.map((row, index) => mapThread(row, index === 0 ? currentEvents : []));
+  const plannedMinutes = plans.reduce((sum, plan) => sum + (plan.week.plannedMinutes || plan.weeklyTimeBudgetMinutes), 0);
+  const actualMinutes = plans.reduce((sum, plan) => sum + plan.week.actualMinutes, 0);
   return ok(res, {
     needsOnboarding: !currentRow,
-    current: currentRow ? mapThread(currentRow, currentEvents) : null,
-    otherActive: activeRows.slice(1).map(row => mapThread(row)),
+    current: plans[0] || null,
+    otherActive: plans.slice(1),
+    plans,
+    portfolio: {
+      activeCount: plans.length,
+      capacity: 3,
+      weekStart: weekWindow.rows[0].week_start,
+      weekEnd: weekWindow.rows[0].week_end,
+      plannedMinutes,
+      actualMinutes,
+      utilizationPercent: plannedMinutes > 0 ? Math.round(actualMinutes / plannedMinutes * 100) : 0,
+      unplannedCount: plans.filter(plan => !plan.week.plannedMinutes || !plan.week.actions.length).length
+    },
     diarySuggestions: pending.rows.map(mapDiarySuggestion),
     recentResults: recentResults.rows.map(row => ({ ...mapEvent(row), itemKey: row.stable_key, itemName: row.item_name })),
     principalOptions,
@@ -466,6 +550,17 @@ router.post('/threads', asyncRoute(async (req, res) => {
   const desiredOutcome = text(req.body.desiredOutcome, 1200);
   const currentStep = text(req.body.currentStep, 1000);
   if (!key || !desiredOutcome || !currentStep) return fail(res, 400, '请确认这次要做到什么，以及现在的最小一步');
+  const title = text(req.body.title, 240);
+  const compoundMechanism = text(req.body.compoundMechanism, 1600);
+  const weeklyTimeBudgetMinutes = Math.round(boundedNumber(req.body.weeklyTimeBudgetMinutes, 0, 10080, 180));
+  const leadingMetricName = text(req.body.leadingMetricName, 240);
+  const leadingMetricTarget = boundedNumber(req.body.leadingMetricTarget, 0, 1000000000, 0);
+  const outcomeEvidence = text(req.body.outcomeEvidence, 1600);
+  const currentMilestone = text(req.body.currentMilestone, 1200) || desiredOutcome;
+  const stopList = textList(req.body.stopList, 8, 300);
+  const cycleStart = dateOnly(req.body.cycleStart);
+  const cycleEnd = dateOnly(req.body.cycleEnd);
+  if (cycleStart && cycleEnd && cycleEnd < cycleStart) return fail(res, 400, '周期结束日期不能早于开始日期');
   const created = await db.transaction(async client => {
     const itemResult = await client.query(
       `SELECT * FROM life_os_items WHERE user_id = $1 AND stable_key = $2 AND status = 'ACTIVE' FOR UPDATE`,
@@ -487,15 +582,29 @@ router.post('/threads', asyncRoute(async (req, res) => {
     const item = itemResult.rows[0];
     const inserted = await client.query(
       `INSERT INTO compound_threads
-        (id, user_id, item_id, progress_mode, desired_outcome, context_summary, current_step, is_primary)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *`,
-      [id, req.user.id, item.id, modeForItem(key), desiredOutcome, text(req.body.contextReason, 1200), currentStep]
+        (id, user_id, item_id, progress_mode, title, cycle_start, cycle_end,
+         compound_mechanism, weekly_time_budget_minutes, leading_metric_name,
+         leading_metric_target, outcome_evidence, current_milestone, stop_list,
+         desired_outcome, context_summary, current_step, is_primary)
+       VALUES ($1, $2, $3, $4, $5,
+         COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date),
+         COALESCE($7::date, (now() AT TIME ZONE 'Asia/Shanghai')::date + 83),
+         $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, true)
+       RETURNING *`,
+      [id, req.user.id, item.id, modeForItem(key), title || item.name, cycleStart, cycleEnd,
+        compoundMechanism, weeklyTimeBudgetMinutes, leadingMetricName, leadingMetricTarget,
+        outcomeEvidence, currentMilestone, JSON.stringify(stopList), desiredOutcome,
+        text(req.body.contextReason, 1200), currentStep]
     );
     await client.query(
       `INSERT INTO compound_events
         (id, user_id, thread_id, kind, status, actor, input_text, summary, payload)
        VALUES ($1, $2, $3, 'START', 'CONFIRMED', 'USER', $4, $5, $6::jsonb)`,
-      [crypto.randomUUID(), req.user.id, id, desiredOutcome, '确认开始推进', JSON.stringify({ desiredOutcome, currentStep })]
+      [crypto.randomUUID(), req.user.id, id, desiredOutcome, '确认建立复利计划', JSON.stringify({
+        title: title || item.name, desiredOutcome, compoundMechanism, weeklyTimeBudgetMinutes,
+        leadingMetricName, leadingMetricTarget, outcomeEvidence, currentMilestone,
+        stopList, currentStep, cycleStart, cycleEnd
+      })]
     );
     await client.query(
       `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
@@ -507,7 +616,123 @@ router.post('/threads', asyncRoute(async (req, res) => {
   if (created.error === 'item') return fail(res, 404, '长期方向不存在');
   if (created.error === 'existing') return fail(res, 409, '这个方向已经在推进，可以直接接着做', { threadId: created.id });
   if (created.error === 'limit') return fail(res, 400, '同时推进的事不超过 3 件；请先暂缓或结束一件');
-  return ok(res, mapThread(created.row), '已开始推进，下次会从这里接着做');
+  return ok(res, mapThread(created.row), '复利计划已建立');
+}));
+
+router.patch('/plans/:id', asyncRoute(async (req, res) => {
+  const saved = await db.transaction(async client => {
+    const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
+    if (!thread || thread.status !== 'ACTIVE') return { error: 'missing' };
+    const title = req.body.title === undefined ? thread.title : text(req.body.title, 240);
+    const desiredOutcome = req.body.desiredOutcome === undefined ? thread.desired_outcome : text(req.body.desiredOutcome, 1200);
+    const cycleStart = req.body.cycleStart === undefined ? dateOnly(thread.cycle_start) : dateOnly(req.body.cycleStart);
+    const cycleEnd = req.body.cycleEnd === undefined ? dateOnly(thread.cycle_end) : dateOnly(req.body.cycleEnd);
+    if (!title || !desiredOutcome || !cycleStart || !cycleEnd) return { error: 'required' };
+    if (cycleEnd < cycleStart) return { error: 'dates' };
+    const compoundMechanism = req.body.compoundMechanism === undefined
+      ? thread.compound_mechanism : text(req.body.compoundMechanism, 1600);
+    const weeklyTimeBudgetMinutes = req.body.weeklyTimeBudgetMinutes === undefined
+      ? Number(thread.weekly_time_budget_minutes || 0)
+      : Math.round(boundedNumber(req.body.weeklyTimeBudgetMinutes, 0, 10080, 0));
+    const leadingMetricName = req.body.leadingMetricName === undefined
+      ? thread.leading_metric_name : text(req.body.leadingMetricName, 240);
+    const leadingMetricTarget = req.body.leadingMetricTarget === undefined
+      ? Number(thread.leading_metric_target || 0)
+      : boundedNumber(req.body.leadingMetricTarget, 0, 1000000000, 0);
+    const outcomeEvidence = req.body.outcomeEvidence === undefined
+      ? thread.outcome_evidence : text(req.body.outcomeEvidence, 1600);
+    const currentMilestone = req.body.currentMilestone === undefined
+      ? thread.current_milestone : text(req.body.currentMilestone, 1200);
+    const currentStep = req.body.currentStep === undefined
+      ? thread.current_step : text(req.body.currentStep, 1000);
+    const stopList = req.body.stopList === undefined
+      ? (Array.isArray(thread.stop_list) ? thread.stop_list : []) : textList(req.body.stopList, 8, 300);
+    if (!currentStep) return { error: 'required' };
+    const result = await client.query(
+      `UPDATE compound_threads SET title = $3, desired_outcome = $4,
+         cycle_start = $5, cycle_end = $6, compound_mechanism = $7,
+         weekly_time_budget_minutes = $8, leading_metric_name = $9,
+         leading_metric_target = $10, outcome_evidence = $11,
+         current_milestone = $12, current_step = $13, stop_list = $14::jsonb,
+         plan_version = plan_version + 1, updated_at = now()
+       WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [thread.id, req.user.id, title, desiredOutcome, cycleStart, cycleEnd,
+        compoundMechanism, weeklyTimeBudgetMinutes, leadingMetricName,
+        leadingMetricTarget, outcomeEvidence, currentMilestone, currentStep,
+        JSON.stringify(stopList)]
+    );
+    await client.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, summary, payload)
+       VALUES ($1, $2, $3, 'ADJUSTMENT', 'CONFIRMED', 'USER', $4, $5::jsonb)`,
+      [crypto.randomUUID(), req.user.id, thread.id, '更新复利计划', JSON.stringify({
+        action: 'PLAN_UPDATED', planVersion: Number(thread.plan_version || 1) + 1
+      })]
+    );
+    return { row: { ...result.rows[0], stable_key: thread.stable_key, item_name: thread.item_name, section: thread.section } };
+  });
+  if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
+  if (saved.error === 'required') return fail(res, 400, '计划名称、周期目标和当前一步不能为空');
+  if (saved.error === 'dates') return fail(res, 400, '周期结束日期不能早于开始日期');
+  return ok(res, mapThread(saved.row), '复利计划已更新');
+}));
+
+router.put('/plans/:id/week', asyncRoute(async (req, res) => {
+  const thread = await ownedThread(req.user.id, req.params.id);
+  if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '复利计划不存在');
+  const plannedMinutes = Math.round(boundedNumber(req.body.plannedMinutes, 0, 10080, thread.weekly_time_budget_minutes || 0));
+  const actions = weekActions(req.body.actions);
+  const stopList = textList(req.body.stopList, 8, 300);
+  if (!plannedMinutes || !actions.length) return fail(res, 400, '请分配本周时间，并保留至少一个具体行动');
+  const result = await db.query(
+    `INSERT INTO compound_week_plans
+      (id, user_id, thread_id, week_start, planned_minutes, actions, stop_list)
+     VALUES ($1, $2, $3, date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date,
+       $4, $5::jsonb, $6::jsonb)
+     ON CONFLICT (user_id, thread_id, week_start) DO UPDATE SET
+       planned_minutes = EXCLUDED.planned_minutes,
+       actions = EXCLUDED.actions,
+       stop_list = EXCLUDED.stop_list,
+       updated_at = now()
+     RETURNING *`,
+    [crypto.randomUUID(), req.user.id, thread.id, plannedMinutes, JSON.stringify(actions), JSON.stringify(stopList)]
+  );
+  return ok(res, {
+    weekStart: dateOnly(result.rows[0].week_start),
+    plannedMinutes: Number(result.rows[0].planned_minutes || 0),
+    actualMinutes: Number(result.rows[0].actual_minutes || 0),
+    actions: result.rows[0].actions || [],
+    stopList: result.rows[0].stop_list || []
+  }, '本周时间与行动已安排');
+}));
+
+router.patch('/plans/:id/week/actions/:actionId', asyncRoute(async (req, res) => {
+  const thread = await ownedThread(req.user.id, req.params.id);
+  if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '复利计划不存在');
+  const actionId = text(req.params.actionId, 80);
+  const result = await db.transaction(async client => {
+    const week = await client.query(
+      `SELECT * FROM compound_week_plans
+        WHERE user_id = $1 AND thread_id = $2
+          AND week_start = date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date
+        FOR UPDATE`,
+      [req.user.id, thread.id]
+    );
+    if (!week.rowCount) return { error: 'week' };
+    const actions = weekActions(week.rows[0].actions);
+    const target = actions.find(item => item.id === actionId);
+    if (!target) return { error: 'action' };
+    target.completed = req.body.completed === undefined ? !target.completed : req.body.completed === true;
+    await client.query(
+      `UPDATE compound_week_plans SET actions = $3::jsonb, updated_at = now()
+        WHERE user_id = $1 AND id = $2`,
+      [req.user.id, week.rows[0].id, JSON.stringify(actions)]
+    );
+    return { actions, action: target };
+  });
+  if (result.error === 'week') return fail(res, 404, '本周还没有安排');
+  if (result.error === 'action') return fail(res, 404, '本周行动不存在');
+  return ok(res, result, result.action.completed ? '已记为完成' : '已恢复为未完成');
 }));
 
 router.get('/threads/:id', asyncRoute(async (req, res) => {
@@ -800,25 +1025,66 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
       if (!principal.rowCount) return { error: 'principal' };
       value.principalEventId = principalId;
     }
+    const spentMinutes = value.state === 'PREPARING'
+      ? 0 : Math.round(boundedNumber(req.body.spentMinutes, 0, 1440, 0));
+    const leadingMetricDelta = value.state === 'PREPARING'
+      ? 0 : boundedNumber(req.body.leadingMetricDelta, 0, 1000000000, 0);
+    const weekActionId = text(req.body.weekActionId, 80);
     const closeMode = ['CONTINUE', 'PAUSE', 'END'].includes(req.body.closeMode) ? req.body.closeMode : 'CONTINUE';
     const updated = await client.query(
       `UPDATE compound_events SET status = 'CONFIRMED', actor = 'USER', summary = $4,
          payload = $5::jsonb, updated_at = now()
        WHERE id = $1 AND user_id = $2 AND thread_id = $3 RETURNING *`,
-      [eventId, req.user.id, thread.id, value.summary, JSON.stringify({ ...value, rawInput: original.rawInput || draft.input_text, closeMode })]
+      [eventId, req.user.id, thread.id, value.summary, JSON.stringify({
+        ...value, rawInput: original.rawInput || draft.input_text, closeMode,
+        spentMinutes, leadingMetricDelta, weekActionId
+      })]
     );
     const nextStatus = closeMode === 'PAUSE' ? 'PAUSED' : (closeMode === 'END' ? 'ENDED' : 'ACTIVE');
     const completed = value.state === 'PREPARING' ? thread.last_completed : (value.actualResult || value.summary);
     await client.query(
       `UPDATE compound_threads SET last_completed = $3, current_step = $4,
          context_summary = $5, blocker_summary = '', status = $6::varchar,
+         leading_metric_current = leading_metric_current + $7,
          is_primary = CASE WHEN $6::varchar = 'ACTIVE' THEN is_primary ELSE false END,
          paused_at = CASE WHEN $6::varchar = 'PAUSED' THEN now() ELSE paused_at END,
          ended_at = CASE WHEN $6::varchar = 'ENDED' THEN now() ELSE ended_at END,
          last_activity_at = now(), updated_at = now()
        WHERE id = $1 AND user_id = $2`,
-      [thread.id, req.user.id, completed, value.nextStep, value.progressSummary || value.summary, nextStatus]
+      [thread.id, req.user.id, completed, value.nextStep, value.progressSummary || value.summary, nextStatus, leadingMetricDelta]
     );
+    if (spentMinutes > 0 || weekActionId) {
+      const weekResult = await client.query(
+        `SELECT * FROM compound_week_plans
+          WHERE user_id = $1 AND thread_id = $2
+            AND week_start = date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date
+          FOR UPDATE`,
+        [req.user.id, thread.id]
+      );
+      if (weekResult.rowCount) {
+        const week = weekResult.rows[0];
+        const actions = weekActions(week.actions);
+        const action = actions.find(item => item.id === weekActionId);
+        if (action) action.completed = true;
+        await client.query(
+          `UPDATE compound_week_plans
+              SET actual_minutes = LEAST(10080, actual_minutes + $3),
+                  actions = $4::jsonb, updated_at = now()
+            WHERE id = $1 AND user_id = $2`,
+          [week.id, req.user.id, spentMinutes, JSON.stringify(actions)]
+        );
+      } else if (spentMinutes > 0) {
+        await client.query(
+          `INSERT INTO compound_week_plans
+            (id, user_id, thread_id, week_start, planned_minutes, actual_minutes, actions)
+           VALUES ($1, $2, $3,
+             date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date,
+             $4, $5, '[]'::jsonb)`,
+          [crypto.randomUUID(), req.user.id, thread.id,
+            Math.min(10080, Number(thread.weekly_time_budget_minutes || 0)), spentMinutes]
+        );
+      }
+    }
     if (nextStatus === 'ACTIVE') {
       await client.query(
         `UPDATE life_os_items SET current_next_step = $3, updated_at = now()

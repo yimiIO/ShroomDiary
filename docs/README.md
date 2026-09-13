@@ -3,7 +3,7 @@
 当前产品与实现首先以以下两份文档为准：
 
 - [PRODUCT.md](./PRODUCT.md)：Shroom 整体产品定义、核心对象、已实现能力和边界。
-- [COMPOUND_SYSTEM.md](./COMPOUND_SYSTEM.md)：五类 20 个长期方向、跨次推进、卡点处理、结果确认、日记联动与阶段回看。
+- [COMPOUND_SYSTEM.md](./COMPOUND_SYSTEM.md)：12 周复利计划、时间配置、领先指标、结果证据、不做清单与日记反馈。
 - [LIFE_OS.md](./LIFE_OS.md)：人生 OS 与菇卡/行动的区别、生成修订机制、数据与 API 契约。
 - [INQUIRIES.md](./INQUIRIES.md)：未解之问的入口、证据生命周期、AI 复盘和隐私边界。
 - [TODO_PROJECTS.md](./TODO_PROJECTS.md)：待办、项目、重复实例、行动记录与复利系统的统一行动层。

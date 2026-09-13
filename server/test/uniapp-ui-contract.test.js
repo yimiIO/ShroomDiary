@@ -87,7 +87,7 @@ test('todo execution layer has current views, projects, recurrence and reversibl
   assert.match(migration, /todo_recurrence_rules/);
   assert.match(migration, /todo_events/);
   assert.match(diary, /actionRecords/);
-  assert.match(compound, /把这一步安排到待办/);
+  assert.match(compound, /加入待办/);
 });
 
 test('todo management and project creation use large cross-platform sheets', () => {
@@ -204,10 +204,11 @@ test('compound directions stay secondary while Life OS remains a separate princi
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
 });
 
-test('compound system preserves user agency and records real compounding evidence', () => {
+test('compound system manages a time-bounded portfolio before execution and diary feedback', () => {
 	const me = source('src/pages/shroom/me.vue');
 	const compound = source('src/pages/shroom/compound.vue');
 	const compoundRoute = source('server/src/routes/compound-progress.js');
+	const migration = source('server/sql/033_compound_planning.sql');
 	const pages = source('src/pages.json');
 	const api = source('src/api/compound-system.js');
 
@@ -215,24 +216,27 @@ test('compound system preserves user agency and records real compounding evidenc
 	assert.match(me, /复利系统/);
 	assert.match(pages, /pages\/shroom\/compound/);
 	assert.match(api, /\/compound\/v2\/home/);
-	assert.match(compound, /先选一件/);
-	assert.match(compound, /直接继续/);
-	assert.match(compound, /不调用 AI/);
-	assert.match(compound, /需要 AI 帮助/);
-	assert.match(compound, /当前最大约束/);
-	assert.match(compound, /今天不推进/);
-	assert.match(compound, /记录结果/);
-	assert.match(compound, /实际发生了什么/);
-	assert.match(compound, /必要完成/);
-	assert.match(compound, /形成积累/);
-	assert.match(compound, /已经发生的复利/);
-	assert.match(compound, /进入后才能把它接入正在推进的事|回看这次/);
-	assert.match(compound, /人生 OS 原则/);
-	assert.match(compound, /语音记录/);
-	assert.match(compound, /添加照片/);
+	assert.match(compound, /把有限时间/);
+	assert.match(compound, /日记记录真实发生/);
+	assert.match(compound, /12 周要发生的变化/);
+	assert.match(compound, /为什么它会产生复利/);
+	assert.match(compound, /每周预算/);
+	assert.match(compound, /领先指标/);
+	assert.match(compound, /周期结果用什么证明/);
+	assert.match(compound, /当前里程碑/);
+	assert.match(compound, /这段时间明确不做/);
+	assert.match(compound, /本周实际分给它多少分钟/);
+	assert.match(compound, /来自日记的现实反馈/);
+	assert.match(compound, /人生 OS/);
 	assert.match(compound, /重新读取/);
 	assert.doesNotMatch(compound, /setTimeout\(\(\) => this\.goBack/);
+	assert.doesNotMatch(compound, /今天不推进/);
+	assert.doesNotMatch(compound, /必要完成/);
 	assert.match(compoundRoute, /compound_threads/);
+	assert.match(compoundRoute, /compound_week_plans/);
+	assert.match(migration, /weekly_time_budget_minutes/);
+	assert.match(migration, /leading_metric_current/);
+	assert.match(migration, /CREATE TABLE IF NOT EXISTS compound_week_plans/);
 	assert.match(compoundRoute, /compound_events/);
 	assert.match(compoundRoute, /status = 'DRAFT'/);
 	assert.match(compoundRoute, /source_diary_id/);

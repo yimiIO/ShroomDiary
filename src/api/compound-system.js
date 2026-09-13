@@ -6,6 +6,9 @@ const compoundHome = '/compound/v2/home';
 const compoundDirections = '/compound/v2/directions';
 const compoundStarter = '/compound/v2/starter';
 const compoundThreads = '/compound/v2/threads';
+const compoundPlan = id => `/compound/v2/plans/${id}`;
+const compoundPlanWeek = id => `/compound/v2/plans/${id}/week`;
+const compoundPlanWeekAction = (id, actionId) => `/compound/v2/plans/${id}/week/actions/${encodeURIComponent(actionId)}`;
 const compoundThread = id => `/compound/v2/threads/${id}`;
 const compoundThreadPrimary = id => `/compound/v2/threads/${id}/primary`;
 const compoundContinue = id => `/compound/v2/threads/${id}/continue`;
@@ -38,6 +41,9 @@ export {
 	compoundDirections,
 	compoundExport,
 	compoundHome,
+	compoundPlan,
+	compoundPlanWeek,
+	compoundPlanWeekAction,
 	compoundQuietDay,
 	compoundResultConfirm,
 	compoundResultDraft,
