@@ -9,6 +9,7 @@ const {
   legacyHealthObservation,
   normalizeDiaryHealthExtraction
 } = require('./diary-health');
+const { WELLBEING_VALUE_TYPES, wellbeingSourceFingerprint } = require('./wellbeing-review');
 
 const WELLBEING_STATUSES = ['PENDING', 'CONFIRMED', 'DISMISSED', 'ARCHIVED'];
 
@@ -66,12 +67,24 @@ function normalizeWellbeingCandidate(value, diaryContent = '') {
     ? bounded(candidateExcerpt, 1200)
     : bounded(source, 1200);
   if (!sourceExcerpt) return null;
+  const healthValueTypes = [...new Set((Array.isArray(input.healthValueTypes || input.health_value_types)
+    ? (input.healthValueTypes || input.health_value_types) : [])
+    .map(item => String(item || '').toUpperCase())
+    .filter(item => WELLBEING_VALUE_TYPES.includes(item)))];
+  const confidenceValue = Number(input.confidence);
   return {
     observation,
     extraction,
     sourceExcerpt,
     categories: observationCategories(observation),
-    extractionVersion: hasDiaryHealthExtraction(extraction) ? HEALTH_EXTRACTION_VERSION : ''
+    extractionVersion: hasDiaryHealthExtraction(extraction) ? HEALTH_EXTRACTION_VERSION : '',
+    healthValueTypes,
+    whyUseful: bounded(input.whyUseful || input.why_useful, 500),
+    confidence: Number.isFinite(confidenceValue)
+      ? Math.round(Math.max(0, Math.min(1, confidenceValue)) * 1000) / 1000 : null,
+    reviewVersion: bounded(input.reviewVersion || input.review_version, 120),
+    sourceFingerprint: bounded(input.sourceFingerprint || input.source_fingerprint, 64)
+      || wellbeingSourceFingerprint(diaryContent)
   };
 }
 
@@ -95,6 +108,12 @@ function mapWellbeingRecord(row) {
     extraction,
     extractionVersion: row.extraction_version || '',
     modelVersion: row.model_version || '',
+    healthValueTypes: Array.isArray(row.health_value_types) ? row.health_value_types : [],
+    whyUseful: row.why_useful || '',
+    confidence: row.confidence === null || row.confidence === undefined ? null : Number(row.confidence),
+    reviewVersion: row.review_version || '',
+    feedbackReason: row.feedback_reason || '',
+    sourceFingerprint: row.source_fingerprint || '',
     missingInformation: extraction.missingInformation,
     redFlags: extraction.redFlags,
     categories: observationCategories(observation),
@@ -131,6 +150,19 @@ async function syncDiaryWellbeingRecord(client, {
     return null;
   }
   if (existing.rows[0] && existing.rows[0].status !== 'PENDING') return existing.rows[0].id;
+  const duplicate = normalized.sourceFingerprint ? await client.query(
+    `SELECT id FROM wellbeing_records
+      WHERE user_id = $1 AND source_fingerprint = $2 AND diary_id <> $3
+      ORDER BY CASE status WHEN 'CONFIRMED' THEN 0 WHEN 'ARCHIVED' THEN 1 WHEN 'DISMISSED' THEN 2 ELSE 3 END,
+        created_at ASC LIMIT 1`,
+    [userId, normalized.sourceFingerprint, diary.id]
+  ) : { rowCount: 0, rows: [] };
+  if (duplicate.rowCount) {
+    if (existing.rows[0]?.status === 'PENDING') {
+      await client.query('DELETE FROM wellbeing_records WHERE id = $1 AND user_id = $2', [existing.rows[0].id, userId]);
+    }
+    return duplicate.rows[0].id;
+  }
   const id = existing.rows[0]?.id || crypto.randomUUID();
   const recordedOn = dateOnly(diary.diary_date)
     || new Date(diary.occurred_at || Date.now()).toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
@@ -138,9 +170,10 @@ async function syncDiaryWellbeingRecord(client, {
   const result = await client.query(
     `INSERT INTO wellbeing_records
       (id, user_id, diary_id, source_type, status, recorded_on, source_label,
-       source_excerpt, observation, extraction, extraction_version, model_version, ai_allowed)
+       source_excerpt, observation, extraction, extraction_version, model_version, ai_allowed,
+       health_value_types, why_useful, confidence, review_version, source_fingerprint)
      VALUES ($1, $2, $3, 'DIARY_ANALYSIS', 'PENDING', $4, $5, $6, $7::jsonb,
-       $8::jsonb, $9, $10, false)
+       $8::jsonb, $9, $10, false, $11::jsonb, $12, $13, $14, $15)
      ON CONFLICT (user_id, diary_id) WHERE diary_id IS NOT NULL DO UPDATE SET
        source_label = EXCLUDED.source_label,
        source_excerpt = EXCLUDED.source_excerpt,
@@ -148,12 +181,20 @@ async function syncDiaryWellbeingRecord(client, {
        extraction = EXCLUDED.extraction,
        extraction_version = EXCLUDED.extraction_version,
        model_version = EXCLUDED.model_version,
+       health_value_types = EXCLUDED.health_value_types,
+       why_useful = EXCLUDED.why_useful,
+       confidence = EXCLUDED.confidence,
+       review_version = EXCLUDED.review_version,
+       source_fingerprint = EXCLUDED.source_fingerprint,
+       feedback_reason = NULL,
        updated_at = now()
      WHERE wellbeing_records.status = 'PENDING'
      RETURNING id`,
     [id, userId, diary.id, recordedOn, label, normalized.sourceExcerpt,
       JSON.stringify(normalized.observation), JSON.stringify(normalized.extraction),
-      normalized.extractionVersion, bounded(modelVersion, 120)]
+      normalized.extractionVersion, bounded(modelVersion, 120),
+      JSON.stringify(normalized.healthValueTypes), normalized.whyUseful,
+      normalized.confidence, normalized.reviewVersion, normalized.sourceFingerprint]
   );
   return result.rows[0]?.id || id;
 }

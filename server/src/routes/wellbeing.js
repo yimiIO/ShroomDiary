@@ -10,6 +10,14 @@ const { dateOnly, mapWellbeingRecord } = require('../wellbeing-records');
 const router = express.Router();
 router.use(requireUser);
 
+const DISMISS_REASONS = new Set([
+  'OTHER_PERSON',
+  'KNOWLEDGE_OR_REFLECTION',
+  'NOT_WELLBEING',
+  'DUPLICATE',
+  'MISUNDERSTOOD'
+]);
+
 function uuid(value) {
   const id = String(value || '');
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) ? id : null;
@@ -125,12 +133,15 @@ async function updateWellbeingStatus(req, res) {
   };
   const next = transitions[action];
   if (!next) return fail(res, 400, '操作不正确');
+  const feedbackReason = action === 'dismiss' && DISMISS_REASONS.has(String(req.body.reason || ''))
+    ? String(req.body.reason) : null;
   const result = await db.query(
     `UPDATE wellbeing_records SET status = $3::varchar(16), ai_allowed = $4::boolean,
        confirmed_at = CASE WHEN $3::varchar(16) = 'CONFIRMED' THEN COALESCE(confirmed_at, now()) ELSE confirmed_at END,
+       feedback_reason = CASE WHEN $3::varchar(16) = 'DISMISSED' THEN $5::varchar(48) ELSE NULL END,
        updated_at = now()
      WHERE id = $1 AND user_id = $2 RETURNING *`,
-    [id, req.user.id, next.status, next.aiAllowed]
+    [id, req.user.id, next.status, next.aiAllowed, feedbackReason]
   );
   if (!result.rowCount) return fail(res, 404, '身心记录不存在');
   return ok(res, mapWellbeingRecord(result.rows[0]), action === 'confirm' ? '已确认这条观察' : '记录已更新');

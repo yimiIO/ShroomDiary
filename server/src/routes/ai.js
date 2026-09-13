@@ -20,6 +20,7 @@ const { activeObserverSnapshot, listObservers } = require('../observer-store');
 const { publicObserver, resolvedObserver } = require('../observer-presets');
 const { findDiaryWellbeingRecord, syncDiaryWellbeingRecord } = require('../wellbeing-records');
 const { hasDiaryHealthExtraction, legacyHealthObservation, normalizeDiaryHealthExtraction } = require('../diary-health');
+const { WELLBEING_REVIEW_VERSION, reviewDiaryWellbeing } = require('../wellbeing-review');
 
 const router = express.Router();
 router.use(requireUser);
@@ -237,11 +238,31 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       followup.healthExtraction || followup.health_extraction || {},
       { diaryContent: diary.content }
     );
-    const wellbeingCandidate = (hasDiaryHealthExtraction(healthExtraction) ? {
+    const firstWellbeingCandidate = (hasDiaryHealthExtraction(healthExtraction) ? {
       extraction: healthExtraction,
       observation: legacyHealthObservation(healthExtraction)
     } : null) || followup.wellbeingObservation || followup.wellbeingRecord
       || null;
+    let wellbeingReviewCompleted = false;
+    let wellbeingCandidate;
+    try {
+      const feedback = await db.query(
+        `SELECT source_excerpt AS "sourceExcerpt", feedback_reason AS reason
+           FROM wellbeing_records
+          WHERE user_id = $1 AND status = 'DISMISSED' AND feedback_reason IS NOT NULL
+          ORDER BY updated_at DESC LIMIT 12`,
+        [userId]
+      );
+      wellbeingCandidate = await reviewDiaryWellbeing(callJson, {
+        diary,
+        firstCandidate: firstWellbeingCandidate,
+        userFeedback: feedback.rows,
+        usageContext: { userId, feature: 'diary_wellbeing_review', diaryId, analysisId }
+      });
+      wellbeingReviewCompleted = true;
+    } catch (error) {
+      console.error('wellbeing value review failed', error);
+    }
     const lifeOsLinks = normalizeLifeOsLinks(followup.compoundLinks || followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
@@ -261,12 +282,14 @@ async function executeAnalysis(userId, analysisId, diaryId) {
         modelVersion: VERSION,
         candidates: inquiryCandidates
       });
-      await syncDiaryWellbeingRecord(client, {
-        userId,
-        diary,
-        modelVersion: VERSION,
-        candidate: wellbeingCandidate
-      });
+      if (wellbeingReviewCompleted) {
+        await syncDiaryWellbeingRecord(client, {
+          userId,
+          diary,
+          modelVersion: `${VERSION}:${WELLBEING_REVIEW_VERSION}`,
+          candidate: wellbeingCandidate
+        });
+      }
       await syncDiaryLifeOsLinks(client, {
         userId,
         diary,

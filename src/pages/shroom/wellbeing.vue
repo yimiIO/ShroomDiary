@@ -44,11 +44,12 @@
 				<view class="records-heading"><view><text>OBSERVATION STREAM</text><text>{{ categoryTitle }}</text></view><text>{{ total }} 条</text></view>
 				<view v-if="items.length" class="record-list">
 					<view v-for="item in items" :key="item.id" class="record-card" :class="{ pending: item.status === 'PENDING' }">
-						<view class="record-topline"><view><text class="record-date">{{ formatDate(item.recordedOn) }}</text><text v-if="item.status === 'PENDING'" class="pending-label">AI 发现 · 待确认</text><text v-else class="source-label">{{ sourceLabel(item) }}</text></view><text class="record-index">{{ item.status === 'PENDING' ? '?' : '●' }}</text></view>
+						<view class="record-topline"><view><text class="record-date">{{ formatDate(item.recordedOn) }}</text><text v-if="item.status === 'PENDING'" class="pending-label">AI 整理 · 建议你看一眼</text><text v-else class="source-label">{{ sourceLabel(item) }}</text></view><text class="record-index">{{ item.status === 'PENDING' ? '?' : '●' }}</text></view>
 						<view class="record-categories"><text v-for="tag in item.categories" :key="tag">{{ categoryLabel(tag) }}</text></view>
 						<text class="record-summary">{{ observationText(item.observation) }}</text>
 						<text v-if="item.sourceExcerpt" class="record-excerpt">“{{ item.sourceExcerpt }}”</text>
-						<view v-if="item.status === 'PENDING'" class="record-actions"><button :disabled="processingId === item.id" @tap="updateStatus(item, 'dismiss')">不是身心记录</button><button :disabled="processingId === item.id" @tap="updateStatus(item, 'confirm')">确认这条观察</button></view>
+						<view v-if="item.whyUseful" class="record-value"><text>为什么值得留下</text><text>{{ item.whyUseful }}</text><text v-if="confidenceLabel(item)">{{ confidenceLabel(item) }}</text></view>
+						<view v-if="item.status === 'PENDING'" class="record-actions"><button :disabled="processingId === item.id" @tap="updateStatus(item, 'dismiss')">这不是身心线索</button><button :disabled="processingId === item.id" @tap="updateStatus(item, 'confirm')">保留这条观察</button></view>
 						<view v-else class="record-footer"><button v-if="item.diaryId" @tap="openDiary(item)">查看原日记</button><button @tap="updateStatus(item, item.status === 'ARCHIVED' ? 'restore' : 'archive')">{{ item.status === 'ARCHIVED' ? '恢复' : '归档' }}</button></view>
 					</view>
 				</view>
@@ -124,10 +125,33 @@ export default {
 		},
 		async updateStatus(item, action) {
 			if (!item || this.processingId) return;
+			let reason = '';
+			if (action === 'dismiss') {
+				const reasons = [
+					{ label: '说的是别人', value: 'OTHER_PERSON' },
+					{ label: '只是知识或思考', value: 'KNOWLEDGE_OR_REFLECTION' },
+					{ label: '与身心无关', value: 'NOT_WELLBEING' },
+					{ label: '和已有记录重复', value: 'DUPLICATE' },
+					{ label: '原文理解错了', value: 'MISUNDERSTOOD' }
+				];
+				try {
+					const selected = await new Promise((resolve, reject) => uni.showActionSheet({
+						itemList: reasons.map(option => option.label),
+						success: resolve,
+						fail: reject
+					}));
+					reason = reasons[selected.tapIndex] && reasons[selected.tapIndex].value;
+					if (!reason) return;
+				} catch (error) { return; }
+			}
 			this.processingId = item.id;
-			try { await this.$http.post(wellbeingStatus(item.id), { action }); await Promise.all([this.loadItems(true), this.loadSummary()]); }
+			try { await this.$http.post(wellbeingStatus(item.id), reason ? { action, reason } : { action }); await Promise.all([this.loadItems(true), this.loadSummary()]); }
 			catch (error) { console.error('更新身心记录失败', error); }
 			finally { this.processingId = ''; }
+		},
+		confidenceLabel(item) {
+			if (item.status !== 'PENDING' || item.confidence === null || item.confidence === undefined) return '';
+			return Number(item.confidence) >= 0.85 ? '原文依据较明确' : '建议核对 AI 理解';
 		},
 		categoryLabel(value) { return { PSYCHOLOGICAL: '心理', PHYSICAL: '身体', SLEEP: '睡眠', HABIT: '习惯', MEASUREMENT: '测量', TEST_RESULT: '检查' }[value] || '身心'; },
 		formatDate(value) { return value ? moment(value).format('YYYY.MM.DD') : '日期未记录'; },
@@ -216,6 +240,10 @@ button::after { border: 0; }
 .pending .record-categories text { background: rgba(255,255,255,.52); }
 .record-summary { display: block; margin-top: 16rpx; font-family: Georgia, 'Songti SC', serif; font-size: 24rpx; line-height: 1.62; word-break: break-word; }
 .record-excerpt { display: -webkit-box; margin-top: 15rpx; color: #777f77; font-size: 18rpx; line-height: 1.6; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.record-value { margin-top: 17rpx; padding: 17rpx 18rpx; border-left: 4rpx solid #8ba05d; border-radius: 0 15rpx 15rpx 0; background: rgba(255,255,255,.5); display: flex; flex-direction: column; }
+.record-value text:first-child { color: #71804d; font-size: 15rpx; font-weight: 750; letter-spacing: 1rpx; }
+.record-value text:nth-child(2) { margin-top: 7rpx; color: #39433a; font-size: 18rpx; line-height: 1.55; }
+.record-value text:last-child:not(:nth-child(2)) { margin-top: 8rpx; color: #858d80; font-size: 15rpx; }
 .record-actions { display: flex; justify-content: flex-end; gap: 10rpx; margin-top: 21rpx; }
 .record-actions button { min-height: 60rpx; padding: 0 18rpx; border-radius: 31rpx; display: flex; align-items: center; justify-content: center; border: 1rpx solid rgba(23,32,25,.14); color: #667064; font-size: 17rpx; }
 .record-actions button:last-child { border-color: #172019; background: #172019; color: #fff; font-weight: 700; }

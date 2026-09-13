@@ -94,3 +94,21 @@ test('confirmed wellbeing records are never overwritten by a later diary analysi
   assert.equal(id, 'record-a');
   assert.equal(calls.length, 1);
 });
+
+test('an exact duplicate diary does not create a second wellbeing record', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, values) {
+      calls.push({ sql, values });
+      if (/SELECT id, status FROM wellbeing_records/u.test(sql)) return { rowCount: 0, rows: [] };
+      if (/source_fingerprint = \$2/u.test(sql)) return { rowCount: 1, rows: [{ id: 'first-record' }] };
+      throw new Error('duplicate should not be inserted');
+    }
+  };
+  const id = await syncDiaryWellbeingRecord(client, {
+    userId: 'user-a', diary: { id: 'diary-b', content: '今天头痛', diary_date: '2026-09-14' },
+    candidate: { sourceExcerpt: '今天头痛', observation: { physicalSymptoms: ['头痛'] } }
+  });
+  assert.equal(id, 'first-record');
+  assert.equal(calls.length, 2);
+});

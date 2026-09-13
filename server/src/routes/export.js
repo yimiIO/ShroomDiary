@@ -60,7 +60,8 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query('SELECT id, inquiry_id, diary_id, source_type, source_label, excerpt, note, relation, created_at, updated_at FROM inquiry_evidence WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
     db.query('SELECT inquiry_id, version, result, evidence_refs, invalidated_at, invalidated_reason, created_at FROM inquiry_syntheses WHERE user_id = $1 ORDER BY inquiry_id, version', [req.user.id]),
     db.query(`SELECT id, diary_id, source_type, status, recorded_on, source_label, source_excerpt,
-      observation, ai_allowed, confirmed_at, created_at, updated_at
+      observation, extraction, extraction_version, model_version, health_value_types, why_useful,
+      confidence, review_version, feedback_reason, source_fingerprint, ai_allowed, confirmed_at, created_at, updated_at
       FROM wellbeing_records WHERE user_id = $1 ORDER BY recorded_on, created_at`, [req.user.id]),
     db.query(`SELECT feature, diary_id, analysis_id, conversation_id, task_id, observer_id, inquiry_id,
       request_label, provider, model, prompt_tokens, cache_hit_tokens, cache_miss_tokens,

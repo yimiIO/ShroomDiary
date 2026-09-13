@@ -16,7 +16,7 @@ test('wellbeing confirmation uses an explicit cross-platform POST status endpoin
   const routes = source('server/src/routes/wellbeing.js');
 
   assert.match(api, /wellbeingStatus\s*=\s*id\s*=>\s*`\/wellbeing\/v1\/\$\{id\}\/status`/u);
-  assert.match(wellbeingPage, /\$http\.post\(wellbeingStatus\(item\.id\),\s*\{ action \}\)/u);
+  assert.match(wellbeingPage, /\$http\.post\(wellbeingStatus\(item\.id\),\s*reason \? \{ action, reason \} : \{ action \}\)/u);
   assert.match(analysisPage, /\$http\.post\(wellbeingStatus\(this\.wellbeingRecord\.id\),\s*\{ action \}\)/u);
   assert.match(routes, /router\.post\('\/:id\/status'/u);
   assert.match(routes, /router\.patch\('\/:id'/u);
