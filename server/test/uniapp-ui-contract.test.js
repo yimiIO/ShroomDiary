@@ -68,6 +68,30 @@ test('todo execution layer has current views, projects, recurrence and reversibl
   assert.match(compound, /把这一步安排到待办/);
 });
 
+test('todo management and project creation use large cross-platform sheets', () => {
+  const list = source('src/pages/todo/list.vue');
+  assert.match(list, /data-testid="todo-manage"/);
+  assert.match(list, /v-if="showPageMenu"/);
+  assert.match(list, /class="manage-grid"/);
+  assert.match(list, /data-testid="project-name"/);
+  assert.match(list, /@tap\.self="closeProjectSheet"/);
+  assert.match(list, /:focus="projectNameFocused"/);
+  assert.match(list, /class="project-field"/);
+  assert.doesNotMatch(list, /openPageMenu\(\)\s*\{[\s\S]{0,180}uni\.showActionSheet/);
+});
+
+test('compound system opens a segmented self-paced yoga practice', () => {
+  const compound = source('src/pages/shroom/compound.vue');
+  const yoga = source('src/pages/shroom/yoga-practice.vue');
+  assert.match(compound, /每日自主练习/);
+  assert.match(yoga, /initial-time/);
+  assert.match(yoga, /:controls="false"/);
+  assert.match(yoga, /暂停精讲/);
+  assert.match(yoga, /@timeupdate="handleTimeUpdate"/);
+  assert.match(yoga, /开始自主练习/);
+  assert.match(yoga, /记录今天的练习/);
+});
+
 test('diary text surfaces stay inside their cards and action labels are centered', () => {
   const edit = source('src/pages/diary/edit.vue');
   const insertButton = styleRule(edit, '.insert-button');

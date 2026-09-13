@@ -2,7 +2,12 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { bodyStreak, summarizeCompoundTasks } = require('../src/compound-system');
+const {
+  DAILY_YOGA_PRACTICE,
+  bodyStreak,
+  normalizeYogaSelection,
+  summarizeCompoundTasks
+} = require('../src/compound-system');
 
 test('compound summary counts principal and proven reuse separately from plain automation', () => {
   const payload = {
@@ -45,4 +50,22 @@ test('body streak keeps yesterday alive until today is checked in', () => {
   assert.equal(bodyStreak(['2026-09-08', '2026-09-07'], '2026-09-09'), 2);
   assert.equal(bodyStreak(['2026-09-09', '2026-09-08', '2026-09-07'], '2026-09-09'), 3);
   assert.equal(bodyStreak(['2026-09-09', '2026-09-07'], '2026-09-09'), 1);
+});
+
+test('daily yoga is taught as short movement lessons followed by self practice', () => {
+  assert.match(DAILY_YOGA_PRACTICE.title, /分段|动作/);
+  assert.ok(DAILY_YOGA_PRACTICE.segments.length >= 5);
+  for (const segment of DAILY_YOGA_PRACTICE.segments) {
+    assert.ok(segment.endSeconds > segment.startSeconds);
+    assert.ok(segment.endSeconds - segment.startSeconds <= 120, `${segment.title} is still a follow-along block`);
+    assert.ok(segment.practiceSeconds >= 30);
+    assert.ok(segment.steps.length >= 2);
+  }
+  const selection = normalizeYogaSelection([
+    DAILY_YOGA_PRACTICE.segments[0].id,
+    DAILY_YOGA_PRACTICE.segments[0].id,
+    'unknown-segment'
+  ]);
+  assert.deepEqual(selection.segmentIds, [DAILY_YOGA_PRACTICE.segments[0].id]);
+  assert.ok(selection.durationMinutes >= 1);
 });

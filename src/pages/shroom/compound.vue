@@ -128,6 +128,7 @@
 			</template>
 
 			<view v-if="!loading && !loadError" class="footer-links">
+				<button class="yoga-entry" @tap="openYogaPractice"><view><text>每日自主练习</text><text>分段看懂动作，暂停后按自己的节奏练</text></view><text>›</text></button>
 				<button @tap="openReview"><view><text>阶段回看</text><text>做了什么、留下什么、继续还是调整</text></view><text>›</text></button>
 				<button @tap="openDirections"><view><text>五类 20 个长期方向</text><text>选择方向与调整关注范围</text></view><text>›</text></button>
 				<button @tap="openPrinciples"><view><text>人生 OS 原则</text><text>引用你确认过的判断原则；复利系统不会自动改写</text></view><text>›</text></button>
@@ -473,6 +474,7 @@ export default {
 		formatDuration(seconds) { const total = Math.max(0, Number(seconds) || 0); return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`; },
 		eventTime(value) { return String(value || '').replace('T', ' ').slice(0, 16); },
 		openDirections() { uni.navigateTo({ url: '/pages/shroom/life-os-plan?select=1' }); },
+		openYogaPractice() { uni.navigateTo({ url: '/pages/shroom/yoga-practice' }); },
 		openReview() { uni.navigateTo({ url: '/pages/shroom/life-os-weekly' }); },
 		openPrinciples() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
 		createTaskFromCurrent() {

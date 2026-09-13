@@ -20,9 +20,13 @@ const compoundReviews = '/compound/v2/reviews';
 const compoundReviewDraft = '/compound/v2/reviews/draft';
 const compoundReviewConfirm = id => `/compound/v2/reviews/${id}/confirm`;
 const compoundExport = '/compound/v2/export';
+const compoundBodyPractice = '/compound/v2/body-practice';
+const compoundBodyPracticeCheckIn = '/compound/v2/body-practice/check-in';
 
 export {
 	COMPOUND_OWNER_USER_ID,
+	compoundBodyPractice,
+	compoundBodyPracticeCheckIn,
 	compoundBlocker,
 	compoundCheckIn,
 	compoundContinue,

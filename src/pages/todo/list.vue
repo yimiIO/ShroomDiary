@@ -16,8 +16,8 @@
 					<button class="back" aria-label="返回" @tap="goBack">‹</button>
 					<text class="page-title">待办</text>
 					<view class="nav-actions">
-						<button aria-label="搜索" @tap="toggleSearch">⌕</button>
-						<button aria-label="页面菜单" @tap="openPageMenu">···</button>
+						<button class="search-button" aria-label="搜索" @tap="toggleSearch">⌕</button>
+						<button class="manage-button" data-testid="todo-manage" @tap="openPageMenu">管理</button>
 						<button class="new-button" data-testid="add-todo" @tap="openQuickAdd">＋<text>新建</text></button>
 					</view>
 				</view>
@@ -38,7 +38,7 @@
 					<view v-if="loading && !loaded" class="loading">正在整理你的行动…</view>
 
 					<template v-if="currentView === 'projects'">
-						<view class="project-intro"><text>项目把多条行动组织成一个要做成的结果。</text><button @tap="showProjectSheet = true">＋ 新建项目</button></view>
+						<view class="project-intro"><text>项目把多条行动组织成一个要做成的结果。</text><button @tap="openProjectSheet">＋ 新建项目</button></view>
 						<view v-for="project in projects" :key="project.id" class="project-row" @tap="openProject(project)">
 							<view><text class="project-name">{{ project.name }}</text><text class="project-goal">{{ project.goal || '还没有填写项目目标' }}</text></view>
 							<view class="project-counts"><text v-if="project.progressingCount">进行中 {{ project.progressingCount }}</text><text>未完成 {{ project.openCount }}</text><text>›</text></view>
@@ -68,7 +68,24 @@
 			</view>
 		</view>
 
-		<view v-if="showQuickSheet" class="sheet-mask" @tap="closeQuickAdd">
+		<view v-if="showPageMenu" class="sheet-mask" @tap.self="closePageMenu">
+			<view class="sheet manage-sheet" @tap.stop>
+				<view class="sheet-handle"></view>
+				<view class="sheet-heading"><view><text>管理待办</text><text>查看、整理和导出</text></view><button @tap="closePageMenu">关闭</button></view>
+				<text class="manage-section-label">切换视图</text>
+				<view class="manage-grid">
+					<button @tap="selectManagedView('all')"><text>全部待办</text><text>查看所有未删除的行动</text></button>
+					<button @tap="selectManagedView('completed')"><text>已完成</text><text>回看结果和完成时间</text></button>
+				</view>
+				<text class="manage-section-label">整理与数据</text>
+				<view class="manage-list">
+					<button @tap="startSelection"><view><text>批量整理</text><text>批量安排日期、加入项目或取消</text></view><text>›</text></button>
+					<button @tap="exportFromMenu"><view><text>导出 Markdown</text><text>复制一份可保存的待办记录</text></view><text>›</text></button>
+				</view>
+			</view>
+		</view>
+
+		<view v-if="showQuickSheet" class="sheet-mask" @tap.self="closeQuickAdd">
 			<view class="sheet" @tap.stop>
 				<view class="sheet-handle"></view>
 				<view class="sheet-heading"><text>{{ editingTask ? '调整待办' : '新增待办' }}</text><button @tap="closeQuickAdd">关闭</button></view>
@@ -97,11 +114,17 @@
 			</view>
 		</view>
 
-		<view v-if="showProjectSheet" class="sheet-mask" @tap="showProjectSheet = false">
-			<view class="sheet small" @tap.stop>
-				<view class="sheet-handle"></view><view class="sheet-heading"><text>新建项目</text><button @tap="showProjectSheet = false">关闭</button></view>
-				<input v-model="projectDraft.name" class="single-input" maxlength="160" placeholder="项目名称" />
-				<textarea v-model="projectDraft.goal" class="description-input" maxlength="2000" auto-height placeholder="这个项目共同要做成什么？（可选）" />
+		<view v-if="showProjectSheet" class="sheet-mask" @tap.self="closeProjectSheet">
+			<view class="sheet small project-sheet" @tap.stop>
+				<view class="sheet-handle"></view><view class="sheet-heading"><view><text>新建项目</text><text>为一个需要多步完成的结果命名</text></view><button @tap="closeProjectSheet">关闭</button></view>
+				<label class="project-field" @tap.stop>
+					<text>项目名称</text>
+					<input v-model="projectDraft.name" data-testid="project-name" maxlength="160" :focus="projectNameFocused" cursor-spacing="24" placeholder="例如：发布 Shroom iOS 版" @focus="projectNameFocused = true" />
+				</label>
+				<label class="project-field goal-field" @tap.stop>
+					<text>要做成的结果 <text>可选</text></text>
+					<textarea v-model="projectDraft.goal" maxlength="2000" auto-height cursor-spacing="24" placeholder="写清什么发生后，这个项目才算完成" />
+				</label>
 				<button class="save-button" :disabled="!projectDraft.name.trim() || savingProject" @tap="saveProject">{{ savingProject ? '创建中…' : '创建项目' }}</button>
 			</view>
 		</view>
@@ -129,9 +152,9 @@ export default {
 			statusBarHeight: 0, customBarHeight: 0, currentView: 'current', loading: false, loaded: false, refreshing: false,
 			groups: [], projects: [], directions: [], unscheduledCount: 0, today: this.localToday(), timeZone: this.localTimeZone(),
 			searchVisible: false, searchQuery: '', historyExpanded: false, historyLimit: 5,
-			showQuickSheet: false, showProjectSheet: false, showDetails: false, saving: false, editingTask: null,
+			showQuickSheet: false, showProjectSheet: false, showPageMenu: false, showDetails: false, saving: false, editingTask: null,
 			draft: emptyDraft(this.localToday()), repeatIndex: 0,
-			projectDraft: { name: '', goal: '' }, savingProject: false,
+			projectDraft: { name: '', goal: '' }, projectNameFocused: false, savingProject: false,
 			selectionMode: false, selectedIds: [], undoTask: null, undoTimer: null,
 			views: [{ key: 'current', label: '当前' }, { key: 'upcoming', label: '之后' }, { key: 'unscheduled', label: '未安排' }, { key: 'projects', label: '项目' }],
 			repeatLabels: ['不重复', '每天', '每周', '每月'],
@@ -190,13 +213,12 @@ export default {
 		searchAll() { this.currentView = 'all'; this.load(); },
 		clearSearch() { this.searchQuery = ''; this.searchVisible = false; if (this.currentView === 'all') this.currentView = 'current'; this.load(); },
 		openPageMenu() {
-			const items = ['全部待办', '已完成', '批量整理', '导出 Markdown'];
-			uni.showActionSheet({ itemList: items, success: ({ tapIndex }) => {
-				if (tapIndex === 0) this.setView('all'); else if (tapIndex === 1) this.setView('completed');
-				else if (tapIndex === 2) { this.selectionMode = true; this.selectedIds = []; }
-				else if (tapIndex === 3) this.exportTasks();
-			} });
+			this.showPageMenu = true;
 		},
+		closePageMenu() { this.showPageMenu = false; },
+		selectManagedView(view) { this.closePageMenu(); this.setView(view); },
+		startSelection() { this.closePageMenu(); this.selectionMode = true; this.selectedIds = []; },
+		exportFromMenu() { this.closePageMenu(); this.exportTasks(); },
 		consumeCompoundPrefill() {
 			const value = uni.getStorageSync('todoPrefill'); if (!value) return;
 			uni.removeStorageSync('todoPrefill'); this.openQuickAdd(value);
@@ -268,7 +290,14 @@ export default {
 		async changeStatus(task, action) { try { const res = await this.$http.patch(todoStatus, { id: task.id, action, version: task.version, operationId: this.requestId(), timeZone: this.timeZone }); if (res.code !== 200) throw new Error(res.message); this.load(); } catch (e) { uni.showToast({ title: e.message || '操作失败', icon: 'none' }); } },
 		confirmDelete(task) { uni.showModal({ title: '删除待办？', content: '删除后不会影响用户自己写下的日记。', confirmColor: '#a44f48', success: async res => { if (!res.confirm) return; try { const out = await this.$http.delete(`${todoDelete}?id=${task.id}`, {}); if (out.code !== 200) throw new Error(out.message); this.load(); } catch (e) { uni.showToast({ title: e.message || '删除失败', icon: 'none' }); } } }); },
 		openProject(project) { uni.navigateTo({ url: `/pages/todo/project?id=${project.id}` }); },
-		async saveProject() { if (!this.projectDraft.name.trim() || this.savingProject) return; this.savingProject = true; try { const res = await this.$http.post(todoProjects, this.projectDraft); if (res.code !== 200) throw new Error(res.message); this.showProjectSheet = false; this.projectDraft = { name: '', goal: '' }; this.load(); } catch (e) { uni.showToast({ title: e.message || '项目创建失败', icon: 'none' }); } finally { this.savingProject = false; } },
+		openProjectSheet() {
+			this.projectDraft = { name: '', goal: '' };
+			this.projectNameFocused = false;
+			this.showProjectSheet = true;
+			this.$nextTick(() => { this.projectNameFocused = true; });
+		},
+		closeProjectSheet() { if (!this.savingProject) { this.projectNameFocused = false; this.showProjectSheet = false; } },
+		async saveProject() { if (!this.projectDraft.name.trim() || this.savingProject) return; this.savingProject = true; try { const res = await this.$http.post(todoProjects, this.projectDraft); if (res.code !== 200) throw new Error(res.message); this.projectNameFocused = false; this.showProjectSheet = false; this.projectDraft = { name: '', goal: '' }; this.load(); } catch (e) { uni.showToast({ title: e.message || '项目创建失败', icon: 'none' }); } finally { this.savingProject = false; } },
 		exitSelection() { this.selectionMode = false; this.selectedIds = []; },
 		bulkSchedule() { if (!this.selectedIds.length) return; uni.showModal({ title: '批量安排日期', editable: true, placeholderText: 'YYYY-MM-DD，留空清除', success: res => { if (res.confirm) this.runBulk('SCHEDULE', { scheduledDate: res.content || null }); } }); },
 		bulkMove() { if (!this.selectedIds.length) return; uni.showActionSheet({ itemList: this.projectOptions.map(item => item.name), success: ({ tapIndex }) => this.runBulk('MOVE_PROJECT', { projectId: this.projectOptions[tapIndex].id || null }) }); },
@@ -291,8 +320,10 @@ button::after { border: 0; }
 .navbar { display: flex; align-items: center; gap: 18rpx; padding: 0 30rpx 20rpx; }
 .back { width: 44rpx; color: #4d5850; font-size: 48rpx; }
 .page-title { flex: 1; font: 700 38rpx/1.2 Georgia, 'Songti SC', serif; }
-.nav-actions { display: flex; align-items: center; gap: 14rpx; }
-.nav-actions > button { display: flex; height: 58rpx; min-width: 44rpx; align-items: center; justify-content: center; color: #59645c; font-size: 28rpx; }
+.nav-actions { display: flex; align-items: center; gap: 10rpx; }
+.nav-actions > button { display: flex; height: 64rpx; min-width: 58rpx; align-items: center; justify-content: center; color: #59645c; font-size: 28rpx; }
+.nav-actions .search-button { width: 64rpx; border-radius: 50%; background: rgba(255,255,255,.65); }
+.nav-actions .manage-button { min-width: 82rpx; padding: 0 16rpx; border-radius: 21rpx; background: #e4e5dd; color: #4d5a50; font-size: 20rpx; font-weight: 680; }
 .nav-actions .new-button { gap: 3rpx; padding: 0 19rpx; border-radius: 22rpx; background: #25352a; color: #f7f6ef; font-size: 25rpx; }
 .new-button text { font-size: 21rpx; }
 .search-row { display: flex; gap: 12rpx; padding: 0 30rpx 18rpx; }
@@ -327,9 +358,20 @@ button::after { border: 0; }
 .sheet { width: 100%; max-height: 88vh; overflow-y: auto; padding: 13rpx 30rpx calc(28rpx + env(safe-area-inset-bottom)); box-sizing: border-box; border-radius: 34rpx 34rpx 0 0; background: #fbfaf4; box-shadow: 0 -20rpx 60rpx rgba(22,31,24,.16); }
 .sheet.small { max-width: 760rpx; }
 .sheet-handle { width: 66rpx; height: 6rpx; margin: 0 auto 22rpx; border-radius: 4rpx; background: #c8cec6; }
-.sheet-heading { display: flex; align-items: center; justify-content: space-between; }
-.sheet-heading > text { font: 700 31rpx/1.3 Georgia, 'Songti SC', serif; }
+.sheet-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
+.sheet-heading > text, .sheet-heading > view > text:first-child { font: 700 31rpx/1.3 Georgia, 'Songti SC', serif; }
+.sheet-heading > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.sheet-heading > view > text:last-child { color: #7b847d; font-size: 18rpx; line-height: 1.45; }
 .sheet-heading button { padding: 12rpx; color: #768077; font-size: 21rpx; }
+.manage-sheet { padding-bottom: calc(40rpx + env(safe-area-inset-bottom)); }
+.manage-section-label { display: block; margin: 29rpx 0 12rpx; color: #79837c; font-size: 16rpx; font-weight: 720; letter-spacing: 1.6rpx; }
+.manage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13rpx; }
+.manage-grid > button { display: flex; min-height: 118rpx; padding: 20rpx; flex-direction: column; align-items: flex-start; justify-content: center; gap: 8rpx; border-radius: 21rpx; background: #edf0e6; text-align: left; }
+.manage-grid > button text:first-child, .manage-list > button view text:first-child { color: #29362d; font-size: 21rpx; font-weight: 700; }
+.manage-grid > button text:last-child, .manage-list > button view text:last-child { color: #758078; font-size: 16rpx; line-height: 1.45; }
+.manage-list { overflow: hidden; border-radius: 21rpx; background: #fff; }
+.manage-list > button { display: flex; box-sizing: border-box; width: 100%; min-height: 103rpx; padding: 20rpx 22rpx; align-items: center; justify-content: space-between; gap: 18rpx; border-bottom: 1rpx solid #eaede7; text-align: left; }
+.manage-list > button:last-child { border-bottom: 0; }.manage-list > button > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }.manage-list > button > text { color: #768078; font-size: 28rpx; }
 .title-input { width: 100%; max-width: 100%; min-height: 90rpx; margin-top: 24rpx; box-sizing: border-box; color: #263129; font-size: 31rpx; line-height: 1.5; overflow-wrap: anywhere; }
 .quick-fields { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 17rpx 0; }
 .quick-fields button { padding: 14rpx 18rpx; border: 1rpx solid #d9ddd5; border-radius: 18rpx; background: #fff; color: #68736b; font-size: 20rpx; }
@@ -348,8 +390,12 @@ button::after { border: 0; }
 .source-note { margin-top: 14rpx; color: #6f795e; font-size: 19rpx; }
 .save-button { display: flex; width: 100%; height: 82rpx; align-items: center; justify-content: center; margin-top: 24rpx; border-radius: 23rpx; background: #26372b; color: #fff; font-size: 24rpx; font-weight: 700; }
 .save-button[disabled] { opacity: .42; }
-.single-input { width: 100%; margin-top: 20rpx; padding: 21rpx; box-sizing: border-box; border-radius: 17rpx; background: #fff; font-size: 26rpx; }
-.description-input { margin-top: 14rpx; }
+.project-sheet { padding-top: 13rpx; }
+.project-field { display: flex; margin-top: 22rpx; padding: 20rpx 22rpx; flex-direction: column; gap: 10rpx; border: 1rpx solid rgba(42,57,46,.08); border-radius: 21rpx; background: #fff; }
+.project-field > text { color: #59665d; font-size: 17rpx; font-weight: 700; }.project-field > text > text { color: #98a098; font-size: 15rpx; font-weight: 500; }
+.project-field input { box-sizing: border-box; width: 100%; min-height: 60rpx; color: #263229; font-size: 27rpx; line-height: 1.4; }
+.project-field textarea { box-sizing: border-box; width: 100%; min-height: 105rpx; color: #263229; font-size: 22rpx; line-height: 1.55; overflow-wrap: anywhere; }
+.goal-field { margin-top: 13rpx; }
 .undo-bar, .bulk-bar { position: fixed; right: 22rpx; bottom: calc(24rpx + env(safe-area-inset-bottom)); left: 22rpx; z-index: 600; display: flex; align-items: center; gap: 15rpx; padding: 20rpx 22rpx; border-radius: 22rpx; background: #1f2b23; color: #fff; box-shadow: 0 10rpx 36rpx rgba(20,28,22,.24); }
 .undo-bar text, .bulk-bar text { min-width: 0; flex: 1; overflow: hidden; font-size: 21rpx; text-overflow: ellipsis; white-space: nowrap; }
 .undo-bar button, .bulk-bar button { color: #dce9b9; font-size: 20rpx; }

@@ -7,7 +7,7 @@ const { callJson, isAiConfigured } = require('../ai-engine');
 const { usageSummary } = require('../ai-usage');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
 const { ensureDefaultLifeOsItems, SECTIONS } = require('../life-os-long-term');
-const { shanghaiDate } = require('../compound-system');
+const { DAILY_YOGA_PRACTICE, normalizeYogaSelection, shanghaiDate } = require('../compound-system');
 const {
   BLOCKER_PROMPT,
   CONTINUE_PROMPT,
@@ -40,6 +40,15 @@ function uuid(value) {
 function stableKey(value) {
   const key = String(value || '');
   return /^(0[1-9]|1\d|20)$/.test(key) ? key : null;
+}
+
+function selectedYogaSegments(note) {
+  try {
+    const parsed = JSON.parse(String(note || '{}'));
+    return normalizeYogaSelection(parsed.segmentIds).segmentIds;
+  } catch (_) {
+    return [];
+  }
 }
 
 function mapDirection(row) {
@@ -233,6 +242,64 @@ async function pickNextPrimary(client, userId) {
   );
   if (next.rowCount) await client.query('UPDATE compound_threads SET is_primary = true WHERE id = $1', [next.rows[0].id]);
 }
+
+router.get('/body-practice', asyncRoute(async (req, res) => {
+  const today = shanghaiDate();
+  const result = await db.query(
+    `SELECT mode, duration_minutes, note, created_at, updated_at
+       FROM compound_checkins
+      WHERE user_id = $1 AND ritual_key = 'body' AND period_key = $2`,
+    [req.user.id, today]
+  );
+  const checkin = result.rows[0] || null;
+  return ok(res, {
+    date: today,
+    completed: Boolean(checkin),
+    completedSegmentIds: checkin ? selectedYogaSegments(checkin.note) : [],
+    durationMinutes: checkin ? Number(checkin.duration_minutes || 0) : 0,
+    completedAt: checkin ? checkin.updated_at || checkin.created_at : null,
+    practice: DAILY_YOGA_PRACTICE
+  });
+}));
+
+router.post('/body-practice/check-in', asyncRoute(async (req, res) => {
+  const selection = normalizeYogaSelection(req.body.segmentIds);
+  if (!selection.segmentIds.length) return fail(res, 400, '请先完成至少一个动作的自主练习');
+  const today = shanghaiDate();
+  const note = JSON.stringify({ type: 'YOGA_SEGMENTS', version: 1, segmentIds: selection.segmentIds });
+  await db.query(
+    `INSERT INTO compound_checkins
+       (id, user_id, ritual_key, period_key, checkin_date, mode, duration_minutes, note)
+     VALUES ($1, $2, 'body', $3, $4, 'yoga_segments', $5, $6)
+     ON CONFLICT (user_id, ritual_key, period_key) DO UPDATE
+       SET mode = EXCLUDED.mode, duration_minutes = EXCLUDED.duration_minutes,
+           note = EXCLUDED.note, updated_at = now()`,
+    [crypto.randomUUID(), req.user.id, today, today, selection.durationMinutes, note]
+  );
+  return ok(res, {
+    date: today,
+    completed: true,
+    completedSegmentIds: selection.segmentIds,
+    durationMinutes: selection.durationMinutes,
+    practice: DAILY_YOGA_PRACTICE
+  }, '今天的自主练习已记录');
+}));
+
+router.delete('/body-practice/check-in', asyncRoute(async (req, res) => {
+  const today = shanghaiDate();
+  await db.query(
+    `DELETE FROM compound_checkins
+      WHERE user_id = $1 AND ritual_key = 'body' AND period_key = $2`,
+    [req.user.id, today]
+  );
+  return ok(res, {
+    date: today,
+    completed: false,
+    completedSegmentIds: [],
+    durationMinutes: 0,
+    practice: DAILY_YOGA_PRACTICE
+  }, '今天的练习记录已撤销');
+}));
 
 router.get('/home', asyncRoute(async (req, res) => {
   const rows = await directionsFor(req.user.id);
