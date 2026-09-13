@@ -9,7 +9,9 @@ const compoundThreads = '/compound/v2/threads';
 const compoundThread = id => `/compound/v2/threads/${id}`;
 const compoundThreadPrimary = id => `/compound/v2/threads/${id}/primary`;
 const compoundContinue = id => `/compound/v2/threads/${id}/continue`;
+const compoundSuggestionAdopt = (id, eventId) => `/compound/v2/threads/${id}/suggestions/${eventId}/adopt`;
 const compoundBlocker = id => `/compound/v2/threads/${id}/blocker`;
+const compoundQuietDay = '/compound/v2/quiet-day';
 const compoundResultDraft = id => `/compound/v2/threads/${id}/results/draft`;
 const compoundResultConfirm = (id, eventId) => `/compound/v2/threads/${id}/results/${eventId}/confirm`;
 const compoundThreadState = id => `/compound/v2/threads/${id}/state`;
@@ -36,12 +38,14 @@ export {
 	compoundDirections,
 	compoundExport,
 	compoundHome,
+	compoundQuietDay,
 	compoundResultConfirm,
 	compoundResultDraft,
 	compoundReviewConfirm,
 	compoundReviewDraft,
 	compoundReviews,
 	compoundStarter,
+	compoundSuggestionAdopt,
 	compoundThread,
 	compoundThreadPrimary,
 	compoundThreadState,

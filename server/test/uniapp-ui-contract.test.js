@@ -182,7 +182,7 @@ test('compound directions stay secondary while Life OS remains a separate princi
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
 });
 
-test('compound system resumes real work and persists blockers, results and diary reviews', () => {
+test('compound system preserves user agency and records real compounding evidence', () => {
 	const me = source('src/pages/shroom/me.vue');
 	const compound = source('src/pages/shroom/compound.vue');
 	const compoundRoute = source('server/src/routes/compound-progress.js');
@@ -194,10 +194,16 @@ test('compound system resumes real work and persists blockers, results and diary
 	assert.match(pages, /pages\/shroom\/compound/);
 	assert.match(api, /\/compound\/v2\/home/);
 	assert.match(compound, /先选一件/);
-	assert.match(compound, /继续推进/);
-	assert.match(compound, /我卡住了/);
+	assert.match(compound, /直接继续/);
+	assert.match(compound, /不调用 AI/);
+	assert.match(compound, /需要 AI 帮助/);
+	assert.match(compound, /当前最大约束/);
+	assert.match(compound, /今天不推进/);
 	assert.match(compound, /记录结果/);
 	assert.match(compound, /实际发生了什么/);
+	assert.match(compound, /必要完成/);
+	assert.match(compound, /形成积累/);
+	assert.match(compound, /已经发生的复利/);
 	assert.match(compound, /进入后才能把它接入正在推进的事|回看这次/);
 	assert.match(compound, /人生 OS 原则/);
 	assert.match(compound, /语音记录/);
@@ -208,6 +214,8 @@ test('compound system resumes real work and persists blockers, results and diary
 	assert.match(compoundRoute, /compound_events/);
 	assert.match(compoundRoute, /status = 'DRAFT'/);
 	assert.match(compoundRoute, /source_diary_id/);
+	assert.match(compoundRoute, /principalEventId/);
+	assert.match(compoundRoute, /QUIET_DAY/);
 	assert.doesNotMatch(compoundRoute, /req\.body\.userId/);
 });
 

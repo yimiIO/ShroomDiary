@@ -11,6 +11,7 @@ const {
   DIARY_REVIEW_PROMPT,
   RESULT_PROMPT,
   STARTER_PROMPT,
+  inferAccumulationType,
   inferResultState,
   modeForItem,
   normalizeBlocker,
@@ -32,6 +33,17 @@ test('result classification does not mistake preparation for completed action', 
   assert.equal(inferResultState('发出后对方回复并确认问题改善'), 'EFFECTIVE');
   assert.equal(inferResultState('情况有一点变化，但还不确定'), 'UNVERIFIED');
   assert.equal(normalizeResultDraft({}, '计划下周整理材料', '先找一份材料').state, 'PREPARING');
+});
+
+test('long-term value classification keeps completion, maintenance, principal, reuse and return distinct', () => {
+  assert.equal(inferAccumulationType('完成了今天必须提交的审批', 'OUTCOME'), 'NECESSARY');
+  assert.equal(inferAccumulationType('今天休息并做了恢复练习', 'OUTCOME'), 'MAINTENANCE');
+  assert.equal(inferAccumulationType('整理成一份可以重复使用的检查清单', 'OUTCOME'), 'PRINCIPAL');
+  assert.equal(inferAccumulationType('这次直接复用了之前的课程模板', 'OUTCOME'), 'REUSE');
+  assert.equal(inferAccumulationType('之前的流程减少了这次返工', 'OUTCOME'), 'RETURN');
+  const draft = normalizeResultDraft({ accumulationType: 'PRINCIPAL', accumulationName: '检查清单' }, '已经整理完成', '继续验证');
+  assert.equal(draft.accumulationType, 'PRINCIPAL');
+  assert.equal(draft.accumulationName, '检查清单');
 });
 
 test('blocker adjustment persists one concrete next step and never auto-pauses', () => {
@@ -82,4 +94,6 @@ test('AI prompts preserve ownership of action and Life OS principles', () => {
   assert.match(CONTINUE_PROMPT, /不把 AI 输出当成用户已完成/);
   assert.match(RESULT_PROMPT, /只整理成可纠正草稿/);
   assert.match([STARTER_PROMPT, CONTINUE_PROMPT, DIARY_REVIEW_PROMPT].join('\n'), /不修改人生 OS|不修改正式原则/);
+  assert.match(CONTINUE_PROMPT, /等待用户采用/);
+  assert.match(RESULT_PROMPT, /REUSE 和 RETURN 必须能关联/);
 });

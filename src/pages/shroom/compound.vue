@@ -38,33 +38,58 @@
 			</template>
 
 			<template v-else-if="current">
-				<view class="resume-hero">
-					<view class="resume-meta"><text>{{ modeLabel(current.progressMode) }}</text><text>{{ current.itemKey }} · {{ current.section }}</text></view>
-					<text class="resume-label">正在推进</text>
-					<text class="resume-title">{{ current.itemName }}</text>
-					<text class="resume-outcome">{{ current.desiredOutcome }}</text>
-
-					<view class="continuity">
-						<view v-if="current.lastCompleted" class="continuity-row done"><text class="continuity-label">上次已经做到</text><text>{{ current.lastCompleted }}</text></view>
-						<view v-if="current.blockerSummary" class="continuity-row blocked"><text class="continuity-label">当前卡点</text><text>{{ current.blockerSummary }}</text></view>
-						<view class="continuity-row next"><text class="continuity-label">现在可以做</text><text>{{ current.currentStep }}</text></view>
-					</view>
-
-					<view class="main-actions">
-						<button class="action continue" :disabled="working" @tap="continueWork"><text>继续推进</text><text>带着上次上下文继续</text></button>
-						<button class="action" :class="{ selected: composerMode === 'blocker' }" :disabled="working" @tap="openComposer('blocker')"><text>我卡住了</text><text>换一种推进方式</text></button>
-						<button class="action" :class="{ selected: composerMode === 'result' }" :disabled="working" @tap="openComposer('result')"><text>记录结果</text><text>留下真实发生的事</text></button>
-					</view>
-					<button class="task-bridge" @tap="createTaskFromCurrent"><text>把这一步安排到待办</text><text>创建后仍可从任务返回这段推进　›</text></button>
+				<view v-if="home.quietToday" class="quiet-card">
+					<text class="eyebrow">QUIET DAY</text>
+					<text class="quiet-title">今天只生活</text>
+					<text class="quiet-copy">不提醒推进，不要求解释，也不会丢掉原来的位置。休息、陪伴和体验，不需要通过未来收益证明价值。</text>
+					<button :disabled="working" @tap="clearQuietDay">我现在想继续　›</button>
 				</view>
 
-				<view v-if="composerMode === 'blocker'" class="composer-card">
-					<view class="composer-head"><view><text class="eyebrow">UNBLOCK</text><text>具体卡在哪里？</text></view><button @tap="closeComposer">×</button></view>
-					<textarea v-model="blockerText" maxlength="1800" auto-height placeholder="例如：我找不到能证明前后变化的材料。" />
-					<button class="primary-action" :disabled="working || !blockerText.trim()" @tap="submitBlocker">{{ working ? '正在判断障碍…' : '调整这一步' }}</button>
-				</view>
+				<template v-else>
+					<view class="resume-hero">
+						<view class="resume-meta"><text>{{ modeLabel(current.progressMode) }}</text><text>{{ current.itemKey }} · {{ current.section }}</text></view>
+						<text class="resume-label">今天 · 只找回一个方向</text>
+						<text class="resume-title">{{ current.itemName }}</text>
+						<text class="resume-outcome">{{ current.desiredOutcome }}</text>
 
-				<view v-if="composerMode === 'result'" class="composer-card result-composer">
+						<view class="continuity">
+							<view v-if="current.lastCompleted" class="continuity-row done"><text class="continuity-label">上次已经做到</text><text>{{ current.lastCompleted }}</text></view>
+							<view v-if="current.blockerSummary" class="continuity-row blocked"><text class="continuity-label">当前最大约束</text><text>{{ current.blockerSummary }}</text></view>
+							<view class="continuity-row next"><text class="continuity-label">现在可以做</text><text>{{ current.currentStep }}</text></view>
+						</view>
+
+						<view class="main-actions">
+							<button class="action continue" :disabled="working" @tap="beginDirectWork"><text>直接继续</text><text>找回原来的位置，不调用 AI</text></button>
+							<button class="action" :disabled="working" @tap="requestAiHelp('EASIER')"><text>让它更容易</text><text>生成不同大小的行动版本</text></button>
+							<button class="action" :class="{ selected: composerMode === 'help' }" :disabled="working" @tap="openComposer('help')"><text>需要 AI 帮助</text><text>由你主动发起一次协助</text></button>
+							<button class="action" :class="{ selected: composerMode === 'blocker' }" :disabled="working" @tap="openComposer('blocker')"><text>遇到约束</text><text>判断该解决、等待还是停止</text></button>
+							<button class="action" :class="{ selected: composerMode === 'result' }" :disabled="working" @tap="openComposer('result')"><text>记录结果</text><text>只留下真实发生的事</text></button>
+						</view>
+						<button class="quiet-trigger" :disabled="working" @tap="setQuietDay">今天不推进，也不需要说明理由</button>
+						<button class="task-bridge" @tap="createTaskFromCurrent"><text>把这一步安排到待办</text><text>创建后仍可从任务返回这段推进　›</text></button>
+					</view>
+
+					<view v-if="focusActive" class="focus-card">
+						<view><text class="eyebrow">DO IT YOURSELF</text><text>现在只做这一步</text></view>
+						<text class="focus-step">{{ current.currentStep }}</text>
+						<text class="focus-note">系统不会把打开页面算成行动。完成后，只记录实际发生的部分。</text>
+						<view><button @tap="createTaskFromCurrent">安排到待办</button><button @tap="openComposer('result')">完成后记录结果</button></view>
+					</view>
+
+					<view v-if="composerMode === 'help'" class="composer-card">
+						<view class="composer-head"><view><text class="eyebrow">ASK WHEN NEEDED</text><text>这次希望 AI 帮什么？</text></view><button @tap="closeComposer">×</button></view>
+						<textarea v-model="helpText" maxlength="1600" auto-height placeholder="可以留空，让 AI 根据当前目标和已有记录提供一次具体协助。" />
+						<button class="primary-action" :disabled="working" @tap="requestAiHelp('HELP')">{{ working ? '正在协助…' : '只在这次调用 AI' }}</button>
+						<text class="confirm-note">建议不会自动改写下一步，需要你明确采用。</text>
+					</view>
+
+					<view v-if="composerMode === 'blocker'" class="composer-card">
+						<view class="composer-head"><view><text class="eyebrow">CONSTRAINT</text><text>现在最大的约束是什么？</text></view><button @tap="closeComposer">×</button></view>
+						<textarea v-model="blockerText" maxlength="1800" auto-height placeholder="可以是缺材料、行动太大、等待别人、精力不足，或者方向本身不再值得。" />
+						<button class="primary-action" :disabled="working || !blockerText.trim()" @tap="submitBlocker">{{ working ? '正在判断约束…' : '分析这个约束' }}</button>
+					</view>
+
+					<view v-if="composerMode === 'result'" class="composer-card result-composer">
 					<view class="composer-head"><view><text class="eyebrow">REAL RESULT</text><text>实际发生了什么？</text></view><button @tap="closeComposer">×</button></view>
 					<textarea v-model="resultText" maxlength="5000" auto-height placeholder="一句话也可以。准备做、已经做、有效果和还没验证，系统会先整理成可纠正草稿。" />
 					<view class="input-tools">
@@ -75,38 +100,61 @@
 					<view v-if="attachments.length" class="attachment-row"><image v-for="item in attachments" :key="item.id" :src="item.url" mode="aspectFill" /><text>{{ attachments.length }} 份附件</text></view>
 					<text v-if="voiceNote" class="voice-note">{{ voiceNote }}</text>
 					<button class="primary-action" :disabled="working || uploading || (!resultText.trim() && !attachments.length)" @tap="prepareResult">{{ working ? '正在整理结果…' : '整理为可确认结果' }}</button>
-				</view>
+					</view>
 
-				<view v-if="resultDraft" class="draft-card">
+					<view v-if="resultDraft" class="draft-card">
 					<view class="draft-head"><view><text class="eyebrow">CONFIRM RESULT</text><text>先确认它是什么</text></view><button @tap="resultDraft = null">×</button></view>
 					<view class="state-options">
 						<button v-for="option in resultStates" :key="option.value" :class="{ active: resultDraft.payload.state === option.value }" @tap="resultDraft.payload.state = option.value">{{ option.label }}</button>
 					</view>
+					<text class="classification-title">这次在长期上属于什么</text>
+					<view class="classification-options">
+						<button v-for="option in accumulationTypes" :key="option.value" :class="{ active: resultDraft.payload.accumulationType === option.value }" @tap="selectAccumulationType(option.value)"><text>{{ option.label }}</text><text>{{ option.note }}</text></button>
+					</view>
+					<text v-if="resultDraft.payload.classificationReason" class="classification-reason">AI 建议依据：{{ resultDraft.payload.classificationReason }}</text>
+					<view v-if="resultDraft.payload.accumulationType === 'REUSE' || resultDraft.payload.accumulationType === 'RETURN'" class="principal-picker">
+						<text>关联哪一项已有积累</text>
+						<button v-for="item in home.principalOptions" :key="item.id" :class="{ active: resultDraft.payload.principalEventId === item.id }" @tap="resultDraft.payload.principalEventId = item.id"><text>{{ item.name }}</text><text>{{ item.itemKey }} · {{ item.itemName }}</text></button>
+						<text v-if="!home.principalOptions.length" class="empty-hint">还没有已确认的积累，暂时不能记录复用或回报。</text>
+					</view>
+					<label v-if="resultDraft.payload.accumulationType === 'PRINCIPAL'" class="field"><text>给这项积累一个名字</text><textarea v-model="resultDraft.payload.accumulationName" maxlength="300" auto-height placeholder="例如：日记历史检索评估集" /></label>
 					<label class="field"><text>实际发生</text><textarea v-model="resultDraft.payload.summary" maxlength="1800" auto-height /></label>
 					<label class="field"><text>留下的产出或变化</text><textarea v-model="resultDraft.payload.actualResult" maxlength="2400" auto-height placeholder="没有可核对结果时可以留空" /></label>
+					<text v-if="resultDraft.payload.accumulationType === 'RETURN'" class="classification-reason">“出现回报”需要写下可观察的变化；只有主观期待时请选择“使用积累”或“尚未验证”。</text>
 					<label class="field"><text>下次从哪里继续</text><textarea v-model="resultDraft.payload.nextStep" maxlength="1000" auto-height /></label>
 					<view class="close-options"><text>确认后</text><button v-for="option in closeModes" :key="option.value" :class="{ active: resultCloseMode === option.value }" @tap="resultCloseMode = option.value">{{ option.label }}</button></view>
-					<button class="primary-action" :disabled="working" @tap="confirmResult">{{ working ? '正在保存…' : '确认结果并留下接续位置' }}</button>
-				</view>
+					<button class="primary-action" :disabled="working || !canConfirmResult()" @tap="confirmResult">{{ working ? '正在保存…' : '确认结果并留下接续位置' }}</button>
+					</view>
 
-				<view v-if="latestWork" class="work-card">
-					<view class="work-heading"><text>{{ latestWork.kind === 'BLOCKER' ? '卡点已经调整' : '这次一起做' }}</text><text>{{ eventTime(latestWork.createdAt) }}</text></view>
+					<view v-if="latestWork" class="work-card">
+					<view class="work-heading"><text>{{ latestWorkTitle(latestWork) }}</text><text>{{ eventTime(latestWork.createdAt) }}</text></view>
 					<text class="work-copy">{{ latestWork.payload.assistance || latestWork.payload.analysis || latestWork.summary }}</text>
 					<view v-if="latestWork.payload.completionCriteria" class="work-detail"><text>怎样算真正发生</text><text>{{ latestWork.payload.completionCriteria }}</text></view>
 					<view v-if="latestWork.payload.neededInput" class="work-detail"><text>还缺一个信息</text><text>{{ latestWork.payload.neededInput }}</text></view>
 					<view v-if="latestWork.payload.adjustedStep" class="work-detail"><text>调整后</text><text>{{ latestWork.payload.adjustedStep }}</text></view>
-					<text class="ai-boundary">这是一段协助，不代表你已经完成行动。</text>
-				</view>
+					<button v-if="latestWork.kind === 'BLOCKER' && latestWork.payload.adjustedStep && latestWork.payload.adjustedStep !== current.currentStep" class="adopt-button" :disabled="working" @tap="adoptSuggestion(latestWork, latestWork.payload.adjustedStep)">由我确认采用这个调整</button>
+					<view v-if="latestWork.payload.easyVersions && latestWork.payload.easyVersions.length" class="easy-versions">
+						<button v-for="option in latestWork.payload.easyVersions" :key="option.label" :disabled="working || option.step === current.currentStep" @tap="adoptSuggestion(latestWork, option.step)"><view><text>{{ option.label }}</text><text>{{ option.timebox }}</text></view><text>{{ option.step }}</text><text>{{ option.step === current.currentStep ? '当前正在采用' : '采用这一步　›' }}</text></button>
+					</view>
+					<button v-else-if="latestWork.kind === 'CONTINUE' && latestWork.payload.currentStep && latestWork.payload.currentStep !== current.currentStep" class="adopt-button" :disabled="working" @tap="adoptSuggestion(latestWork, latestWork.payload.currentStep)">采用这个下一步</button>
+					<view v-if="latestWork.payload.rationale" class="sovereignty-receipt">
+						<text>AI 判断边界</text>
+						<view v-if="latestWork.payload.rationale.evidenceBasis"><text>依据</text><text>{{ latestWork.payload.rationale.evidenceBasis }}</text></view>
+						<view v-if="latestWork.payload.rationale.assumptions"><text>假设</text><text>{{ latestWork.payload.rationale.assumptions }}</text></view>
+						<view v-if="latestWork.payload.rationale.omissions"><text>未纳入</text><text>{{ latestWork.payload.rationale.omissions }}</text></view>
+					</view>
+					<text class="ai-boundary">这是一段协助，不代表你已经行动，也不会自动改变下一步。</text>
+					</view>
 
-				<view v-if="diaryReviewDraft" class="draft-card diary-review-card">
+					<view v-if="diaryReviewDraft" class="draft-card diary-review-card">
 					<view class="draft-head"><view><text class="eyebrow">DIARY REVIEW</text><text>回看这次发生了什么</text></view><button @tap="diaryReviewDraft = null">×</button></view>
 					<view class="review-block"><text>日记支持的事实</text><text v-for="(fact, index) in diaryReviewDraft.payload.facts" :key="index">· {{ fact }}</text></view>
 					<view v-if="diaryReviewDraft.payload.inferences.length" class="review-block inference"><text>仍需验证的推测</text><text v-for="(item, index) in diaryReviewDraft.payload.inferences" :key="index">· {{ item }}</text></view>
 					<label class="field"><text>下次尝试的方法</text><textarea v-model="diaryReviewDraft.payload.nextTry" maxlength="1000" auto-height /></label>
 					<button class="primary-action" :disabled="working" @tap="confirmDiaryReview">采用这个方法并继续观察</button>
-				</view>
+					</view>
 
-				<view v-if="home.diarySuggestions.length" class="section-card diary-section">
+					<view v-if="home.diarySuggestions.length" class="section-card diary-section">
 					<view class="section-head"><view><text class="eyebrow">FROM YOUR JOURNAL</text><text>相关日记，等你处理</text></view><text>{{ home.diarySuggestions.length }}</text></view>
 					<view v-for="item in home.diarySuggestions" :key="item.linkId" class="diary-prompt">
 						<text class="diary-date">{{ item.sourceDate }} · {{ item.itemName }}</text>
@@ -114,17 +162,23 @@
 						<text class="diary-question">这件事与正在推进的方向有关。要不要回看这次发生了什么？</text>
 						<view><button :disabled="working" @tap="reviewDiary(item)">回看这次</button><button :disabled="working" @tap="dismissDiary(item)">不是这件事</button></view>
 					</view>
-				</view>
+					</view>
 
-				<view v-if="home.recentResults.length" class="section-card">
-					<view class="section-head"><view><text class="eyebrow">RECENT ACCUMULATION</text><text>近期留下的结果</text></view></view>
-					<view v-for="item in home.recentResults" :key="item.id" class="result-row"><text>{{ item.itemKey }} · {{ item.itemName }}</text><text>{{ item.payload.actualResult || item.summary }}</text><text>{{ eventTime(item.createdAt) }}</text></view>
-				</view>
+					<view v-if="home.compoundEvidence.length" class="section-card evidence-section">
+						<view class="section-head"><view><text class="eyebrow">VERIFIED COMPOUNDING</text><text>已经发生的复利</text></view></view>
+						<view v-for="item in home.compoundEvidence" :key="item.id" class="evidence-row"><view><text>{{ item.name }}</text><text>{{ item.itemKey }} · {{ item.itemName }}</text></view><view><text>使用 {{ item.useCount }} 次</text><text v-if="item.returnCount">{{ item.returnCount }} 次出现回报</text></view></view>
+					</view>
 
-				<view v-if="home.otherActive.length" class="section-card compact-section">
+					<view v-if="home.recentResults.length" class="section-card">
+						<view class="section-head"><view><text class="eyebrow">RECENT EVENTS</text><text>近期发生</text></view></view>
+						<view v-for="item in home.recentResults" :key="item.id" class="result-row"><view><text>{{ item.itemKey }} · {{ item.itemName }}</text><text class="result-kind">{{ resultTypeLabel(item.payload.accumulationType) }}</text></view><text>{{ item.payload.actualResult || item.summary }}</text><text>{{ eventTime(item.createdAt) }}</text></view>
+					</view>
+
+					<view v-if="home.otherActive.length" class="section-card compact-section">
 					<view class="section-head"><view><text class="eyebrow">OTHER THREADS</text><text>其他正在推进</text></view></view>
 					<button v-for="item in home.otherActive" :key="item.id" class="other-thread" @tap="switchThread(item)"><view><text>{{ item.itemName }}</text><text>{{ item.currentStep }}</text></view><text>切换 ›</text></button>
-				</view>
+					</view>
+				</template>
 			</template>
 
 			<view v-if="!loading && !loadError" class="footer-links">
@@ -146,9 +200,11 @@ import {
 	compoundDiaryReview,
 	compoundDiaryReviewConfirm,
 	compoundHome,
+	compoundQuietDay,
 	compoundResultConfirm,
 	compoundResultDraft,
 	compoundStarter,
+	compoundSuggestionAdopt,
 	compoundThreadPrimary,
 	compoundThreads
 } from '@/api/compound-system';
@@ -166,10 +222,12 @@ export default {
 			working: false,
 			starting: false,
 			startingThread: false,
-			home: { needsOnboarding: true, current: null, otherActive: [], diarySuggestions: [], recentResults: [], directionCandidates: [], directionCount: 20, privacy: '' },
+			home: { needsOnboarding: true, current: null, otherActive: [], diarySuggestions: [], recentResults: [], principalOptions: [], compoundEvidence: [], quietToday: false, directionCandidates: [], directionCount: 20, privacy: '' },
 			starterItem: null,
 			starterDraft: null,
 			composerMode: '',
+			helpText: '',
+			focusActive: false,
 			blockerText: '',
 			resultText: '',
 			resultDraft: null,
@@ -194,6 +252,13 @@ export default {
 				{ value: 'DONE', label: '已经做' },
 				{ value: 'EFFECTIVE', label: '有效果' },
 				{ value: 'UNVERIFIED', label: '尚未验证' }
+			],
+			accumulationTypes: [
+				{ value: 'NECESSARY', label: '必要完成', note: '做完了，但还没有形成长期积累' },
+				{ value: 'MAINTENANCE', label: '维护基础', note: '维护身体、关系、能力或系统状态' },
+				{ value: 'PRINCIPAL', label: '形成积累', note: '留下以后可以再次使用的成果' },
+				{ value: 'REUSE', label: '使用积累', note: '这次明确使用了一项已有积累' },
+				{ value: 'RETURN', label: '出现回报', note: '已有积累带来了可观察的收益' }
 			],
 			closeModes: [
 				{ value: 'CONTINUE', label: '继续' },
@@ -264,17 +329,75 @@ export default {
 		},
 		openComposer(mode) {
 			this.composerMode = this.composerMode === mode ? '' : mode;
+			this.focusActive = false;
 			this.resultDraft = null;
 			this.diaryReviewDraft = null;
 		},
 		closeComposer() { if (this.isRecording) this.stopRecording(); this.composerMode = ''; },
-		async continueWork() {
+		beginDirectWork() {
+			if (!this.current) return;
+			this.composerMode = '';
+			this.resultDraft = null;
+			this.focusActive = true;
+		},
+		async requestAiHelp(intent) {
 			if (!this.current || this.working) return;
 			this.working = true;
-			this.composerMode = '';
-			try { await this.$http.post(compoundContinue(this.current.id), {}); await this.loadHome(); }
-			catch (error) { uni.showToast({ title: '这次协助没有完成，请重试', icon: 'none' }); }
+			this.focusActive = false;
+			try {
+				await this.$http.post(compoundContinue(this.current.id), { intent, request: this.helpText });
+				this.helpText = '';
+				this.composerMode = '';
+				await this.loadHome();
+			} catch (error) { uni.showToast({ title: '这次协助没有完成，请重试', icon: 'none' }); }
 			finally { this.working = false; }
+		},
+		async adoptSuggestion(event, currentStep) {
+			if (!this.current || !event || !currentStep || this.working) return;
+			this.working = true;
+			try {
+				await this.$http.post(compoundSuggestionAdopt(this.current.id, event.id), { currentStep });
+				await this.loadHome();
+				uni.showToast({ title: '已由你确认下一步', icon: 'success' });
+			} catch (error) { uni.showToast({ title: '暂时没能采用这一步', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async setQuietDay() {
+			if (this.working) return;
+			this.working = true;
+			try { await this.$http.post(compoundQuietDay, {}); await this.loadHome(); }
+			catch (error) { uni.showToast({ title: '暂时没能切换安静模式', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		async clearQuietDay() {
+			if (this.working) return;
+			this.working = true;
+			try { await this.$http.delete(compoundQuietDay); await this.loadHome(); }
+			catch (error) { uni.showToast({ title: '暂时没能恢复', icon: 'none' }); }
+			finally { this.working = false; }
+		},
+		resultTypeLabel(value) {
+			const option = this.accumulationTypes.find(item => item.value === value);
+			return option ? option.label : '未判定复利';
+		},
+		selectAccumulationType(value) {
+			if (!this.resultDraft || !this.resultDraft.payload) return;
+			this.resultDraft.payload.accumulationType = value;
+			if (value === 'RETURN') this.resultDraft.payload.state = 'EFFECTIVE';
+			else if (value !== 'NECESSARY' && this.resultDraft.payload.state === 'PREPARING') this.resultDraft.payload.state = 'DONE';
+			if (!['REUSE', 'RETURN'].includes(value)) this.resultDraft.payload.principalEventId = '';
+		},
+		canConfirmResult() {
+			if (!this.resultDraft || !this.resultDraft.payload) return false;
+			const payload = this.resultDraft.payload;
+			if (payload.accumulationType === 'RETURN') return payload.state === 'EFFECTIVE' && Boolean(payload.principalEventId) && Boolean(String(payload.actualResult || '').trim());
+			if (payload.accumulationType === 'REUSE') return Boolean(payload.principalEventId);
+			return true;
+		},
+		latestWorkTitle(event) {
+			if (!event) return '';
+			if (event.kind === 'BLOCKER') return '最大约束已经分析';
+			return event.payload && event.payload.intent === 'EASIER' ? '把行动变得更容易' : 'AI 按需协助';
 		},
 		async submitBlocker() {
 			if (!this.current || this.working || !this.blockerText.trim()) return;
@@ -517,24 +640,34 @@ textarea { box-sizing: border-box; width: 100%; min-height: 112rpx; padding: 20r
 .direction-option { display: flex; box-sizing: border-box; width: 100%; min-height: 112rpx; margin-bottom: 12rpx; padding: 22rpx 23rpx; align-items: flex-start; gap: 17rpx; border-radius: 24rpx; background: rgba(255,255,255,.85); text-align: left; }
 .direction-number { padding-top: 3rpx; color: #78907d; font-size: 16rpx; font-weight: 760; }.direction-option > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }.direction-name { font-size: 22rpx; font-weight: 690; }.direction-reason { display: -webkit-box; overflow: hidden; color: #748078; font-size: 17rpx; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }.direction-arrow { color: #849087; font-size: 30rpx; }
 .all-directions { width: 100%; padding: 24rpx 0; color: #5f7063; font-size: 18rpx; }
-.starter-card, .composer-card, .draft-card, .work-card, .section-card { box-sizing: border-box; margin-top: 26rpx; padding: 28rpx; border-radius: 30rpx; background: #fff; }
+.starter-card, .composer-card, .draft-card, .work-card, .section-card, .focus-card, .quiet-card { box-sizing: border-box; margin-top: 26rpx; padding: 28rpx; border-radius: 30rpx; background: #fff; }
 .starter-heading, .composer-head, .draft-head, .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }.starter-heading > view, .composer-head > view, .draft-head > view, .section-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }.starter-heading > view text:first-child { color: #758278; font-size: 16rpx; }.starter-heading > view text:last-child, .composer-head > view text:last-child, .draft-head > view text:last-child, .section-head > view text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 26rpx; font-weight: 700; }.starter-heading > button, .composer-head > button, .draft-head > button { color: #728077; font-size: 19rpx; }
 .field { display: flex; margin-top: 23rpx; flex-direction: column; gap: 10rpx; }.field > text { color: #59675c; font-size: 17rpx; font-weight: 680; }
 .starter-reason { display: block; margin-top: 18rpx; color: #6f7c72; font-size: 17rpx; line-height: 1.55; }
 .primary-action { display: flex; box-sizing: border-box; width: 100%; min-height: 76rpx; margin-top: 24rpx; padding: 15rpx 24rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #1b2920; color: #fff; font-size: 20rpx; font-weight: 720; }.primary-action[disabled] { opacity: .46; }
 .confirm-note, .ai-boundary { display: block; margin-top: 13rpx; color: #879188; font-size: 15rpx; line-height: 1.45; text-align: center; }
 .resume-hero { box-sizing: border-box; margin-top: 27rpx; padding: 34rpx 30rpx 29rpx; border-radius: 35rpx; background: #18251d; color: #fff; box-shadow: 0 18rpx 50rpx rgba(25,40,29,.12); }
+.quiet-card { display: flex; min-height: 430rpx; padding: 48rpx 38rpx; flex-direction: column; justify-content: center; background: linear-gradient(145deg, #f8f2df, #e5efd9); }.quiet-title { margin-top: 17rpx; font-family: Georgia, 'Songti SC', serif; font-size: 45rpx; font-weight: 720; }.quiet-copy { max-width: 590rpx; margin-top: 20rpx; color: #5f6b61; font-size: 20rpx; line-height: 1.7; }.quiet-card > button { align-self: flex-start; margin-top: 35rpx; color: #24362a; font-size: 19rpx; font-weight: 700; }
 .resume-meta { display: flex; justify-content: space-between; gap: 18rpx; color: #9fb1a2; font-size: 15rpx; letter-spacing: 1rpx; }.resume-label { display: block; margin-top: 34rpx; color: #9eafa1; font-size: 17rpx; }.resume-title { display: block; margin-top: 8rpx; font-family: Georgia, 'Songti SC', serif; font-size: 38rpx; font-weight: 720; line-height: 1.25; }.resume-outcome { display: block; margin-top: 15rpx; color: #c4cec6; font-size: 19rpx; line-height: 1.6; }
 .continuity { margin-top: 28rpx; border-top: 1rpx solid rgba(255,255,255,.12); }.continuity-row { display: flex; padding: 20rpx 0; flex-direction: column; gap: 8rpx; border-bottom: 1rpx solid rgba(255,255,255,.1); }.continuity-label { color: #91a294; font-size: 15rpx; }.continuity-row > text:last-child { font-size: 20rpx; line-height: 1.5; overflow-wrap: anywhere; }.continuity-row.next > text:last-child { color: #e8f3df; font-weight: 680; }.continuity-row.blocked > text:last-child { color: #efcf9e; }
 .main-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12rpx; margin-top: 24rpx; }.action { display: flex; min-height: 100rpx; padding: 18rpx; flex-direction: column; align-items: flex-start; justify-content: center; gap: 7rpx; border: 1rpx solid rgba(255,255,255,.13); border-radius: 22rpx; color: #fff; text-align: left; }.action.continue { grid-column: 1 / -1; background: #dff0ce; color: #18251d; }.action.selected { background: rgba(255,255,255,.12); }.action > text:first-child { font-size: 21rpx; font-weight: 720; }.action > text:last-child { color: #96a79a; font-size: 15rpx; }.action.continue > text:last-child { color: #647462; }
+.quiet-trigger { width: 100%; padding: 22rpx 0 6rpx; color: #9aa99c; font-size: 16rpx; text-align: center; }
 .task-bridge { display: flex; width: 100%; margin-top: 13rpx; padding: 16rpx 5rpx 2rpx; align-items: center; justify-content: space-between; color: #d7dfd5; text-align: left; }.task-bridge text:first-child { font-size: 18rpx; font-weight: 680; }.task-bridge text:last-child { color: #8f9d91; font-size: 15rpx; }
+.focus-card { background: #fbfcf7; border: 1rpx solid rgba(38,56,42,.08); }.focus-card > view:first-child { display: flex; flex-direction: column; gap: 7rpx; }.focus-card > view:first-child text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 27rpx; font-weight: 700; }.focus-step { display: block; margin-top: 21rpx; color: #1f3025; font-size: 25rpx; font-weight: 690; line-height: 1.55; overflow-wrap: anywhere; }.focus-note { display: block; margin-top: 15rpx; color: #78847a; font-size: 16rpx; line-height: 1.55; }.focus-card > view:last-child { display: flex; gap: 11rpx; margin-top: 23rpx; }.focus-card > view:last-child button { display: flex; min-height: 62rpx; padding: 0 21rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #e8f0df; color: #34483a; font-size: 16rpx; }.focus-card > view:last-child button:last-child { background: #203027; color: #fff; }
 .composer-card textarea { margin-top: 22rpx; }.input-tools { display: flex; gap: 12rpx; margin-top: 16rpx; }.input-tools button { display: flex; min-height: 64rpx; padding: 0 23rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #edf3e8; color: #4f6253; font-size: 17rpx; }.input-tools button.recording { background: #9e423d; color: #fff; }
 .upload-progress { display: flex; align-items: center; gap: 13rpx; margin-top: 17rpx; }.upload-progress > view { height: 8rpx; flex: 1; overflow: hidden; border-radius: 999rpx; background: #e3e9df; }.upload-progress > view > view { height: 100%; border-radius: inherit; background: #668166; }.upload-progress > text { color: #718075; font-size: 15rpx; }.attachment-row { display: flex; align-items: center; gap: 9rpx; margin-top: 16rpx; }.attachment-row image { width: 68rpx; height: 68rpx; border-radius: 14rpx; }.attachment-row text { color: #6c786f; font-size: 16rpx; }.voice-note { display: block; margin-top: 14rpx; color: #617064; font-size: 16rpx; }
 .state-options, .close-options { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 20rpx; }.state-options button, .close-options button { display: flex; min-height: 52rpx; padding: 0 18rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #eef3e9; color: #627066; font-size: 16rpx; }.state-options button.active, .close-options button.active { background: #243329; color: #fff; }.close-options > text { display: flex; align-items: center; color: #78827a; font-size: 16rpx; }
+.classification-title { display: block; margin-top: 27rpx; color: #4e5e52; font-size: 17rpx; font-weight: 700; }.classification-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10rpx; margin-top: 12rpx; }.classification-options button { display: flex; min-height: 100rpx; padding: 16rpx; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5rpx; border-radius: 18rpx; background: #f1f4ee; color: #425046; text-align: left; }.classification-options button:last-child { grid-column: 1 / -1; }.classification-options button text:first-child { font-size: 18rpx; font-weight: 710; }.classification-options button text:last-child { color: #778279; font-size: 14rpx; line-height: 1.4; }.classification-options button.active { background: #203027; color: #fff; }.classification-options button.active text:last-child { color: #bdcabc; }
+.classification-reason { display: block; margin-top: 12rpx; color: #78827a; font-size: 15rpx; line-height: 1.5; }
+.principal-picker { display: flex; margin-top: 18rpx; padding: 19rpx; flex-direction: column; gap: 9rpx; border-radius: 20rpx; background: #f5f1e6; }.principal-picker > text:first-child { color: #655f4f; font-size: 16rpx; font-weight: 700; }.principal-picker button { display: flex; padding: 16rpx; flex-direction: column; align-items: flex-start; gap: 5rpx; border: 1rpx solid transparent; border-radius: 15rpx; background: rgba(255,255,255,.72); text-align: left; }.principal-picker button text:first-child { font-size: 17rpx; font-weight: 690; }.principal-picker button text:last-child { color: #817d70; font-size: 14rpx; }.principal-picker button.active { border-color: #516954; background: #e3ecd9; }.empty-hint { color: #847f72; font-size: 15rpx; line-height: 1.5; }
 .work-card { background: #e4edcf; }.work-heading { display: flex; justify-content: space-between; gap: 20rpx; }.work-heading text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; font-weight: 700; }.work-heading text:last-child { color: #748074; font-size: 14rpx; }.work-copy { display: block; margin-top: 18rpx; font-size: 20rpx; line-height: 1.68; white-space: pre-wrap; overflow-wrap: anywhere; }.work-detail { display: flex; margin-top: 18rpx; padding-top: 17rpx; flex-direction: column; gap: 7rpx; border-top: 1rpx solid rgba(40,60,43,.11); }.work-detail text:first-child { color: #718075; font-size: 15rpx; }.work-detail text:last-child { font-size: 18rpx; line-height: 1.5; }
+.easy-versions { display: flex; margin-top: 20rpx; flex-direction: column; gap: 10rpx; }.easy-versions > button { display: flex; padding: 18rpx; flex-direction: column; align-items: stretch; gap: 10rpx; border-radius: 19rpx; background: rgba(255,255,255,.62); text-align: left; }.easy-versions > button > view { display: flex; align-items: center; justify-content: space-between; gap: 10rpx; }.easy-versions > button > view text:first-child { font-size: 17rpx; font-weight: 720; }.easy-versions > button > view text:last-child { color: #728073; font-size: 14rpx; }.easy-versions > button > text:nth-child(2) { font-size: 18rpx; line-height: 1.5; }.easy-versions > button > text:last-child { color: #526b55; font-size: 15rpx; font-weight: 680; }.adopt-button { display: flex; min-height: 64rpx; margin-top: 20rpx; padding: 0 24rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #203027; color: #fff; font-size: 17rpx; }
+.sovereignty-receipt { display: flex; margin-top: 22rpx; padding: 18rpx; flex-direction: column; gap: 12rpx; border-radius: 19rpx; background: rgba(255,255,255,.45); }.sovereignty-receipt > text { color: #415446; font-size: 16rpx; font-weight: 730; }.sovereignty-receipt > view { display: grid; grid-template-columns: 82rpx 1fr; gap: 9rpx; }.sovereignty-receipt > view text:first-child { color: #758177; font-size: 14rpx; }.sovereignty-receipt > view text:last-child { font-size: 15rpx; line-height: 1.5; }
 .review-block { display: flex; margin-top: 20rpx; padding: 18rpx; flex-direction: column; gap: 8rpx; border-radius: 20rpx; background: #eff5eb; }.review-block > text:first-child { color: #5f705f; font-size: 16rpx; font-weight: 700; }.review-block > text:not(:first-child) { font-size: 18rpx; line-height: 1.5; }.review-block.inference { background: #f7f1e6; }
-.section-card { margin-top: 24rpx; }.section-head > text { color: #718075; font-size: 18rpx; }.diary-prompt, .result-row { display: flex; padding: 22rpx 0; flex-direction: column; gap: 9rpx; border-top: 1rpx solid #e8ede6; }.diary-prompt:first-of-type, .result-row:first-of-type { margin-top: 16rpx; }.diary-date, .result-row text:first-child { color: #718075; font-size: 15rpx; }.diary-excerpt { font-size: 20rpx; line-height: 1.58; }.diary-question { color: #677369; font-size: 17rpx; line-height: 1.5; }.diary-prompt > view { display: flex; gap: 12rpx; margin-top: 4rpx; }.diary-prompt button { display: flex; min-height: 57rpx; padding: 0 20rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #e7efdf; color: #35483a; font-size: 16rpx; }.diary-prompt button:last-child { background: #f2f3ef; color: #778079; }
-.result-row text:nth-child(2) { font-size: 19rpx; line-height: 1.55; }.result-row text:last-child { color: #899189; font-size: 14rpx; }.other-thread { display: flex; box-sizing: border-box; width: 100%; padding: 20rpx 0; align-items: center; justify-content: space-between; gap: 17rpx; border-top: 1rpx solid #e8ede6; text-align: left; }.other-thread:first-of-type { margin-top: 12rpx; }.other-thread > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.other-thread > view text:first-child { font-size: 19rpx; font-weight: 680; }.other-thread > view text:last-child { color: #738078; font-size: 16rpx; line-height: 1.4; }.other-thread > text { color: #657568; font-size: 16rpx; }
+.section-card { margin-top: 24rpx; }.section-head > text { color: #718075; font-size: 18rpx; }.diary-prompt, .result-row { display: flex; padding: 22rpx 0; flex-direction: column; gap: 9rpx; border-top: 1rpx solid #e8ede6; }.diary-prompt:first-of-type, .result-row:first-of-type { margin-top: 16rpx; }.diary-date { color: #718075; font-size: 15rpx; }.diary-excerpt { font-size: 20rpx; line-height: 1.58; }.diary-question { color: #677369; font-size: 17rpx; line-height: 1.5; }.diary-prompt > view { display: flex; gap: 12rpx; margin-top: 4rpx; }.diary-prompt button { display: flex; min-height: 57rpx; padding: 0 20rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #e7efdf; color: #35483a; font-size: 16rpx; }.diary-prompt button:last-child { background: #f2f3ef; color: #778079; }
+.result-row > view { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }.result-row > view > text:first-child { color: #718075; font-size: 15rpx; }.result-kind { padding: 5rpx 10rpx; border-radius: 999rpx; background: #eef2ea; color: #68756b; font-size: 13rpx; white-space: nowrap; }.result-row > text:nth-child(2) { font-size: 19rpx; line-height: 1.55; }.result-row > text:last-child { color: #899189; font-size: 14rpx; }
+.evidence-section { background: #1d2c22; color: #fff; }.evidence-section .eyebrow { color: #93a895; }.evidence-row { display: flex; padding: 21rpx 0; align-items: flex-start; justify-content: space-between; gap: 18rpx; border-top: 1rpx solid rgba(255,255,255,.1); }.evidence-row:first-of-type { margin-top: 16rpx; }.evidence-row > view { display: flex; min-width: 0; flex-direction: column; gap: 6rpx; }.evidence-row > view:first-child { flex: 1; }.evidence-row > view:first-child text:first-child { font-size: 19rpx; font-weight: 690; line-height: 1.4; }.evidence-row > view:first-child text:last-child { color: #91a193; font-size: 14rpx; }.evidence-row > view:last-child { align-items: flex-end; color: #d8e7d2; font-size: 14rpx; white-space: nowrap; }
+.other-thread { display: flex; box-sizing: border-box; width: 100%; padding: 20rpx 0; align-items: center; justify-content: space-between; gap: 17rpx; border-top: 1rpx solid #e8ede6; text-align: left; }.other-thread:first-of-type { margin-top: 12rpx; }.other-thread > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.other-thread > view text:first-child { font-size: 19rpx; font-weight: 680; }.other-thread > view text:last-child { color: #738078; font-size: 16rpx; line-height: 1.4; }.other-thread > text { color: #657568; font-size: 16rpx; }
 .footer-links { margin-top: 25rpx; overflow: hidden; border-radius: 28rpx; background: rgba(255,255,255,.7); }.footer-links > button { display: flex; box-sizing: border-box; width: 100%; padding: 23rpx 25rpx; align-items: center; justify-content: space-between; gap: 16rpx; border-top: 1rpx solid rgba(30,42,33,.08); text-align: left; }.footer-links > button:first-child { border-top: 0; }.footer-links > button > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.footer-links > button > view text:first-child { font-size: 20rpx; font-weight: 680; }.footer-links > button > view text:last-child { color: #748078; font-size: 16rpx; line-height: 1.45; }.footer-links > button > text { color: #748078; font-size: 29rpx; }
 .privacy-note { display: flex; align-items: flex-start; gap: 12rpx; padding: 24rpx 8rpx 0; color: #758178; font-size: 15rpx; line-height: 1.5; }.privacy-note > view { width: 8rpx; height: 8rpx; margin-top: 7rpx; flex: 0 0 8rpx; border-radius: 50%; background: #668166; }
 /* #ifdef H5 */

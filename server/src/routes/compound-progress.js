@@ -10,6 +10,7 @@ const { ensureDefaultLifeOsItems, SECTIONS } = require('../life-os-long-term');
 const { normalizeYogaSelection, presentYogaPractice, shanghaiDate } = require('../compound-system');
 const { signPrivateObjectUrl } = require('../media-storage');
 const {
+  ACCUMULATION_TYPES,
   BLOCKER_PROMPT,
   CONTINUE_PROMPT,
   DIARY_REVIEW_PROMPT,
@@ -223,6 +224,27 @@ async function contextFor(userId, itemId, threadId = null) {
   };
 }
 
+async function principalOptionsFor(userId, limit = 20) {
+  const result = await db.query(
+    `SELECT e.id, e.summary, e.payload, e.created_at,
+            i.stable_key, i.name AS item_name
+       FROM compound_events e
+       JOIN compound_threads t ON t.id = e.thread_id AND t.user_id = e.user_id
+       JOIN life_os_items i ON i.id = t.item_id AND i.user_id = e.user_id
+      WHERE e.user_id = $1 AND e.kind = 'RESULT' AND e.status = 'CONFIRMED'
+        AND e.payload->>'accumulationType' = 'PRINCIPAL'
+      ORDER BY e.created_at DESC LIMIT $2`,
+    [userId, limit]
+  );
+  return result.rows.map(row => ({
+    id: row.id,
+    name: row.payload?.accumulationName || row.payload?.actualResult || row.summary,
+    itemKey: row.stable_key,
+    itemName: row.item_name,
+    createdAt: row.created_at
+  }));
+}
+
 async function aiOrFallback({ prompt, input, label, normalizer, fallback, usageContext }) {
   if (!isAiConfigured()) return { value: normalizer({}, fallback), usedAi: false };
   try {
@@ -347,6 +369,36 @@ router.get('/home', asyncRoute(async (req, res) => {
       ORDER BY scope_end DESC, created_at DESC LIMIT 1`,
     [req.user.id]
   );
+  const [principalOptions, compoundEvidence, quietToday] = await Promise.all([
+    principalOptionsFor(req.user.id, 20),
+    db.query(
+      `SELECT p.id, p.summary, p.payload, p.created_at,
+              i.stable_key, i.name AS item_name,
+              count(e.id)::int AS use_count,
+              (count(e.id) FILTER (WHERE e.payload->>'accumulationType' = 'RETURN'))::int AS return_count,
+              max(e.created_at) AS last_used_at
+         FROM compound_events p
+         JOIN compound_threads t ON t.id = p.thread_id AND t.user_id = p.user_id
+         JOIN life_os_items i ON i.id = t.item_id AND i.user_id = p.user_id
+         JOIN compound_events e ON e.user_id = p.user_id
+          AND e.kind = 'RESULT' AND e.status = 'CONFIRMED'
+          AND e.payload->>'principalEventId' = p.id::text
+          AND e.payload->>'accumulationType' IN ('REUSE', 'RETURN')
+        WHERE p.user_id = $1 AND p.kind = 'RESULT' AND p.status = 'CONFIRMED'
+          AND p.payload->>'accumulationType' = 'PRINCIPAL'
+        GROUP BY p.id, i.stable_key, i.name
+        ORDER BY max(e.created_at) DESC LIMIT 6`,
+      [req.user.id]
+    ),
+    db.query(
+      `SELECT 1 FROM compound_events
+        WHERE user_id = $1 AND kind = 'ADJUSTMENT' AND status = 'CONFIRMED'
+          AND payload->>'action' = 'QUIET_DAY'
+          AND payload->>'date' = $2
+        LIMIT 1`,
+      [req.user.id, shanghaiDate()]
+    )
+  ]);
   const directions = rows.map(mapDirection);
   return ok(res, {
     needsOnboarding: !currentRow,
@@ -354,6 +406,18 @@ router.get('/home', asyncRoute(async (req, res) => {
     otherActive: activeRows.slice(1).map(row => mapThread(row)),
     diarySuggestions: pending.rows.map(mapDiarySuggestion),
     recentResults: recentResults.rows.map(row => ({ ...mapEvent(row), itemKey: row.stable_key, itemName: row.item_name })),
+    principalOptions,
+    compoundEvidence: compoundEvidence.rows.map(row => ({
+      id: row.id,
+      name: row.payload?.accumulationName || row.payload?.actualResult || row.summary,
+      itemKey: row.stable_key,
+      itemName: row.item_name,
+      useCount: Number(row.use_count || 0),
+      returnCount: Number(row.return_count || 0),
+      createdAt: row.created_at,
+      lastUsedAt: row.last_used_at
+    })),
+    quietToday: quietToday.rowCount > 0,
     directionCandidates: directions.filter(item => item.status === 'ACTIVE' && !item.hasActiveThread),
     directionCount: directions.length,
     latestReview: latestReview.rowCount ? mapReview(latestReview.rows[0]) : null,
@@ -469,6 +533,7 @@ router.post('/threads/:id/continue', asyncRoute(async (req, res) => {
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '正在推进的事不存在');
   const context = await contextFor(req.user.id, thread.item_id, thread.id);
   const eventId = crypto.randomUUID();
+  const intent = req.body.intent === 'EASIER' ? 'EASIER' : 'HELP';
   const fallback = {
     workMode: 'REAL_WORLD',
     assistance: `现在只推进这一步：${thread.current_step}`,
@@ -478,8 +543,8 @@ router.post('/threads/:id/continue', asyncRoute(async (req, res) => {
   };
   const generated = await aiOrFallback({
     prompt: CONTINUE_PROMPT,
-    input: { thread, userRequest: text(req.body.request, 1600), context },
-    label: '复利系统·继续推进',
+    input: { intent, thread, userRequest: text(req.body.request, 1600), context },
+    label: intent === 'EASIER' ? '复利系统·让行动更容易' : '复利系统·按需协助',
     normalizer: raw => normalizeContinuation(raw, thread.current_step),
     fallback: thread.current_step,
     usageContext: { userId: req.user.id, feature: 'compound_continue', taskId: eventId }
@@ -491,19 +556,99 @@ router.post('/threads/:id/continue', asyncRoute(async (req, res) => {
      VALUES ($1, $2, $3, 'CONTINUE', 'CONFIRMED', $4, $5, $6, $7::jsonb)
      RETURNING *`,
     [eventId, req.user.id, thread.id, generated.usedAi ? 'AI' : 'SYSTEM',
-      text(req.body.request, 1600), value.assistance, JSON.stringify(value)]
-  );
-  await db.query(
-    `UPDATE compound_threads SET current_step = $3, context_summary = $4,
-       last_activity_at = now(), updated_at = now()
-     WHERE id = $1 AND user_id = $2`,
-    [thread.id, req.user.id, value.currentStep, value.assistance]
+      text(req.body.request, 1600), value.assistance, JSON.stringify({ ...value, intent })]
   );
   return ok(res, {
     event: mapEvent(result.rows[0]),
     usedAi: generated.usedAi,
     costSummary: generated.usedAi ? await usageSummary(req.user.id, { taskId: eventId }) : null
   });
+}));
+
+router.post('/threads/:id/suggestions/:eventId/adopt', asyncRoute(async (req, res) => {
+  const eventId = uuid(req.params.eventId);
+  const requestedStep = text(req.body.currentStep, 1000);
+  if (!eventId || !requestedStep) return fail(res, 400, '请选择要采用的下一步');
+  const saved = await db.transaction(async client => {
+    const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
+    if (!thread || thread.status !== 'ACTIVE') return { error: 'thread' };
+    const eventResult = await client.query(
+      `SELECT * FROM compound_events
+        WHERE id = $1 AND user_id = $2 AND thread_id = $3
+          AND kind IN ('CONTINUE', 'BLOCKER') AND status = 'CONFIRMED'`,
+      [eventId, req.user.id, thread.id]
+    );
+    const event = eventResult.rows[0];
+    if (!event) return { error: 'event' };
+    const payload = event.payload || {};
+    const allowedSteps = [payload.currentStep, payload.adjustedStep]
+      .concat((Array.isArray(payload.easyVersions) ? payload.easyVersions : []).map(item => item?.step))
+      .map(item => text(item, 1000)).filter(Boolean);
+    if (!allowedSteps.includes(requestedStep)) return { error: 'step' };
+    if (thread.current_step === requestedStep) return { currentStep: requestedStep, unchanged: true };
+    await client.query(
+      `UPDATE compound_threads SET current_step = $3, context_summary = $4,
+         last_activity_at = now(), updated_at = now()
+       WHERE id = $1 AND user_id = $2`,
+      [thread.id, req.user.id, requestedStep, payload.assistance || event.summary]
+    );
+    await client.query(
+      `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
+        WHERE user_id = $1 AND id = $2`,
+      [req.user.id, thread.item_id, requestedStep]
+    );
+    await client.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, summary, payload)
+       VALUES ($1, $2, $3, 'ADJUSTMENT', 'CONFIRMED', 'USER', $4, $5::jsonb)`,
+      [crypto.randomUUID(), req.user.id, thread.id, '采用建议的下一步', JSON.stringify({ sourceEventId: event.id, currentStep: requestedStep })]
+    );
+    return { currentStep: requestedStep };
+  });
+  if (saved.error === 'thread') return fail(res, 404, '正在推进的事不存在');
+  if (saved.error === 'event') return fail(res, 404, '这次建议不存在');
+  if (saved.error === 'step') return fail(res, 400, '只能采用这次建议中明确给出的行动');
+  return ok(res, saved, '已由你确认并更新下一步');
+}));
+
+router.post('/quiet-day', asyncRoute(async (req, res) => {
+  const today = shanghaiDate();
+  const saved = await db.transaction(async client => {
+    const threadResult = await client.query(
+      `SELECT id FROM compound_threads
+        WHERE user_id = $1 AND status = 'ACTIVE'
+        ORDER BY is_primary DESC, last_activity_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (!threadResult.rowCount) return null;
+    await client.query(
+      `UPDATE compound_events SET status = 'DISMISSED', updated_at = now()
+        WHERE user_id = $1 AND kind = 'ADJUSTMENT' AND status = 'CONFIRMED'
+          AND payload->>'action' = 'QUIET_DAY' AND payload->>'date' = $2`,
+      [req.user.id, today]
+    );
+    const event = await client.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, summary, payload)
+       VALUES ($1, $2, $3, 'ADJUSTMENT', 'CONFIRMED', 'USER', '今天不推进', $4::jsonb)
+       RETURNING *`,
+      [crypto.randomUUID(), req.user.id, threadResult.rows[0].id, JSON.stringify({ action: 'QUIET_DAY', date: today })]
+    );
+    return event.rows[0];
+  });
+  if (!saved) return fail(res, 400, '现在没有需要暂停一天的主线');
+  return ok(res, { date: today, quietToday: true }, '今天不再提醒推进，明天会保留原来的位置');
+}));
+
+router.delete('/quiet-day', asyncRoute(async (req, res) => {
+  const today = shanghaiDate();
+  await db.query(
+    `UPDATE compound_events SET status = 'DISMISSED', updated_at = now()
+      WHERE user_id = $1 AND kind = 'ADJUSTMENT' AND status = 'CONFIRMED'
+        AND payload->>'action' = 'QUIET_DAY' AND payload->>'date' = $2`,
+    [req.user.id, today]
+  );
+  return ok(res, { date: today, quietToday: false }, '今天可以继续，但仍不会自动行动');
 }));
 
 router.post('/threads/:id/blocker', asyncRoute(async (req, res) => {
@@ -532,15 +677,10 @@ router.post('/threads/:id/blocker', asyncRoute(async (req, res) => {
         blocker, value.analysis, JSON.stringify(value)]
     );
     await client.query(
-      `UPDATE compound_threads SET blocker_summary = $3, current_step = $4,
-         context_summary = $5, last_activity_at = now(), updated_at = now()
+      `UPDATE compound_threads SET blocker_summary = $3, context_summary = $4,
+         last_activity_at = now(), updated_at = now()
        WHERE id = $1 AND user_id = $2`,
-      [thread.id, req.user.id, blocker, value.adjustedStep, value.analysis]
-    );
-    await client.query(
-      `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
-        WHERE user_id = $1 AND id = $2`,
-      [req.user.id, thread.item_id, value.adjustedStep]
+      [thread.id, req.user.id, blocker, value.analysis]
     );
     return inserted.rows[0];
   });
@@ -568,7 +708,10 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '正在推进的事不存在');
   const eventId = crypto.randomUUID();
-  const context = await contextFor(req.user.id, thread.item_id, thread.id);
+  const [context, principalOptions] = await Promise.all([
+    contextFor(req.user.id, thread.item_id, thread.id),
+    principalOptionsFor(req.user.id, 20)
+  ]);
   const generated = await aiOrFallback({
     prompt: RESULT_PROMPT,
     input: {
@@ -576,10 +719,11 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
       userStatement: rawInput,
       attachmentCount: mediaIds.length,
       attachmentBoundary: '模型未读取附件内容，只知道用户上传了附件，不得猜测其内容。',
+      principalOptions,
       context
     },
     label: '复利系统·整理实际结果',
-    normalizer: raw => normalizeResultDraft(raw, rawInput, thread.current_step),
+    normalizer: raw => normalizeResultDraft(raw, rawInput, thread.current_step, { progressMode: thread.progress_mode }),
     fallback: thread.current_step,
     usageContext: { userId: req.user.id, feature: 'compound_result', taskId: eventId }
   });
@@ -601,6 +745,7 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
   });
   return ok(res, {
     event: mapEvent(result.rows[0]),
+    principalOptions,
     usedAi: generated.usedAi,
     costSummary: generated.usedAi ? await usageSummary(req.user.id, { taskId: eventId }) : null
   });
@@ -621,14 +766,40 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
     if (!draft || draft.status !== 'DRAFT') return { error: 'draft' };
     const original = draft.payload || {};
     const state = RESULT_STATES.includes(req.body.state) ? req.body.state : original.state;
+    const accumulationType = ACCUMULATION_TYPES.includes(req.body.accumulationType)
+      ? req.body.accumulationType : original.accumulationType;
     const value = normalizeResultDraft({
       state,
+      accumulationType,
+      accumulationName: req.body.accumulationName === undefined ? original.accumulationName : req.body.accumulationName,
+      principalEventId: req.body.principalEventId === undefined ? original.principalEventId : req.body.principalEventId,
+      classificationReason: req.body.classificationReason === undefined ? original.classificationReason : req.body.classificationReason,
       summary: req.body.summary === undefined ? original.summary : req.body.summary,
       actualResult: req.body.actualResult === undefined ? original.actualResult : req.body.actualResult,
       progressSummary: req.body.progressSummary === undefined ? original.progressSummary : req.body.progressSummary,
       nextStep: req.body.nextStep === undefined ? original.nextStep : req.body.nextStep,
       uncertainty: req.body.uncertainty === undefined ? original.uncertainty : req.body.uncertainty
-    }, original.rawInput || draft.input_text, thread.current_step);
+    }, original.rawInput || draft.input_text, thread.current_step, { progressMode: thread.progress_mode });
+    if (value.state === 'PREPARING') value.accumulationType = 'NECESSARY';
+    if (!['REUSE', 'RETURN'].includes(value.accumulationType)) value.principalEventId = '';
+    if (value.accumulationType === 'RETURN' && (value.state !== 'EFFECTIVE' || !value.actualResult)) return { error: 'return' };
+    if (value.accumulationType === 'PRINCIPAL') {
+      value.accumulationName = value.accumulationName || value.actualResult || value.summary;
+    } else {
+      value.accumulationName = '';
+    }
+    if (['REUSE', 'RETURN'].includes(value.accumulationType)) {
+      const principalId = uuid(value.principalEventId);
+      if (!principalId) return { error: 'principal' };
+      const principal = await client.query(
+        `SELECT id FROM compound_events
+          WHERE id = $1 AND user_id = $2 AND kind = 'RESULT' AND status = 'CONFIRMED'
+            AND payload->>'accumulationType' = 'PRINCIPAL'`,
+        [principalId, req.user.id]
+      );
+      if (!principal.rowCount) return { error: 'principal' };
+      value.principalEventId = principalId;
+    }
     const closeMode = ['CONTINUE', 'PAUSE', 'END'].includes(req.body.closeMode) ? req.body.closeMode : 'CONTINUE';
     const updated = await client.query(
       `UPDATE compound_events SET status = 'CONFIRMED', actor = 'USER', summary = $4,
@@ -668,6 +839,8 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
   });
   if (confirmed.error === 'thread') return fail(res, 404, '正在推进的事不存在');
   if (confirmed.error === 'draft') return fail(res, 400, '这份结果草稿已经处理');
+  if (confirmed.error === 'return') return fail(res, 400, '记录回报需要确认已有效果，并写下可观察的实际变化');
+  if (confirmed.error === 'principal') return fail(res, 400, '复用或回报必须关联一项属于你的已有积累');
   return ok(res, { event: mapEvent(confirmed.row), threadStatus: confirmed.nextStatus }, '结果已确认，下次可以从新位置接着做');
 }));
 

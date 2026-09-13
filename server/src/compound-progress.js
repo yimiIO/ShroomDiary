@@ -30,6 +30,7 @@ const MODE_BY_ITEM = Object.freeze({
 });
 
 const RESULT_STATES = Object.freeze(['PREPARING', 'DONE', 'EFFECTIVE', 'UNVERIFIED']);
+const ACCUMULATION_TYPES = Object.freeze(['NECESSARY', 'MAINTENANCE', 'PRINCIPAL', 'REUSE', 'RETURN']);
 const REVIEW_DECISIONS = Object.freeze(['CONTINUE', 'ADJUST', 'STOP']);
 
 function clean(value, max = 1200) {
@@ -57,18 +58,36 @@ function normalizeContinuation(value, fallbackStep) {
   const workMode = ['DO_IN_SYSTEM', 'REAL_WORLD'].includes(value?.workMode)
     ? value.workMode : 'REAL_WORLD';
   const currentStep = clean(value?.currentStep || value?.nextStep, 1000) || clean(fallbackStep, 1000);
+  const easyVersions = (Array.isArray(value?.easyVersions) ? value.easyVersions : []).map((item, index) => {
+    const step = clean(item?.step || item?.currentStep, 1000);
+    if (!step) return null;
+    return {
+      label: clean(item?.label, 40) || ['最小版本', '正常版本', '完整版本'][index] || `版本 ${index + 1}`,
+      timebox: clean(item?.timebox, 40),
+      step
+    };
+  }).filter(Boolean).slice(0, 3);
   return {
     workMode,
     assistance: clean(value?.assistance || value?.draft || value?.guidance, 5000)
       || `现在只推进这一步：${currentStep}`,
     currentStep,
     completionCriteria: clean(value?.completionCriteria, 1000) || '完成后记录真实发生了什么。',
-    neededInput: clean(value?.neededInput || value?.question, 600)
+    neededInput: clean(value?.neededInput || value?.question, 600),
+    easyVersions,
+    rationale: {
+      evidenceBasis: clean(value?.rationale?.evidenceBasis || value?.evidenceBasis, 1000),
+      assumptions: clean(value?.rationale?.assumptions || value?.assumptions, 1000),
+      omissions: clean(value?.rationale?.omissions || value?.omissions, 1000)
+    }
   };
 }
 
 function normalizeBlocker(value, fallbackStep) {
-  const obstacleType = ['MISSING_MATERIAL', 'TOO_LARGE', 'METHOD_FAILED', 'LOW_PRIORITY', 'UNCLEAR']
+  const obstacleType = [
+    'MISSING_MATERIAL', 'TOO_LARGE', 'METHOD_FAILED', 'LOW_PRIORITY',
+    'EXTERNAL_DEPENDENCY', 'CAPACITY_LOW', 'DIRECTION_DOUBT', 'UNCLEAR'
+  ]
     .includes(value?.obstacleType) ? value.obstacleType : 'UNCLEAR';
   return {
     obstacleType,
@@ -87,10 +106,29 @@ function inferResultState(input) {
   return 'UNVERIFIED';
 }
 
-function normalizeResultDraft(value, rawInput, fallbackStep) {
+function inferAccumulationType(input, progressMode) {
+  const value = clean(input, 2400);
+  if (/(带来|获得|节省|收入|机会|回报|转化|被采用|减少了).*(时间|成本|错误|返工)?/.test(value)) return 'RETURN';
+  if (/(复用|再次使用|重新使用|沿用|调用|用上了|用之前)/.test(value)) return 'REUSE';
+  if (/(沉淀|形成|产出|整理成|写成|做成).*(模板|清单|文档|代码|流程|方法|作品|素材|评估集)/.test(value)
+    || /(模板|清单|文档|代码|流程|方法|作品|素材|评估集).*(完成|写完|做好|建立)/.test(value)) return 'PRINCIPAL';
+  if (progressMode === 'MAINTENANCE' || /(休息|睡眠|运动|恢复|陪伴|维护|复健|练习)/.test(value)) return 'MAINTENANCE';
+  return 'NECESSARY';
+}
+
+function normalizeResultDraft(value, rawInput, fallbackStep, options = {}) {
   const state = RESULT_STATES.includes(value?.state) ? value.state : inferResultState(rawInput);
+  const inferredType = state === 'PREPARING'
+    ? 'NECESSARY'
+    : inferAccumulationType(`${rawInput}\n${value?.actualResult || ''}`, options.progressMode);
+  const accumulationType = ACCUMULATION_TYPES.includes(value?.accumulationType)
+    ? value.accumulationType : inferredType;
   return {
     state,
+    accumulationType,
+    accumulationName: clean(value?.accumulationName, 300),
+    principalEventId: clean(value?.principalEventId, 80),
+    classificationReason: clean(value?.classificationReason, 600),
     summary: clean(value?.summary, 1800) || clean(rawInput, 1800),
     actualResult: clean(value?.actualResult || value?.evidence, 2400),
     progressSummary: clean(value?.progressSummary, 1600),
@@ -145,23 +183,27 @@ const STARTER_PROMPT = `你是 Shroom 「复利系统」的起步助手。根据
 
 只返回 JSON：{"desiredOutcome":"这次要做到什么","currentStep":"现在可以完成的最小一步","contextReason":"这样建议的真实依据"}`;
 
-const CONTINUE_PROMPT = `你是 Shroom 复利系统的执行搭档。用户点击了「继续推进」。必须使用已确认目标、过去事件、已有材料和上次停留位置，不要让用户重复背景。
+const CONTINUE_PROMPT = `你是 Shroom 复利系统的按需协助者。只有用户明确点击「需要 AI 帮助」或「让它更容易」时才会调用你。必须使用已确认目标、过去事件、已有材料和上次停留位置，不要让用户重复背景。
 
-能在文本中完成的，直接给可使用的初稿、清单、复核或消息，workMode=DO_IN_SYSTEM；必须现实执行的，只给一个清晰动作，workMode=REAL_WORLD。不把 AI 输出当成用户已完成。不自动新建待办、改方向或修改人生 OS。
+当 intent=EASIER 时，给出最小、正常、完整三个真实版本，避免只用时间长短包装同一个任务；当 intent=HELP 时，能在文本中完成的直接给可使用的初稿、清单、复核或消息，必须现实执行的只给一个清晰动作。不要自动改变用户已经确认的下一步，建议必须等待用户采用。
 
-只返回 JSON：{"workMode":"DO_IN_SYSTEM|REAL_WORLD","assistance":"直接可用的协助内容","currentStep":"完成这次协助后的明确一步","completionCriteria":"怎样才算这一步真正发生","neededInput":"只在确实缺材料时问的一个问题，否则留空"}`;
+不把 AI 输出当成用户已完成。不自动新建待办、改方向或修改人生 OS。明确说明依据、关键假设以及没有纳入判断的信息；不知道就留空，不得伪造。
+
+只返回 JSON：{"workMode":"DO_IN_SYSTEM|REAL_WORLD","assistance":"直接可用的协助内容","currentStep":"建议采用的明确一步","completionCriteria":"怎样才算这一步真正发生","neededInput":"只在确实缺材料时问的一个问题，否则留空","easyVersions":[{"label":"最小版本","timebox":"约 5 分钟","step":"动作"}],"rationale":{"evidenceBasis":"依据了什么","assumptions":"做了什么假设","omissions":"哪些现实信息没有纳入"}}`;
 
 const BLOCKER_PROMPT = `你是 Shroom 复利系统的障碍诊断助手。结合正在推进的目标、当前一步、过去结果和用户刚说的卡点，识别最具体的障碍。
 
-缺材料就说清补什么；目标太大就缩小一步；方法无效就换方法；暂时不值得就建议搁置。不机械鼓励，不自动新增待办。信息不足时只问一个当前最必要的问题。
+缺材料就说清补什么；目标太大就缩小一步；方法无效就换方法；等待外部条件就明确等待；身体或精力不足就保护容量；方向本身存疑就建议暂停重新判断。不机械鼓励，不自动新增待办。信息不足时只问一个当前最必要的问题。
 
-只返回 JSON：{"obstacleType":"MISSING_MATERIAL|TOO_LARGE|METHOD_FAILED|LOW_PRIORITY|UNCLEAR","analysis":"对具体障碍的克制判断","adjustedStep":"调整后的一步","neededInput":"最多一个必要问题","recommendPause":false}`;
+只返回 JSON：{"obstacleType":"MISSING_MATERIAL|TOO_LARGE|METHOD_FAILED|LOW_PRIORITY|EXTERNAL_DEPENDENCY|CAPACITY_LOW|DIRECTION_DOUBT|UNCLEAR","analysis":"对最大约束的克制判断","adjustedStep":"调整后的一步","neededInput":"最多一个必要问题","recommendPause":false}`;
 
 const RESULT_PROMPT = `你是 Shroom 复利系统的结果整理助手。用户用文字、语音转写或附件说明刚发生了什么。你只整理成可纠正草稿，不直接确认完成。
 
 严格区分：PREPARING=准备做；DONE=真实动作已发生；EFFECTIVE=动作后有可核对效果；UNVERIFIED=发生了什么但效果还不确定。不伪造产出、回复或效果。
 
-只返回 JSON：{"state":"PREPARING|DONE|EFFECTIVE|UNVERIFIED","summary":"实际发生的事","actualResult":"已有产出或可核对变化","progressSummary":"目前做到哪里","nextStep":"下次从哪里接着做","uncertainty":"尚未验证的部分"}`;
+还要建议这次结果属于哪一类，但不能为了鼓励用户而滥称复利：NECESSARY=必要完成但未形成长期积累；MAINTENANCE=维护身体、关系、能力或系统基础；PRINCIPAL=形成以后可以再次使用的成果；REUSE=明确使用了一项已有积累；RETURN=已有积累带来了可观察收益。REUSE 和 RETURN 必须能关联输入里的一个已有积累 principalEventId；没有证据就选 NECESSARY 或 MAINTENANCE。
+
+只返回 JSON：{"state":"PREPARING|DONE|EFFECTIVE|UNVERIFIED","accumulationType":"NECESSARY|MAINTENANCE|PRINCIPAL|REUSE|RETURN","accumulationName":"形成或使用的积累名称","principalEventId":"仅复用或回报时填写已有积累 id","classificationReason":"分类依据","summary":"实际发生的事","actualResult":"已有产出或可核对变化","progressSummary":"目前做到哪里","nextStep":"下次从哪里接着做","uncertainty":"尚未验证的部分"}`;
 
 const DIARY_REVIEW_PROMPT = `你是 Shroom 复利系统的情境回看助手。一篇真实日记与正在推进的方向有关。请帮用户回看这次发生了什么，严格区分事实和推测，检查之前方法是否真尝试过、是否有效，再给一个下次可尝试的方法。日记没写到不等于没做，不判定失败，不修改正式原则。
 
@@ -175,6 +217,7 @@ const STAGE_REVIEW_PROMPT = `你是 Shroom 复利系统的阶段回看助手。�
 
 module.exports = {
   BLOCKER_PROMPT,
+  ACCUMULATION_TYPES,
   CONTINUE_PROMPT,
   DIARY_REVIEW_PROMPT,
   MODE_BY_ITEM,
@@ -185,6 +228,7 @@ module.exports = {
   STARTER_PROMPT,
   clean,
   inferResultState,
+  inferAccumulationType,
   modeForItem,
   normalizeBlocker,
   normalizeContinuation,

@@ -538,6 +538,31 @@ async function run() {
     }), 400);
 
     const owner = await pool.query('SELECT id FROM users WHERE mobile = $1', [mobileA]);
+    expectCode(await api('/api/compound/v2/quiet-day', { method: 'POST', token: tokenA, body: {} }));
+    assert.equal(expectCode(await api('/api/compound/v2/home', { token: tokenA })).quietToday, true);
+    assert.equal(expectCode(await api('/api/compound/v2/home', { token: sessionB.access_token })).quietToday, false);
+    expectCode(await api('/api/compound/v2/quiet-day', { method: 'DELETE', token: tokenA }));
+    assert.equal(expectCode(await api('/api/compound/v2/home', { token: tokenA })).quietToday, false);
+
+    const suggestionEventId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, summary, payload)
+       VALUES ($1, $2, $3, 'CONTINUE', 'CONFIRMED', 'AI', '建议缩小行动', $4::jsonb)`,
+      [suggestionEventId, owner.rows[0].id, compoundThread.id, JSON.stringify({
+        currentStep: '只核对第一条证据', assistance: '先缩小范围，不自动改变用户确认的行动。', intent: 'EASIER',
+        easyVersions: [{ label: '最小版本', timebox: '5 分钟', step: '只核对第一条证据' }]
+      })]
+    );
+    assert.equal(expectCode(await api('/api/compound/v2/home', { token: tokenA })).current.currentStep, '先列出现有的前后证据');
+    expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/suggestions/${suggestionEventId}/adopt`, {
+      method: 'POST', token: sessionB.access_token, body: { currentStep: '只核对第一条证据' }
+    }), 404);
+    expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/suggestions/${suggestionEventId}/adopt`, {
+      method: 'POST', token: tokenA, body: { currentStep: '只核对第一条证据' }
+    }));
+    assert.equal(expectCode(await api('/api/compound/v2/home', { token: tokenA })).current.currentStep, '只核对第一条证据');
+
     const compoundItem = await pool.query(
       `SELECT id FROM life_os_items WHERE user_id = $1 AND stable_key = '05'`,
       [owner.rows[0].id]
@@ -563,7 +588,8 @@ async function run() {
         (id, user_id, thread_id, kind, status, actor, input_text, summary, payload)
        VALUES ($1, $2, $3, 'RESULT', 'DRAFT', 'AI', '已经完成证据清单', '完成证据清单', $4::jsonb)`,
       [resultEventId, owner.rows[0].id, compoundThread.id, JSON.stringify({
-        state: 'DONE', summary: '完成证据清单', actualResult: '一份包含三条证据的清单',
+        state: 'DONE', accumulationType: 'PRINCIPAL', accumulationName: '三条证据清单',
+        summary: '完成证据清单', actualResult: '一份包含三条证据的清单',
         progressSummary: '已完成第一步', nextStep: '找出缺少的结果证据', uncertainty: '', rawInput: '已经完成证据清单'
       })]
     );
@@ -571,9 +597,28 @@ async function run() {
       method: 'POST', token: tokenA, body: { closeMode: 'CONTINUE' }
     }));
     assert.equal(confirmedCompoundResult.event.payload.state, 'DONE');
+    assert.equal(confirmedCompoundResult.event.payload.accumulationType, 'PRINCIPAL');
     const compoundAfterResult = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
     assert.equal(compoundAfterResult.current.lastCompleted, '一份包含三条证据的清单');
     assert.equal(compoundAfterResult.current.currentStep, '找出缺少的结果证据');
+
+    const reuseEventId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, input_text, summary, payload)
+       VALUES ($1, $2, $3, 'RESULT', 'DRAFT', 'AI', '复用了证据清单', '复用了证据清单', $4::jsonb)`,
+      [reuseEventId, owner.rows[0].id, compoundThread.id, JSON.stringify({
+        state: 'DONE', accumulationType: 'REUSE', principalEventId: resultEventId,
+        summary: '复用了证据清单', actualResult: '清单用于第二次检查', progressSummary: '已经发生一次复用',
+        nextStep: '观察它是否减少遗漏', uncertainty: '', rawInput: '复用了证据清单'
+      })]
+    );
+    expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/results/${reuseEventId}/confirm`, {
+      method: 'POST', token: tokenA, body: { closeMode: 'CONTINUE' }
+    }));
+    const compoundWithEvidence = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
+    assert.equal(compoundWithEvidence.compoundEvidence[0].id, resultEventId);
+    assert.equal(compoundWithEvidence.compoundEvidence[0].useCount, 1);
     const bodyPractice = expectCode(await api('/api/compound/v2/body-practice', { token: tokenA }));
     assert.ok(bodyPractice.practice.segments.length >= 5);
     assert.ok(bodyPractice.practice.segments.every(segment => segment.endSeconds - segment.startSeconds <= 120));
