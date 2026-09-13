@@ -30,10 +30,19 @@
 					<view v-if="hypotheses.length" class="possibility-list">
 						<view v-for="item in hypotheses" :key="item.id" class="possibility-card" :class="{ observing: item.status === 'OBSERVING', risk: item.redFlags && item.redFlags.length }">
 							<view class="possibility-topline"><view><text>{{ domainLabel(item.domain) }}</text><text>{{ kindLabel(item.kind) }}</text></view><text>{{ strengthLabel(item.evidenceStrength) }}</text></view>
+							<view v-if="item.namedPossibilities && item.namedPossibilities.length" class="named-possibilities">
+								<text class="named-label">这组线索可能涉及</text>
+								<view v-for="possibility in item.namedPossibilities" :key="possibility.name" class="named-row" :class="{ rule_out: possibility.role === 'RULE_OUT', alternative: possibility.role === 'ALTERNATIVE' }">
+									<text class="named-role">{{ possibilityRoleLabel(possibility.role) }}</text>
+									<text class="named-name">{{ possibility.name }}</text>
+									<text class="named-why">{{ possibility.why }}</text>
+								</view>
+								<text class="named-note">这是值得核对的方向，不是患病概率或诊断。</text>
+							</view>
+							<text class="pattern-label">日记里出现的模式</text>
 							<text class="possibility-name">{{ item.name }}</text>
 							<text class="possibility-statement">{{ item.possibilityStatement }}</text>
-							<view v-if="item.namedPossibilities && item.namedPossibilities.length" class="named-possibilities"><text class="named-label">具体可能涉及</text><view v-for="possibility in item.namedPossibilities" :key="possibility.name" class="named-row"><view><text>{{ possibility.name }}</text><text>{{ possibilityRoleLabel(possibility.role) }}</text></view><text>{{ possibility.why }}</text></view></view>
-							<view class="possibility-reason"><text>为什么会想到它</text><text>{{ item.whyPossible }}</text></view>
+							<view class="possibility-reason"><text>为什么会想到这些方向</text><text>{{ item.whyPossible }}</text></view>
 							<button class="evidence-toggle" @tap="toggleHypothesis(item)">{{ expandedHypothesisId === item.id ? '收起判断依据' : `查看 ${item.supportingEvidence.length} 条依据与缺口` }} <text>{{ expandedHypothesisId === item.id ? '↑' : '↓' }}</text></button>
 							<view v-if="expandedHypothesisId === item.id" class="possibility-detail">
 								<view class="detail-block"><text class="detail-label">支持它的日记线索</text><view v-for="evidence in item.supportingEvidence" :key="evidence.recordId" class="evidence-row"><text>{{ formatDate(evidence.recordedOn) }}</text><view><text>{{ evidence.reason }}</text><text v-if="evidence.sourceExcerpt">“{{ evidence.sourceExcerpt }}”</text></view></view></view>
@@ -234,7 +243,7 @@ export default {
 		domainLabel(value) { return value === 'PHYSICAL' ? '身体' : '心理'; },
 		kindLabel(value) { return { PSYCHOLOGICAL_CONCEPT: '心理概念', SYMPTOM_PATTERN: '症状模式', CLINICAL_CONDITION: '建议专业评估', RISK_SIGNAL: '需及时留意' }[value] || '待验证方向'; },
 		strengthLabel(value) { return { LIMITED: '初步线索', MODERATE: '多条线索一致', STRONG: '记录依据较充分' }[value] || '初步线索'; },
-		possibilityRoleLabel(value) { return { PRIMARY_DIRECTION: '主要方向', ALTERNATIVE: '其他解释', RULE_OUT: '值得排查' }[value] || '待验证'; },
+		possibilityRoleLabel(value) { return { PRIMARY_DIRECTION: '当前更符合', ALTERNATIVE: '也可能', RULE_OUT: '建议排查' }[value] || '待验证'; },
 		categoryLabel(value) { return { PSYCHOLOGICAL: '心理', PHYSICAL: '身体', SLEEP: '睡眠', HABIT: '习惯', MEASUREMENT: '测量', TEST_RESULT: '检查' }[value] || '身心'; },
 		formatDate(value) { return value ? moment(value).format('YYYY.MM.DD') : '日期未记录'; },
 		sourceLabel(item) { return item.sourceType === 'MANUAL' ? '手动记录' : (item.status === 'ARCHIVED' ? '已归档' : '来自日记'); },
@@ -295,15 +304,20 @@ button::after { border: 0; }
 .possibility-topline > view { display: flex; flex-wrap: wrap; gap: 8rpx; }
 .possibility-topline text { padding: 7rpx 11rpx; border-radius: 13rpx; background: rgba(255,255,255,.66); color: #637055; font-size: 14rpx; }
 .possibility-topline > text { background: transparent; color: #7a8375; text-align: right; }
-.possibility-name { display: block; margin-top: 19rpx; font-family: Georgia, 'Songti SC', serif; font-size: 29rpx; line-height: 1.4; word-break: break-word; }
+.pattern-label { display: block; margin-top: 20rpx; color: #778175; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
+.possibility-name { display: block; margin-top: 8rpx; font-family: Georgia, 'Songti SC', serif; font-size: 25rpx; line-height: 1.4; word-break: break-word; }
 .possibility-statement { display: block; margin-top: 10rpx; color: #4f5a50; font-size: 19rpx; line-height: 1.68; word-break: break-word; }
-.named-possibilities { margin-top: 18rpx; padding: 18rpx; border-radius: 18rpx; background: #172019; display: flex; flex-direction: column; gap: 13rpx; }
+.named-possibilities { margin-top: 18rpx; padding: 20rpx; border-radius: 20rpx; background: #172019; display: flex; flex-direction: column; gap: 13rpx; }
 .named-label { color: #dce9bd; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
-.named-row { padding-top: 12rpx; border-top: 1rpx solid rgba(255,255,255,.1); display: flex; flex-direction: column; }
-.named-row > view { display: flex; align-items: center; flex-wrap: wrap; gap: 9rpx; }
-.named-row > view text:first-child { color: #fff; font-family: Georgia, 'Songti SC', serif; font-size: 21rpx; }
-.named-row > view text:last-child { padding: 5rpx 9rpx; border-radius: 11rpx; background: rgba(220,233,189,.13); color: #dce9bd; font-size: 13rpx; }
-.named-row > text { margin-top: 7rpx; color: #bdc8ba; font-size: 16rpx; line-height: 1.55; }
+.named-row { position: relative; padding: 15rpx 0 2rpx 23rpx; border-top: 1rpx solid rgba(255,255,255,.1); display: flex; flex-direction: column; }
+.named-row::before { content: ''; position: absolute; left: 0; top: 22rpx; width: 9rpx; height: 9rpx; border-radius: 50%; background: #dce9bd; }
+.named-row.rule_out::before { background: #f2c78e; }
+.named-row.alternative::before { background: #9ba69a; }
+.named-role { align-self: flex-start; padding: 5rpx 9rpx; border-radius: 10rpx; background: rgba(220,233,189,.13); color: #dce9bd; font-size: 13rpx; }
+.named-row.rule_out .named-role { background: rgba(242,199,142,.13); color: #f2c78e; }
+.named-name { margin-top: 9rpx; color: #fff; font-family: Georgia, 'Songti SC', serif; font-size: 24rpx; line-height: 1.42; word-break: break-word; }
+.named-why { margin-top: 6rpx; color: #bdc8ba; font-size: 16rpx; line-height: 1.58; word-break: break-word; }
+.named-note { padding-top: 13rpx; border-top: 1rpx solid rgba(255,255,255,.1); color: #899488; font-size: 14rpx; line-height: 1.55; }
 .possibility-reason { margin-top: 18rpx; padding: 17rpx 18rpx; border-left: 4rpx solid #91a463; background: rgba(255,255,255,.55); display: flex; flex-direction: column; }
 .possibility-reason text:first-child, .detail-label, .care-guidance text:first-child, .red-flags > text:first-child { color: #6f7f49; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
 .possibility-reason text:last-child { margin-top: 7rpx; color: #344036; font-size: 18rpx; line-height: 1.58; }

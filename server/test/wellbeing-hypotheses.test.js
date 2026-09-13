@@ -76,7 +76,7 @@ test('physical clinical directions require persistence or an objective finding',
 });
 
 test('prompt asks for named possibilities without turning a diary into a diagnosis', () => {
-  for (const phrase of ['明确叫出', 'namedPossibilities', '抑郁相关症状', 'RULE_OUT', '不能用“持续低落”', '多汗症方向', '替代解释', '不是患病概率', '不得给药名']) {
+  for (const phrase of ['明确叫出', 'namedPossibilities', '日记中出现的模式', '抑郁相关症状', 'RULE_OUT', '不能用“持续低落”', '多汗症方向', '笼统名称', '替代解释', '不是患病概率', '不得给药名']) {
     assert.match(WELLBEING_HYPOTHESIS_PROMPT, new RegExp(phrase, 'u'));
   }
 });

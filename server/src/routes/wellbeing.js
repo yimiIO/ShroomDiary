@@ -7,7 +7,11 @@ const db = require('../db');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
 const { healthObservationLine, normalizeHealthObservation } = require('../inquiry-health');
 const { dateOnly, mapWellbeingRecord } = require('../wellbeing-records');
-const { mapHypothesis, refreshWellbeingHypotheses } = require('../wellbeing-hypotheses');
+const {
+  WELLBEING_HYPOTHESIS_REVIEW_VERSION,
+  mapHypothesis,
+  refreshWellbeingHypotheses
+} = require('../wellbeing-hypotheses');
 
 const router = express.Router();
 router.use(requireUser);
@@ -146,8 +150,11 @@ async function hypothesisList(userId) {
          (SELECT max(updated_at) FROM wellbeing_records
            WHERE user_id = $1 AND status IN ('PENDING', 'CONFIRMED')) AS latest_source_at,
          (SELECT max(source_updated_at) FROM wellbeing_hypotheses
-           WHERE user_id = $1) AS last_reviewed_source_at`,
-      [userId]
+           WHERE user_id = $1) AS last_reviewed_source_at,
+         (SELECT count(*)::int FROM wellbeing_hypotheses
+           WHERE user_id = $1 AND status IN ('PENDING', 'OBSERVING')
+             AND review_version <> $2) AS stale_review_count`,
+      [userId, WELLBEING_HYPOTHESIS_REVIEW_VERSION]
     )
   ]);
   const recordIds = [...new Set(hypotheses.rows.flatMap(row => [
@@ -169,7 +176,8 @@ async function hypothesisList(userId) {
   return {
     list: hypotheses.rows.map(row => mapHypothesis(row, recordMap)),
     sourceCount: Number(state.source_count || 0),
-    reviewDue: Boolean(latestSourceAt && (!lastReviewedSourceAt || latestSourceAt > lastReviewedSourceAt)),
+    reviewDue: Boolean(Number(state.stale_review_count || 0)
+      || (latestSourceAt && (!lastReviewedSourceAt || latestSourceAt > lastReviewedSourceAt))),
     latestSourceAt: state.latest_source_at || null,
     lastReviewedSourceAt: state.last_reviewed_source_at || null
   };
