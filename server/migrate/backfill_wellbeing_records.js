@@ -45,6 +45,8 @@ async function main() {
   const apply = process.argv.includes('--apply');
   const replacePending = process.argv.includes('--replace-pending');
   const output = option('output');
+  const input = option('input');
+  const excludedDates = new Set(option('exclude-dates').split(',').map(value => value.trim()).filter(Boolean));
   if (!/^1[3-9]\d{9}$/u.test(mobile)) throw new Error('请通过 --mobile=手机号指定唯一账号');
   if (!isAiConfigured()) throw new Error('AI provider is not configured');
 
@@ -72,26 +74,34 @@ async function main() {
       ORDER BY updated_at DESC LIMIT 12`,
     [userId]
   );
-  for (let index = 0; index < batches.length; index += 1) {
-    const batch = batches[index];
-    const candidateResponse = await callJson(WELLBEING_CANDIDATE_PROMPT, { diaries: batch }, `历史身心候选 ${index + 1}/${batches.length}`, {
-      maxTokens: 5000,
-      temperature: 0.1,
-      usageContext: { userId, feature: USAGE_FEATURES[0] }
-    });
-    const candidates = normalizeHistoricalWellbeingRecords(candidateResponse.records, batch)
-      .map(item => ({ diaryId: item.diaryId, healthExtraction: item.extraction }));
-    const reviewResponse = await callJson(WELLBEING_REVIEW_PROMPT, {
-      diaries: batch,
-      candidates,
-      userFeedback: feedbackResult.rows
-    }, `历史身心价值审核 ${index + 1}/${batches.length}`, {
-      maxTokens: 7000,
-      temperature: 0.1,
-      usageContext: { userId, feature: USAGE_FEATURES[1] }
-    });
-    records.push(...normalizeReviewedWellbeingRecords(reviewResponse.records, batch));
-    console.error(`processed ${index + 1}/${batches.length}: ${candidates.length} candidates -> ${records.length} reviewed records`);
+  if (input) {
+    const artifact = JSON.parse(fs.readFileSync(input, 'utf8'));
+    const sourceRecords = (Array.isArray(artifact.records) ? artifact.records : [])
+      .filter(record => record.reviewVersion === WELLBEING_REVIEW_VERSION)
+      .filter(record => !excludedDates.has(String(record.recordedOn || '')));
+    records.push(...normalizeHistoricalWellbeingRecords(sourceRecords, diaries));
+  } else {
+    for (let index = 0; index < batches.length; index += 1) {
+      const batch = batches[index];
+      const candidateResponse = await callJson(WELLBEING_CANDIDATE_PROMPT, { diaries: batch }, `历史身心候选 ${index + 1}/${batches.length}`, {
+        maxTokens: 5000,
+        temperature: 0.1,
+        usageContext: { userId, feature: USAGE_FEATURES[0] }
+      });
+      const candidates = normalizeHistoricalWellbeingRecords(candidateResponse.records, batch)
+        .map(item => ({ diaryId: item.diaryId, healthExtraction: item.extraction }));
+      const reviewResponse = await callJson(WELLBEING_REVIEW_PROMPT, {
+        diaries: batch,
+        candidates,
+        userFeedback: feedbackResult.rows
+      }, `历史身心价值审核 ${index + 1}/${batches.length}`, {
+        maxTokens: 7000,
+        temperature: 0.1,
+        usageContext: { userId, feature: USAGE_FEATURES[1] }
+      });
+      records.push(...normalizeReviewedWellbeingRecords(reviewResponse.records, batch));
+      console.error(`processed ${index + 1}/${batches.length}: ${candidates.length} candidates -> ${records.length} reviewed records`);
+    }
   }
 
   const stored = apply
@@ -110,6 +120,7 @@ async function main() {
   const summary = {
     ok: true,
     applied: apply,
+    inputArtifact: Boolean(input),
     replacePending,
     diaryCount: diaries.length,
     batchCount: batches.length,
