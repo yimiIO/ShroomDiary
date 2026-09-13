@@ -126,8 +126,8 @@ router.patch('/:id', asyncRoute(async (req, res) => {
   const next = transitions[action];
   if (!next) return fail(res, 400, '操作不正确');
   const result = await db.query(
-    `UPDATE wellbeing_records SET status = $3, ai_allowed = $4,
-       confirmed_at = CASE WHEN $3 = 'CONFIRMED' THEN COALESCE(confirmed_at, now()) ELSE confirmed_at END,
+    `UPDATE wellbeing_records SET status = $3::varchar(16), ai_allowed = $4::boolean,
+       confirmed_at = CASE WHEN $3::varchar(16) = 'CONFIRMED' THEN COALESCE(confirmed_at, now()) ELSE confirmed_at END,
        updated_at = now()
      WHERE id = $1 AND user_id = $2 RETURNING *`,
     [id, req.user.id, next.status, next.aiAllowed]

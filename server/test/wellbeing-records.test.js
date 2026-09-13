@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 const {
   mapWellbeingRecord,
@@ -8,6 +10,13 @@ const {
   observationCategories,
   syncDiaryWellbeingRecord
 } = require('../src/wellbeing-records');
+
+test('wellbeing status update gives PostgreSQL parameters explicit types', () => {
+  const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/wellbeing.js'), 'utf8');
+  assert.match(routeSource, /status = \$3::varchar\(16\)/);
+  assert.match(routeSource, /CASE WHEN \$3::varchar\(16\) = 'CONFIRMED'/);
+  assert.match(routeSource, /ai_allowed = \$4::boolean/);
+});
 
 test('wellbeing extraction is grounded in an exact diary excerpt', () => {
   const diary = '昨晚只睡了五小时，今天下午很疲惫。';
