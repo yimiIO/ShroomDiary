@@ -19,6 +19,7 @@ function valid(overrides = {}) {
     domain: 'PSYCHOLOGICAL',
     kind: 'CLINICAL_CONDITION',
     name: '抑郁相关问题需要评估',
+    namedPossibilities: [{ name: '抑郁相关症状', role: 'PRIMARY_DIRECTION', why: '持续低落、兴趣减退与功能影响同时出现' }],
     possibilityStatement: '持续低落和兴趣减退可能与抑郁相关问题一致，但日记不能完成诊断。',
     whyPossible: '两个时间点都记录了兴趣下降，并出现工作和社交功能影响。',
     evidenceStrength: 'MODERATE',
@@ -45,6 +46,7 @@ test('named wellbeing possibilities retain evidence and uncertainty', () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].name, '抑郁相关问题需要评估');
   assert.equal(result[0].supportingEvidence.length, 2);
+  assert.equal(result[0].namedPossibilities[0].name, '抑郁相关症状');
   assert.deepEqual(result[0].alternatives, ['睡眠不足或近期生活事件']);
   assert.match(result[0].hypothesisKey, /^psychological:/u);
 });
@@ -74,7 +76,7 @@ test('physical clinical directions require persistence or an objective finding',
 });
 
 test('prompt asks for named possibilities without turning a diary into a diagnosis', () => {
-  for (const phrase of ['明确叫出', '抑郁相关症状', '多汗症方向', '替代解释', '不是患病概率', '不得给药名']) {
+  for (const phrase of ['明确叫出', 'namedPossibilities', '抑郁相关症状', '多汗症方向', '替代解释', '不是患病概率', '不得给药名']) {
     assert.match(WELLBEING_HYPOTHESIS_PROMPT, new RegExp(phrase, 'u'));
   }
 });

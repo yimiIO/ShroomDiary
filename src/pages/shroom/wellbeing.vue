@@ -32,6 +32,7 @@
 							<view class="possibility-topline"><view><text>{{ domainLabel(item.domain) }}</text><text>{{ kindLabel(item.kind) }}</text></view><text>{{ strengthLabel(item.evidenceStrength) }}</text></view>
 							<text class="possibility-name">{{ item.name }}</text>
 							<text class="possibility-statement">{{ item.possibilityStatement }}</text>
+							<view class="named-possibilities"><text class="named-label">具体可能涉及</text><view v-for="possibility in item.namedPossibilities" :key="possibility.name" class="named-row"><view><text>{{ possibility.name }}</text><text>{{ possibilityRoleLabel(possibility.role) }}</text></view><text>{{ possibility.why }}</text></view></view>
 							<view class="possibility-reason"><text>为什么会想到它</text><text>{{ item.whyPossible }}</text></view>
 							<button class="evidence-toggle" @tap="toggleHypothesis(item)">{{ expandedHypothesisId === item.id ? '收起判断依据' : `查看 ${item.supportingEvidence.length} 条依据与缺口` }} <text>{{ expandedHypothesisId === item.id ? '↑' : '↓' }}</text></button>
 							<view v-if="expandedHypothesisId === item.id" class="possibility-detail">
@@ -233,6 +234,7 @@ export default {
 		domainLabel(value) { return value === 'PHYSICAL' ? '身体' : '心理'; },
 		kindLabel(value) { return { PSYCHOLOGICAL_CONCEPT: '心理概念', SYMPTOM_PATTERN: '症状模式', CLINICAL_CONDITION: '建议专业评估', RISK_SIGNAL: '需及时留意' }[value] || '待验证方向'; },
 		strengthLabel(value) { return { LIMITED: '初步线索', MODERATE: '多条线索一致', STRONG: '记录依据较充分' }[value] || '初步线索'; },
+		possibilityRoleLabel(value) { return { PRIMARY_DIRECTION: '主要方向', ALTERNATIVE: '其他解释', RULE_OUT: '值得排查' }[value] || '待验证'; },
 		categoryLabel(value) { return { PSYCHOLOGICAL: '心理', PHYSICAL: '身体', SLEEP: '睡眠', HABIT: '习惯', MEASUREMENT: '测量', TEST_RESULT: '检查' }[value] || '身心'; },
 		formatDate(value) { return value ? moment(value).format('YYYY.MM.DD') : '日期未记录'; },
 		sourceLabel(item) { return item.sourceType === 'MANUAL' ? '手动记录' : (item.status === 'ARCHIVED' ? '已归档' : '来自日记'); },
@@ -295,6 +297,13 @@ button::after { border: 0; }
 .possibility-topline > text { background: transparent; color: #7a8375; text-align: right; }
 .possibility-name { display: block; margin-top: 19rpx; font-family: Georgia, 'Songti SC', serif; font-size: 29rpx; line-height: 1.4; word-break: break-word; }
 .possibility-statement { display: block; margin-top: 10rpx; color: #4f5a50; font-size: 19rpx; line-height: 1.68; word-break: break-word; }
+.named-possibilities { margin-top: 18rpx; padding: 18rpx; border-radius: 18rpx; background: #172019; display: flex; flex-direction: column; gap: 13rpx; }
+.named-label { color: #dce9bd; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
+.named-row { padding-top: 12rpx; border-top: 1rpx solid rgba(255,255,255,.1); display: flex; flex-direction: column; }
+.named-row > view { display: flex; align-items: center; flex-wrap: wrap; gap: 9rpx; }
+.named-row > view text:first-child { color: #fff; font-family: Georgia, 'Songti SC', serif; font-size: 21rpx; }
+.named-row > view text:last-child { padding: 5rpx 9rpx; border-radius: 11rpx; background: rgba(220,233,189,.13); color: #dce9bd; font-size: 13rpx; }
+.named-row > text { margin-top: 7rpx; color: #bdc8ba; font-size: 16rpx; line-height: 1.55; }
 .possibility-reason { margin-top: 18rpx; padding: 17rpx 18rpx; border-left: 4rpx solid #91a463; background: rgba(255,255,255,.55); display: flex; flex-direction: column; }
 .possibility-reason text:first-child, .detail-label, .care-guidance text:first-child, .red-flags > text:first-child { color: #6f7f49; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
 .possibility-reason text:last-child { margin-top: 7rpx; color: #344036; font-size: 18rpx; line-height: 1.58; }

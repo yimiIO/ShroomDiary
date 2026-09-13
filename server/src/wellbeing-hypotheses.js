@@ -18,9 +18,9 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 
 这不是诊断。你必须遵守：
 1. 只使用 records 中用户本人的观察。每个 supportingEvidence.recordId 和 challengingEvidence.recordId 必须来自输入；说明它为何支持或不支持，不能补造病史、持续时间、症状、检查或因果。
-2. 每个候选必须有一个明确、可理解的问题名称。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血等导致疲劳的原因需要排查”。这些只是格式示例，不得因为示例而输出。
+2. 每个候选必须有一个明确、可理解的问题名称，并在 namedPossibilities 中列出它具体可能涉及的概念或医学方向。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血需要排查”。不能只写“持续低落”“身体不舒服”而不说明它可能指向什么。这些只是格式示例，不得因为示例而输出。
 3. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，只能输出 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，如“持续低落倾向”“反刍思维”“情绪调节困难”，不得写成抑郁症、焦虑症等疾病。
-4. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 alternatives，不能假装只有一个答案。
+4. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 namedPossibilities，不能假装只有一个答案。证据能直接支持的设为 PRIMARY_DIRECTION；仅值得排除但当前证据不足的设为 RULE_OUT，并明确缺少什么。
 5. evidenceStrength 只是“现有日记证据的一致程度”，不是患病概率。LIMITED 也可以保留，只要它能告诉用户下一步记录或就医时该核对什么。
 6. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
 7. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
@@ -29,7 +29,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 10. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
 
 只返回 JSON，不要 Markdown：
-{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
+{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
 
 function bounded(value, limit = 1000) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -78,6 +78,23 @@ function normalizeRedFlags(value, recordMap) {
   }).filter(Boolean);
 }
 
+function normalizeNamedPossibilities(value) {
+  const seen = new Set();
+  const result = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    const name = bounded(item?.name, 100);
+    const role = ['PRIMARY_DIRECTION', 'ALTERNATIVE', 'RULE_OUT'].includes(item?.role)
+      ? item.role : null;
+    const why = bounded(item?.why, 500);
+    const key = name.normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+    if (!name || !role || !why || seen.has(key) || unsafeDiagnosticWording(`${name} ${why}`)) continue;
+    result.push({ name, role, why });
+    seen.add(key);
+    if (result.length >= 5) break;
+  }
+  return result;
+}
+
 function normalizeWellbeingHypotheses(value, records = []) {
   const recordMap = new Map(records.map(record => [String(record.id), record]));
   const hypotheses = Array.isArray(value) ? value : [];
@@ -93,7 +110,8 @@ function normalizeWellbeingHypotheses(value, records = []) {
     const evidenceStrength = WELLBEING_HYPOTHESIS_STRENGTHS.includes(item.evidenceStrength || item.evidence_strength)
       ? (item.evidenceStrength || item.evidence_strength) : 'LIMITED';
     const supportingEvidence = normalizeEvidence(item.supportingEvidence || item.supporting_evidence, recordMap);
-    if (!domain || !kind || !name || !possibilityStatement || !whyPossible || !supportingEvidence.length) continue;
+    const namedPossibilities = normalizeNamedPossibilities(item.namedPossibilities || item.named_possibilities);
+    if (!domain || !kind || !name || !possibilityStatement || !whyPossible || !supportingEvidence.length || !namedPossibilities.length) continue;
     if (unsafeDiagnosticWording(`${name} ${possibilityStatement} ${whyPossible}`)) continue;
     if (!/(?:可能|相关|倾向|风险|待评估|需评估|需要评估|待排查|需排查|需要排查|方向|症状|模式)/u.test(`${name}${possibilityStatement}`)) continue;
     const checks = item.thresholdChecks || item.threshold_checks || {};
@@ -117,6 +135,7 @@ function normalizeWellbeingHypotheses(value, records = []) {
       domain,
       kind,
       name,
+      namedPossibilities,
       possibilityStatement,
       whyPossible,
       evidenceStrength,
@@ -168,6 +187,7 @@ function mapHypothesis(row, recordMap = new Map()) {
     domain: row.domain,
     kind: row.kind,
     name: row.name,
+    namedPossibilities: Array.isArray(row.named_possibilities) ? row.named_possibilities : [],
     possibilityStatement: row.possibility_statement,
     whyPossible: row.why_possible,
     evidenceStrength: row.evidence_strength,
@@ -218,14 +238,15 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
       if (dismissedKeys.has(item.hypothesisKey)) continue;
       const result = await client.query(
         `INSERT INTO wellbeing_hypotheses
-          (id, user_id, hypothesis_key, domain, kind, name, possibility_statement, why_possible,
+          (id, user_id, hypothesis_key, domain, kind, name, named_possibilities, possibility_statement, why_possible,
            evidence_strength, threshold_checks, supporting_evidence, challenging_evidence,
            alternatives, missing_information, next_observations, care_guidance, red_flags,
            status, review_version, model_version, source_updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb,
-           $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::jsonb, 'PENDING', $18, $19, $20)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb,
+           $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb, 'PENDING', $19, $20, $21)
          ON CONFLICT (user_id, hypothesis_key) DO UPDATE SET
            domain = EXCLUDED.domain, kind = EXCLUDED.kind, name = EXCLUDED.name,
+           named_possibilities = EXCLUDED.named_possibilities,
            possibility_statement = EXCLUDED.possibility_statement, why_possible = EXCLUDED.why_possible,
            evidence_strength = EXCLUDED.evidence_strength, threshold_checks = EXCLUDED.threshold_checks,
            supporting_evidence = EXCLUDED.supporting_evidence, challenging_evidence = EXCLUDED.challenging_evidence,
@@ -238,7 +259,7 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
          WHERE wellbeing_hypotheses.status <> 'DISMISSED'
          RETURNING id`,
         [crypto.randomUUID(), userId, item.hypothesisKey, item.domain, item.kind, item.name,
-          item.possibilityStatement, item.whyPossible, item.evidenceStrength,
+          JSON.stringify(item.namedPossibilities), item.possibilityStatement, item.whyPossible, item.evidenceStrength,
           JSON.stringify(item.thresholdChecks), JSON.stringify(item.supportingEvidence),
           JSON.stringify(item.challengingEvidence), JSON.stringify(item.alternatives),
           JSON.stringify(item.missingInformation), JSON.stringify(item.nextObservations),
