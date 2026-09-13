@@ -29,6 +29,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 10. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
 11. 输入的 domainScope 是本次唯一要处理的领域；PSYCHOLOGICAL 只输出心理候选，PHYSICAL 只输出身体候选。
 12. 输出要短而具体：每项最多 4 条支持证据、3 个具名方向、4 个缺失信息和 3 个下一步观察；每段解释不超过 160 个汉字。
+13. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
 
 只返回 JSON，不要 Markdown：
 {"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
@@ -279,6 +280,74 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
   });
 }
 
+function compactHypothesisDraft(item) {
+  const evidenceIds = value => (Array.isArray(value) ? value : []).map(evidence => evidence?.recordId || evidence?.record_id).filter(Boolean).slice(0, 5);
+  return {
+    stableKey: bounded(item?.stableKey || item?.stable_key, 96),
+    domain: item?.domain,
+    kind: item?.kind,
+    name: bounded(item?.name, 100),
+    namedPossibilities: (Array.isArray(item?.namedPossibilities) ? item.namedPossibilities : []).slice(0, 3),
+    possibilityStatement: bounded(item?.possibilityStatement, 350),
+    whyPossible: bounded(item?.whyPossible, 350),
+    evidenceStrength: item?.evidenceStrength,
+    thresholdChecks: item?.thresholdChecks,
+    supportingRecordIds: evidenceIds(item?.supportingEvidence),
+    challengingRecordIds: evidenceIds(item?.challengingEvidence),
+    alternatives: stringList(item?.alternatives, 3, 180),
+    missingInformation: stringList(item?.missingInformation, 4, 180),
+    nextObservations: stringList(item?.nextObservations, 3, 180),
+    careGuidance: bounded(item?.careGuidance, 300)
+  };
+}
+
+async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
+  const request = (input, label, maxTokens) => callJson(
+    WELLBEING_HYPOTHESIS_PROMPT,
+    input,
+    label,
+    { maxTokens, temperature: 0.1, usageContext: { userId, feature: `wellbeing_hypothesis_${scope.domain.toLowerCase()}` } }
+  );
+  if (scope.records.length <= 14) {
+    return request(
+      { analysisStage: 'FINAL', domainScope: scope.domain, records: scope.records, dismissedFeedback },
+      scope.domain === 'PSYCHOLOGICAL' ? '心理问题可能性识别' : '身体问题可能性识别',
+      3200
+    );
+  }
+  const batches = [];
+  for (let index = 0; index < scope.records.length; index += 12) batches.push(scope.records.slice(index, index + 12));
+  const batchResults = await Promise.allSettled(batches.map((records, index) => request(
+    { analysisStage: 'CANDIDATE', domainScope: scope.domain, records, dismissedFeedback },
+    `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题候选 ${index + 1}/${batches.length}`,
+    2400
+  )));
+  const drafts = batchResults.flatMap(result => result.status === 'fulfilled' && Array.isArray(result.value.hypotheses)
+    ? result.value.hypotheses : []);
+  if (!drafts.length) throw Object.assign(new Error('分段识别没有形成可靠候选'), { code: 'SHROOM_AI_FAILED' });
+  const referencedIds = new Set(drafts.flatMap(item => [
+    ...(Array.isArray(item?.supportingEvidence) ? item.supportingEvidence : []),
+    ...(Array.isArray(item?.challengingEvidence) ? item.challengingEvidence : [])
+  ]).map(item => String(item?.recordId || item?.record_id || '')).filter(Boolean));
+  const evidenceIndex = scope.records.filter(record => referencedIds.has(String(record.id))).map(record => ({
+    id: record.id,
+    date: record.date,
+    categories: record.categories,
+    sourceExcerpt: bounded(record.sourceExcerpt, 280)
+  }));
+  try {
+    return await request({
+      analysisStage: 'SYNTHESIS',
+      domainScope: scope.domain,
+      candidateHypotheses: drafts.map(compactHypothesisDraft),
+      records: evidenceIndex,
+      dismissedFeedback
+    }, `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题全局合并`, 3000);
+  } catch (error) {
+    return { hypotheses: drafts };
+  }
+}
+
 async function refreshWellbeingHypotheses(userId, modelVersion = '') {
   const db = require('./db');
   const { callJson, isAiConfigured } = require('./ai-engine');
@@ -301,11 +370,8 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
       records: records.filter(record => record.categories.some(category => ['PHYSICAL', 'SLEEP', 'MEASUREMENT', 'TEST_RESULT'].includes(category)))
     }
   ].filter(scope => scope.records.length);
-  const settled = await Promise.allSettled(scopes.map(scope => callJson(
-    WELLBEING_HYPOTHESIS_PROMPT,
-    { domainScope: scope.domain, records: scope.records, dismissedFeedback: feedbackResult.rows },
-    scope.domain === 'PSYCHOLOGICAL' ? '心理问题可能性识别' : '身体问题可能性识别',
-    { maxTokens: 3200, temperature: 0.1, usageContext: { userId, feature: `wellbeing_hypothesis_${scope.domain.toLowerCase()}` } }
+  const settled = await Promise.allSettled(scopes.map(scope => reviewDomainScope(
+    callJson, scope, userId, feedbackResult.rows
   )));
   const reviewedDomains = [];
   const rawHypotheses = [];
