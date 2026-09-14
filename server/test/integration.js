@@ -518,7 +518,30 @@ async function run() {
 
     const compoundBefore = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
     assert.equal(compoundBefore.needsOnboarding, true);
-    assert.equal(compoundBefore.directionCount, 20);
+    assert.equal(compoundBefore.directionCount, 0);
+    assert.equal(compoundBefore.archetypeCount, 13);
+    const compoundCatalog = expectCode(await api('/api/compound/v2/archetypes', { token: tokenA }));
+    assert.equal(compoundCatalog.count, 13);
+    assert.ok(compoundCatalog.growth.some(item => item.key === 'reusable_assets'));
+    assert.ok(compoundCatalog.protection.some(item => item.key === 'body_capacity'));
+    const archetypePlanB = expectCode(await api('/api/compound/v2/threads', {
+      method: 'POST', token: sessionB.access_token, body: {
+        archetypeKey: 'reusable_assets', title: '建立可复用的交付模板',
+        desiredOutcome: '12 周内完成 4 份经过真实复用的模板',
+        principalDefinition: '可以独立复用的交付模板',
+        returnDefinition: '旧模板被新交付复用并节省时间',
+        reinvestmentDefinition: '把节省的时间用于改进模板',
+        weeklyTimeBudgetMinutes: 120,
+        principalMetricName: '有效模板', principalMetricTarget: 4,
+        returnMetricName: '真实复用', returnMetricTarget: 8,
+        outcomeEvidence: '保留每次复用的交付记录和节省时间',
+        currentMilestone: '完成第一份可复用模板', currentStep: '整理最近两次重复交付'
+      }
+    }));
+    assert.equal(archetypePlanB.itemId, null);
+    assert.equal(archetypePlanB.archetypeKey, 'reusable_assets');
+    assert.equal(archetypePlanB.validation.status, 'VALIDATING');
+    expectCode(await api(`/api/compound/v2/threads/${archetypePlanB.id}`, { token: tokenA }), 404);
     const compoundThread = expectCode(await api('/api/compound/v2/threads', {
       method: 'POST', token: tokenA, body: {
         itemKey: '05',
@@ -537,9 +560,16 @@ async function run() {
         title: '12 周交付能力复利',
         desiredOutcome: '做出三份可核对的真实交付案例',
         compoundMechanism: '每个案例都留下可复用证据模板，让下一次交付更快。',
+        principalDefinition: '可复用的案例证据模板',
+        returnDefinition: '旧模板帮助下一次交付更快且少遗漏',
+        reinvestmentDefinition: '将节省的交付时间用于新案例的验证',
         weeklyTimeBudgetMinutes: 240,
         leadingMetricName: '已验证案例',
         leadingMetricTarget: 3,
+        principalMetricName: '已验证案例',
+        principalMetricTarget: 3,
+        returnMetricName: '证据模板复用',
+        returnMetricTarget: 2,
         outcomeEvidence: '三份案例都有用户反馈和可复用模板。',
         currentMilestone: '完成第一份案例证据链',
         currentStep: '先列出现有的前后证据',
@@ -636,7 +666,7 @@ async function run() {
     );
     const confirmedCompoundResult = expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/results/${resultEventId}/confirm`, {
       method: 'POST', token: tokenA, body: {
-        closeMode: 'CONTINUE', spentMinutes: 45, leadingMetricDelta: 1,
+        closeMode: 'CONTINUE', spentMinutes: 45, leadingMetricDelta: 1, principalMetricDelta: 1,
         weekActionId: compoundWeek.actions[1].id
       }
     }));
@@ -646,6 +676,7 @@ async function run() {
     assert.equal(compoundAfterResult.current.lastCompleted, '一份包含三条证据的清单');
     assert.equal(compoundAfterResult.current.currentStep, '找出缺少的结果证据');
     assert.equal(compoundAfterResult.current.leadingMetric.current, 1);
+    assert.equal(compoundAfterResult.current.principalMetric.current, 1);
     assert.equal(compoundAfterResult.current.week.actualMinutes, 45);
     assert.equal(compoundAfterResult.current.week.actions[1].completed, true);
     assert.equal(compoundAfterResult.portfolio.actualMinutes, 45);
@@ -662,11 +693,19 @@ async function run() {
       })]
     );
     expectCode(await api(`/api/compound/v2/threads/${compoundThread.id}/results/${reuseEventId}/confirm`, {
-      method: 'POST', token: tokenA, body: { closeMode: 'CONTINUE' }
+      method: 'POST', token: tokenA, body: { closeMode: 'CONTINUE', returnMetricDelta: 1 }
     }));
     const compoundWithEvidence = expectCode(await api('/api/compound/v2/home', { token: tokenA }));
     assert.equal(compoundWithEvidence.compoundEvidence[0].id, resultEventId);
     assert.equal(compoundWithEvidence.compoundEvidence[0].useCount, 1);
+    assert.equal(compoundWithEvidence.current.returnMetric.current, 1);
+    expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/validation`, {
+      method: 'PATCH', token: sessionB.access_token, body: { status: 'COMPOUNDING', note: '不应写入' }
+    }), 404);
+    const verifiedCompound = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/validation`, {
+      method: 'PATCH', token: tokenA, body: { status: 'COMPOUNDING', note: '证据模板已在第二次检查中实际复用' }
+    }));
+    assert.equal(verifiedCompound.validation.status, 'COMPOUNDING');
     const bodyPractice = expectCode(await api('/api/compound/v2/body-practice', { token: tokenA }));
     assert.ok(bodyPractice.practice.segments.length >= 5);
     assert.ok(bodyPractice.practice.segments.every(segment => segment.endSeconds - segment.startSeconds <= 120));

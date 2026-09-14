@@ -3,250 +3,121 @@
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
 		<view class="page-shell">
 			<view class="topbar">
-				<button class="round-button back-button" aria-label="返回" @tap="goBack">‹</button>
-				<view class="topbar-copy">
-					<text class="topbar-kicker">COMPOUND PORTFOLIO</text>
-					<text class="topbar-title">复利计划</text>
-				</view>
-				<button class="round-button add-button" aria-label="新建复利计划" :disabled="home.portfolio.activeCount >= 3" @tap="openNewPlan">+</button>
+				<button class="round-button" aria-label="返回" @tap="goBack">‹</button>
+				<view class="topbar-copy"><text class="topbar-kicker">COMPOUND SYSTEM</text><text class="topbar-title">复利系统</text></view>
+				<button class="round-button add-button" aria-label="发现新的复利项" :disabled="home.portfolio.activeCount >= 3" @tap="openNewPlan">+</button>
 			</view>
 
-			<view v-if="loading" class="state-card">
-				<view class="loading-dot"></view>
-				<text>正在读取你的时间配置</text>
-			</view>
-			<view v-else-if="loadError" class="state-card error">
-				<text>复利计划暂时没有读到</text>
-				<button class="dark-pill" @tap="loadHome">重新读取</button>
-			</view>
+			<view v-if="loading" class="state-card"><view class="loading-dot"></view><text>正在读取复利机会地图</text></view>
+			<view v-else-if="loadError" class="state-card error"><text>复利系统暂时没有读到</text><button class="dark-pill" @tap="loadAll">重新读取</button></view>
 
 			<template v-else>
-				<view class="portfolio-hero">
+				<view class="portfolio-hero" :class="{ empty: !home.plans.length }">
 					<text class="eyebrow">{{ weekRange }}</text>
-					<text class="portfolio-title">把有限时间，<br>投向会增长的事</text>
-					<text class="portfolio-copy">日记记录真实发生；这里决定接下来的时间投到哪里，以及什么先不做。</text>
-					<view class="week-ledger">
+					<text v-if="home.plans.length" class="portfolio-title">控制少数真正的积累</text>
+					<text v-else class="portfolio-title">从真正会积累的东西里，<br>找到适合你的</text>
+					<text class="portfolio-copy">{{ home.plans.length ? '这里管理时间、本金、复用回报与再投入；日记只记录真实发生。' : '你不需要先懂复利。先理解完整的复利原型，再选择它如何对应到你的生活。' }}</text>
+					<view v-if="home.plans.length" class="week-ledger">
 						<view><text>本周计划</text><text>{{ formatMinutes(home.portfolio.plannedMinutes) }}</text></view>
-						<view><text>已真实投入</text><text>{{ formatMinutes(home.portfolio.actualMinutes) }}</text></view>
-						<view><text>同时投资</text><text>{{ home.portfolio.activeCount }} / {{ home.portfolio.capacity }}</text></view>
+						<view><text>真实投入</text><text>{{ formatMinutes(home.portfolio.actualMinutes) }}</text></view>
+						<view><text>活动项</text><text>{{ home.portfolio.activeCount }} / {{ home.portfolio.capacity }}</text></view>
 					</view>
-					<view v-if="home.portfolio.plannedMinutes" class="portfolio-progress">
-						<view><view :style="{ width: boundedPercent(home.portfolio.utilizationPercent) + '%' }"></view></view>
-						<text>{{ home.portfolio.utilizationPercent }}%</text>
+				<view v-if="home.portfolio.plannedMinutes" class="portfolio-progress"><view><view :style="{ width: home.portfolio.utilizationWidth }"></view></view><text>{{ home.portfolio.utilizationPercent }}%</text></view>
+					<button v-if="!home.plans.length" class="hero-action" @tap="openCatalog">从复利机会地图开始</button>
+				</view>
+
+				<view v-if="showCatalog || !home.plans.length" class="catalog-panel">
+					<view class="panel-heading catalog-heading">
+						<view><text class="eyebrow">COMPOUND OPPORTUNITY MAP</text><text>选择一种积累机制</text></view>
+						<button v-if="home.plans.length" @tap="showCatalog = false">×</button>
 					</view>
-					<text v-if="home.portfolio.unplannedCount" class="allocation-note">{{ home.portfolio.unplannedCount }} 项计划还没有完成本周时间配置</text>
+					<text class="catalog-intro">这些是所有用户共享的复利原型，不是你的默认任务。选中后，才由你定义在现实中要积累什么。</text>
+					<view class="catalog-tabs">
+						<button :class="{ active: catalogMode === 'GROWTH' }" @tap="catalogMode = 'GROWTH'; selectedArchetype = null">直接产生积累 <text>{{ catalog.growth.length }}</text></button>
+						<button :class="{ active: catalogMode === 'PROTECTION' }" @tap="catalogMode = 'PROTECTION'; selectedArchetype = null">保护长期底盘 <text>{{ catalog.protection.length }}</text></button>
+					</view>
+					<view v-if="catalogMode === 'PROTECTION'" class="protection-note">保障项不伪装成无限增长；它用基线、恢复力和风险下降保护其他积累。</view>
+					<view class="archetype-grid">
+						<view v-for="(item, index) in catalogItems" :key="item.key" class="archetype-card" :class="{ selected: selectedArchetype && selectedArchetype.key === item.key }" @tap="selectArchetype(item)">
+							<view class="archetype-number">{{ padNumber(index + 1) }}</view>
+							<view class="archetype-copy"><text>{{ item.name }}</text><text>{{ item.summary }}</text></view>
+							<text class="archetype-arrow">›</text>
+						</view>
+					</view>
+					<view v-if="selectedArchetype" class="archetype-detail">
+						<view class="detail-head"><view><text>{{ selectedArchetype.category }}</text><text>{{ selectedArchetype.name }}</text></view><text>{{ selectedArchetype.kind === 'PROTECTION' ? '保障原型' : '增长原型' }}</text></view>
+						<view class="loop-statement"><text>为什么可能复利</text><text>{{ selectedArchetype.mechanism }}</text></view>
+						<view class="fit-grid"><view><text>适合</text><text>{{ selectedArchetype.fits }}</text></view><view><text>这不算</text><text>{{ selectedArchetype.notThis }}</text></view></view>
+						<view class="default-measures"><view><text>可积累的本金</text><text>{{ selectedArchetype.defaultPrincipalMetric }}</text></view><view><text>要寻找的回报</text><text>{{ selectedArchetype.defaultReturnMetric }}</text></view></view>
+						<view class="example-list"><text>可能的现实形态</text><text v-for="(example, exampleIndex) in selectedArchetype.examples" :key="exampleIndex">— {{ example }}</text></view>
+						<button class="primary-action" :disabled="home.portfolio.activeCount >= 3" @tap="startFromArchetype">看看它如何属于我</button>
+					</view>
 				</view>
 
 				<view v-if="showPlanEditor" class="editor-panel plan-editor">
-					<view class="panel-heading">
-						<view><text class="eyebrow">{{ editingPlanId ? 'REVISE THE BET' : 'MAKE A 12-WEEK BET' }}</text><text>{{ editingPlanId ? '修订这项投资' : '建立一项复利计划' }}</text></view>
-						<button @tap="closeEditors">×</button>
+					<view class="panel-heading"><view><text class="eyebrow">{{ editingPlanId ? 'REVISE THE HYPOTHESIS' : 'MAP IT TO MY LIFE' }}</text><text>{{ editingPlanId ? '修订这项复利假设' : '建立我的复利验证项' }}</text></view><button @tap="closeEditors">×</button></view>
+					<view class="chosen-archetype"><text>{{ currentArchetypeKindLabel }}</text><view><text>{{ currentArchetypeName }}</text><text>{{ currentArchetypeSummary }}</text></view></view>
+					<label class="editor-field"><text>在你的现实中，这项积累叫什么</text><input v-model="planDraft.title" maxlength="240" placeholder="不写“提升自己”，要说明具体对象" /></label>
+					<label class="editor-field"><text>每次投入后，会留下什么本金</text><textarea v-model="planDraft.principalDefinition" maxlength="1600" auto-height placeholder="例如：可复用的模板、经过验证的能力、共同上下文或真实本金" /></label>
+					<label class="editor-field"><text>旧积累将如何产生复用或回报</text><textarea v-model="planDraft.returnDefinition" maxlength="1600" auto-height placeholder="说明旧积累会怎样让下一次更快、更好或带来外部结果" /></label>
+					<label class="editor-field"><text>回报如何进入下一轮</text><textarea v-model="planDraft.reinvestmentDefinition" maxlength="1600" auto-height placeholder="节省的时间、新获得的机会或收益，将怎样重新成为本金" /></label>
+					<label class="editor-field"><text>这 12 周希望发生的可核对变化</text><textarea v-model="planDraft.desiredOutcome" maxlength="1200" auto-height placeholder="这是待验证假设，不是预先宣布复利成立" /></label>
+					<view class="metric-editor">
+						<view><text>本金增加</text><input v-model="planDraft.principalMetricName" maxlength="240" placeholder="指标名称" /><input v-model="planDraft.principalMetricTarget" type="digit" placeholder="12 周目标" /></view>
+						<view><text>复用 / 回报</text><input v-model="planDraft.returnMetricName" maxlength="240" placeholder="指标名称" /><input v-model="planDraft.returnMetricTarget" type="digit" placeholder="12 周目标" /></view>
 					</view>
-					<view v-if="!editingPlanId" class="editor-field">
-						<text>与哪个长期方向一致</text>
-						<picker :range="directionChoices" range-key="name" :value="directionIndex" @change="changeDirection">
-							<view class="select-field">{{ selectedDirectionName }}<text>⌄</text></view>
-						</picker>
-						<text class="field-help">方向只负责对齐价值，计划名称和结果由你自己定义。</text>
-					</view>
-					<label class="editor-field"><text>计划名称</text><input v-model="planDraft.title" maxlength="240" placeholder="例如：建立可复用的 AI 产品能力" /></label>
-					<label class="editor-field"><text>这 12 周要发生的变化</text><textarea v-model="planDraft.desiredOutcome" maxlength="1200" auto-height placeholder="不是愿望，要写成周期结束时能够核对的变化。" /></label>
-					<label class="editor-field"><text>为什么它会产生复利</text><textarea v-model="planDraft.compoundMechanism" maxlength="1600" auto-height placeholder="持续投入会积累什么？它如何让下一次更容易、更快或更有价值？" /></label>
-					<view class="two-column">
-						<label class="editor-field"><text>每周预算（分钟）</text><input v-model="planDraft.weeklyTimeBudgetMinutes" type="number" placeholder="180" /></label>
-						<label class="editor-field"><text>领先指标目标</text><input v-model="planDraft.leadingMetricTarget" type="digit" placeholder="12" /></label>
-					</view>
-					<label class="editor-field"><text>领先指标是什么</text><input v-model="planDraft.leadingMetricName" maxlength="240" placeholder="例如：完成并验证的产品迭代数" /></label>
-					<label class="editor-field"><text>周期结果用什么证明</text><textarea v-model="planDraft.outcomeEvidence" maxlength="1600" auto-height placeholder="例如：上线 3 个被真实用户持续使用的功能，并保留反馈。" /></label>
-					<label class="editor-field"><text>当前里程碑</text><input v-model="planDraft.currentMilestone" maxlength="1200" placeholder="现在最近的一段结果" /></label>
-					<label class="editor-field"><text>下一步</text><textarea v-model="planDraft.currentStep" maxlength="1000" auto-height placeholder="下一次可直接开始的具体动作" /></label>
-					<label class="editor-field"><text>这段时间明确不做</text><textarea v-model="planDraft.stopListText" maxlength="1800" auto-height placeholder="一行一项。没有取舍，就没有真正的时间投资。" /></label>
-					<view class="cycle-note"><text>默认周期</text><text>{{ planDraft.cycleStart }} → {{ planDraft.cycleEnd }}</text></view>
-					<button class="primary-action" :disabled="saving || !canSavePlan" @tap="savePlan">{{ saving ? '正在保存…' : (editingPlanId ? '保存计划修订' : '确认这项 12 周投资') }}</button>
-				</view>
-
-				<view v-if="home.needsOnboarding && !showPlanEditor" class="empty-state">
-					<text class="eyebrow">START WITH A BET</text>
-					<text class="empty-title">先决定一件<br>值得持续投入的事</text>
-					<text class="empty-copy">一项好计划必须同时说明：积累机制、每周时间、可观察进度，以及为了保护它暂时不做什么。</text>
-					<button class="primary-action" @tap="openNewPlan">建立第一项复利计划</button>
-					<view class="principle-list">
-						<view><text>01</text><text>最多同时 3 项，避免所有事都变成重点</text></view>
-						<view><text>02</text><text>看领先指标，也看最终证据，不用主观努力感替代结果</text></view>
-						<view><text>03</text><text>每周配置时间，日记只负责反馈现实</text></view>
-					</view>
+					<view class="two-column"><label class="editor-field"><text>每周时间预算（分钟）</text><input v-model="planDraft.weeklyTimeBudgetMinutes" type="number" placeholder="180" /></label><label class="editor-field"><text>当前里程碑</text><input v-model="planDraft.currentMilestone" maxlength="1200" placeholder="最近要验证的结果" /></label></view>
+					<label class="editor-field"><text>周期结果用什么证明</text><textarea v-model="planDraft.outcomeEvidence" maxlength="1600" auto-height placeholder="真实任务、外部评估、复用、节省时间、回访或运行数据" /></label>
+					<label class="editor-field"><text>现在的最小一步</text><textarea v-model="planDraft.currentStep" maxlength="1000" auto-height placeholder="下一次可直接开始的行动" /></label>
+					<label class="editor-field"><text>为了保护它，这段时间明确不做</text><textarea v-model="planDraft.stopListText" maxlength="1800" auto-height placeholder="一行一项" /></label>
+					<view class="validation-notice"><text>先验证 4 周</text><text>创建后只会标记为“验证中”。只有出现真实复用或回报证据，才能由你确认复利成立。</text></view>
+					<button class="primary-action" :disabled="saving || !canSavePlan" @tap="savePlan">{{ saving ? '正在保存…' : (editingPlanId ? '保存修订' : '开始 4 周验证') }}</button>
 				</view>
 
 				<template v-if="home.plans.length">
-					<view class="section-intro">
-						<view><text class="eyebrow">ACTIVE BETS</text><text>正在复利</text></view>
-						<text>最多 3 项</text>
-					</view>
-
-					<view v-for="(plan, index) in home.plans" :key="plan.id" class="plan-card" :class="{ primary: index === 0 }">
-						<view class="plan-head">
-							<view><text>{{ index === 0 ? '首要投资' : '并行投资 ' + (index + 1) }}</text><text>{{ plan.title }}</text></view>
-							<button @tap="openEditPlan(plan)">编辑</button>
-						</view>
+					<view class="section-intro"><view><text class="eyebrow">MY COMPOUND PORTFOLIO</text><text>我的复利项</text></view><button @tap="openCatalog">浏览全部原型</button></view>
+					<view v-for="(plan, index) in home.plans" :key="plan.id" class="plan-card" :class="{ primary: index === 0, protection: plan.investmentKind === 'PROTECTION' }">
+						<view class="plan-head"><view><text>{{ plan.archetype ? plan.archetype.name : '历史计划' }}</text><text>{{ plan.title }}</text></view><button @tap="openEditPlan(plan)">编辑</button></view>
+					<view class="validation-row"><text :class="{ validating: plan.validation.status === 'VALIDATING', compounding: plan.validation.status === 'COMPOUNDING', linear: plan.validation.status === 'LINEAR', protection: plan.validation.status === 'PROTECTION' }">{{ validationLabel(plan.validation.status) }}</text><text>{{ plan.investmentKind === 'PROTECTION' ? '保障型' : '增长型' }}</text><text v-if="plan.validation.dueAt">首次判断 {{ compactDate(plan.validation.dueAt) }}</text><button @tap="openValidation(plan)">更新判断</button></view>
 						<text class="plan-outcome">{{ plan.desiredOutcome }}</text>
-						<view class="mechanism" :class="{ missing: !plan.compoundMechanism }">
-							<text>复利机制</text>
-							<text>{{ plan.compoundMechanism || '这项旧计划还没有说明积累机制，建议补全后再增加投入。' }}</text>
+						<view class="compound-loop">
+							<view><text>01 本金</text><text>{{ plan.principalDefinition || plan.compoundMechanism }}</text></view>
+							<view><text>02 复用 / 回报</text><text>{{ plan.returnDefinition || '待补充' }}</text></view>
+							<view><text>03 再投入</text><text>{{ plan.reinvestmentDefinition || '待补充' }}</text></view>
 						</view>
-
-						<view class="metric-line">
-							<view>
-								<text>领先指标</text>
-								<text v-if="plan.leadingMetric.name">{{ plan.leadingMetric.name }}</text>
-								<text v-else>尚未配置</text>
-							</view>
-							<text v-if="plan.leadingMetric.target">{{ formatMetric(plan.leadingMetric.current) }} / {{ formatMetric(plan.leadingMetric.target) }}</text>
-							<text v-else>—</text>
+						<view class="metric-pair">
+							<view><text>本金增加</text><text>{{ plan.principalMetric.name || '待配置' }}</text><strong>{{ formatMetric(plan.principalMetric.current) }}<small> / {{ formatMetric(plan.principalMetric.target) }}</small></strong><view><view :style="{ width: plan.principalMetric.progressWidth }"></view></view></view>
+							<view><text>复用 / 回报</text><text>{{ plan.returnMetric.name || '待配置' }}</text><strong>{{ formatMetric(plan.returnMetric.current) }}<small> / {{ formatMetric(plan.returnMetric.target) }}</small></strong><view><view :style="{ width: plan.returnMetric.progressWidth }"></view></view></view>
 						</view>
-						<view v-if="plan.leadingMetric.progressPercent !== null" class="metric-progress">
-							<view :style="{ width: boundedPercent(plan.leadingMetric.progressPercent) + '%' }"></view>
-						</view>
-						<view class="plan-facts">
-							<view><text>本周时间</text><text>{{ formatMinutes(plan.week.actualMinutes) }} / {{ formatMinutes(plan.week.plannedMinutes || plan.weeklyTimeBudgetMinutes) }}</text></view>
-							<view><text>周期</text><text>{{ compactDate(plan.cycleStart) }} — {{ compactDate(plan.cycleEnd) }}</text></view>
-						</view>
-						<view class="milestone">
-							<text>当前里程碑</text>
-							<text>{{ plan.currentMilestone || plan.desiredOutcome }}</text>
-						</view>
-						<view v-if="plan.blockerSummary" class="bottleneck">
-							<text>当前瓶颈</text><text>{{ plan.blockerSummary }}</text>
-						</view>
-
+						<view class="plan-facts"><view><text>本周时间</text><text>{{ formatMinutes(plan.week.actualMinutes) }} / {{ formatMinutes(plan.week.plannedMinutes) }}</text></view><view><text>12 周周期</text><text>{{ compactDate(plan.cycleStart) }} — {{ compactDate(plan.cycleEnd) }}</text></view></view>
+						<view class="milestone"><text>当前里程碑</text><text>{{ plan.currentMilestone || plan.desiredOutcome }}</text></view>
 						<view class="week-plan">
-							<view class="week-plan-head">
-								<view><text>本周配置</text><text>{{ plan.week.actions.length ? completedActionCount(plan) + ' / ' + plan.week.actions.length + ' 项完成' : '还没有安排' }}</text></view>
-								<button @tap="openWeekEditor(plan)">{{ plan.week.actions.length ? '调整' : '安排本周' }}</button>
-							</view>
-							<view v-for="action in plan.week.actions" :key="action.id" class="week-action" :class="{ done: action.completed }">
-								<button class="action-check" :disabled="saving" @tap="toggleWeekAction(plan, action)">{{ action.completed ? '✓' : '' }}</button>
-								<button class="action-copy" @tap="openProgress(plan, action)"><text>{{ action.title }}</text><text>记录进展</text></button>
-								<button class="action-todo" @tap="createTask(plan, action)">待办</button>
-							</view>
-							<view v-if="!plan.week.actions.length" class="week-empty">
-								<text>把本周能真正完成的 1–3 件事和时间先留下。</text>
-								<button @tap="openWeekEditor(plan)">配置时间与行动</button>
-							</view>
+							<view class="week-plan-head"><view><text>本周配置</text><text>{{ plan.week.actions.length ? completedActionCount(plan) + ' / ' + plan.week.actions.length + ' 项完成' : '还没有安排' }}</text></view><button @tap="openWeekEditor(plan)">{{ plan.week.actions.length ? '调整' : '安排本周' }}</button></view>
+							<view v-for="action in plan.week.actions" :key="action.id" class="week-action" :class="{ done: action.completed }"><button class="action-check" :disabled="saving" @tap="toggleWeekAction(plan, action)">{{ action.completed ? '✓' : '' }}</button><button class="action-copy" @tap="openProgress(plan, action)"><text>{{ action.title }}</text><text>记录本金或回报</text></button><button class="action-todo" @tap="createTask(plan, action)">待办</button></view>
+							<view v-if="!plan.week.actions.length" class="week-empty"><text>先把本周真正愿意投入的时间和 1–3 个行动留下。</text><button @tap="openWeekEditor(plan)">配置时间与行动</button></view>
 						</view>
-
-						<view class="next-step">
-							<text>下一步</text>
-							<text>{{ plan.currentStep }}</text>
-							<view>
-								<button @tap="createTask(plan, null)">加入待办</button>
-								<button @tap="openProgress(plan, null)">记录进展</button>
-							</view>
-						</view>
-
-						<view v-if="combinedStopList(plan).length" class="stop-list">
-							<text>本周期先不做</text>
-							<text v-for="(item, stopIndex) in combinedStopList(plan)" :key="stopIndex">— {{ item }}</text>
-						</view>
-						<button class="bottleneck-trigger" @tap="openBlocker(plan)">当前计划卡住了，分析最大瓶颈 →</button>
+						<view class="next-step"><text>现在的最小一步</text><text>{{ plan.currentStep }}</text><view><button @tap="createTask(plan, null)">加入待办</button><button @tap="openProgress(plan, null)">记录进展</button></view></view>
+						<view v-if="combinedStopList(plan).length" class="stop-list"><text>本周主动不做</text><text v-for="(item, stopIndex) in combinedStopList(plan)" :key="stopIndex">— {{ item }}</text></view>
+						<button class="bottleneck-trigger" @tap="openBlocker(plan)">这项积累卡住了，分析最大瓶颈 →</button>
 					</view>
 				</template>
 
-				<view v-if="showWeekEditor" class="editor-panel">
-					<view class="panel-heading">
-						<view><text class="eyebrow">WEEKLY ALLOCATION</text><text>{{ selectedPlan.title }} · 本周配置</text></view>
-						<button @tap="closeEditors">×</button>
-					</view>
-					<label class="editor-field"><text>本周实际分给它多少分钟</text><input v-model="weekDraft.plannedMinutes" type="number" /></label>
-					<label class="editor-field"><text>本周要完成的 1–5 个行动</text><textarea v-model="weekDraft.actionsText" maxlength="1800" auto-height placeholder="一行一项；它们应该服务于里程碑，而不是填满时间。" /></label>
-					<label class="editor-field"><text>本周主动不做</text><textarea v-model="weekDraft.stopListText" maxlength="1200" auto-height placeholder="一行一项，保护已经分配的时间。" /></label>
-					<button class="primary-action" :disabled="saving || !weekDraft.actionsText.trim()" @tap="saveWeekPlan">{{ saving ? '正在保存…' : '确认本周时间配置' }}</button>
-				</view>
+				<view v-if="showWeekEditor" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">WEEKLY ALLOCATION</text><text>{{ selectedPlan.title }} · 本周配置</text></view><button @tap="closeEditors">×</button></view><label class="editor-field"><text>本周真实分给它多少分钟</text><input v-model="weekDraft.plannedMinutes" type="number" /></label><label class="editor-field"><text>本周要完成的 1–5 个行动</text><textarea v-model="weekDraft.actionsText" maxlength="1800" auto-height placeholder="一行一项；行动要用来增加本金或验证回报。" /></label><label class="editor-field"><text>本周主动不做</text><textarea v-model="weekDraft.stopListText" maxlength="1200" auto-height placeholder="一行一项" /></label><button class="primary-action" :disabled="saving || !weekDraft.actionsText.trim()" @tap="saveWeekPlan">{{ saving ? '正在保存…' : '确认本周配置' }}</button></view>
 
-				<view v-if="showProgressEditor" class="editor-panel progress-editor">
-					<view class="panel-heading">
-						<view><text class="eyebrow">REAL PROGRESS</text><text>{{ selectedPlan.title }} · 记录进展</text></view>
-						<button @tap="closeEditors">×</button>
-					</view>
-					<text v-if="progressDraft.weekActionTitle" class="linked-action">对应本周行动：{{ progressDraft.weekActionTitle }}</text>
-					<label class="editor-field"><text>实际发生了什么</text><textarea v-model="progressDraft.text" maxlength="5000" auto-height placeholder="写结果、事实或变化，不必把努力包装成成果。" /></label>
-					<view class="two-column">
-						<label class="editor-field"><text>投入分钟</text><input v-model="progressDraft.spentMinutes" type="number" placeholder="0" /></label>
-						<label class="editor-field"><text>领先指标增加</text><input v-model="progressDraft.leadingMetricDelta" type="digit" placeholder="0" /></label>
-					</view>
-					<button class="primary-action" :disabled="saving || !progressDraft.text.trim()" @tap="prepareProgress">{{ saving ? '正在整理…' : '整理并核对' }}</button>
-					<text class="boundary-note">AI 只整理这次记录，不替你判断整个计划成功，也不会自动改写目标。</text>
-				</view>
+				<view v-if="showProgressEditor" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">REAL EVIDENCE</text><text>{{ selectedPlan.title }} · 记录真实发生</text></view><button @tap="closeEditors">×</button></view><text v-if="progressDraft.weekActionTitle" class="linked-action">对应行动：{{ progressDraft.weekActionTitle }}</text><label class="editor-field"><text>发生了什么</text><textarea v-model="progressDraft.text" maxlength="5000" auto-height placeholder="写事实。AI 只会整理成可修改草稿。" /></label><view class="metric-editor"><view><text>投入时间（分钟）</text><input v-model="progressDraft.spentMinutes" type="number" placeholder="0" /></view><view><text>新增本金</text><input v-model="progressDraft.principalMetricDelta" type="digit" placeholder="0" /></view><view><text>新增复用 / 回报</text><input v-model="progressDraft.returnMetricDelta" type="digit" placeholder="0" /></view></view><button class="primary-action" :disabled="saving || !progressDraft.text.trim()" @tap="prepareProgress">{{ saving ? '正在整理…' : '整理成可确认记录' }}</button></view>
 
-				<view v-if="resultDraft" class="editor-panel confirm-panel">
-					<view class="panel-heading">
-						<view><text class="eyebrow">CONFIRM THE EVIDENCE</text><text>核对后再进入进度</text></view>
-						<button @tap="resultDraft = null">×</button>
-					</view>
-					<view class="state-options">
-						<button v-for="option in resultStates" :key="option.value" :class="{ active: resultDraft.payload.state === option.value }" @tap="resultDraft.payload.state = option.value">{{ option.label }}</button>
-					</view>
-					<label class="editor-field"><text>发生的事实</text><textarea v-model="resultDraft.payload.summary" maxlength="1800" auto-height /></label>
-					<label class="editor-field"><text>留下的结果或变化</text><textarea v-model="resultDraft.payload.actualResult" maxlength="2400" auto-height placeholder="没有可核对结果也可以诚实留空。" /></label>
-					<label class="editor-field"><text>下次从哪里继续</text><textarea v-model="resultDraft.payload.nextStep" maxlength="1000" auto-height /></label>
-					<view class="confirmation-ledger">
-						<view><text>实际投入</text><text>{{ formatMinutes(Number(progressDraft.spentMinutes) || 0) }}</text></view>
-						<view><text>{{ selectedPlan.leadingMetric.name || '领先指标' }}</text><text>+{{ Number(progressDraft.leadingMetricDelta) || 0 }}</text></view>
-					</view>
-					<button class="primary-action" :disabled="saving" @tap="confirmProgress">{{ saving ? '正在保存…' : '确认并计入计划进度' }}</button>
-				</view>
+				<view v-if="resultDraft" class="editor-panel result-editor"><view class="panel-heading"><view><text class="eyebrow">CONFIRM, DON'T ASSUME</text><text>确认证据后才计入</text></view><button @tap="resultDraft = null">×</button></view><label class="editor-field"><text>可观察的实际结果</text><textarea v-model="resultDraft.payload.actualResult" maxlength="1800" auto-height /></label><label class="editor-field"><text>下一步</text><textarea v-model="resultDraft.payload.nextStep" maxlength="1000" auto-height /></label><view class="confirm-ledger"><view><text>时间</text><text>{{ formatMinutes(progressDraft.spentMinutes) }}</text></view><view><text>{{ selectedPlan.principalMetric.name || '本金' }}</text><text>+{{ Number(progressDraft.principalMetricDelta) || 0 }}</text></view><view><text>{{ selectedPlan.returnMetric.name || '复用 / 回报' }}</text><text>+{{ Number(progressDraft.returnMetricDelta) || 0 }}</text></view></view><text class="confirmation-warning">数值必须是你能承担的真实记录；AI 不会自动证明复利。</text><button class="primary-action" :disabled="saving" @tap="confirmProgress">{{ saving ? '正在保存…' : '由我确认并计入' }}</button></view>
 
-				<view v-if="showBlockerEditor" class="editor-panel">
-					<view class="panel-heading">
-						<view><text class="eyebrow">BOTTLENECK</text><text>{{ selectedPlan.title }} · 最大瓶颈</text></view>
-						<button @tap="closeEditors">×</button>
-					</view>
-					<label class="editor-field"><text>具体卡在哪里</text><textarea v-model="blockerText" maxlength="1800" auto-height placeholder="缺材料、等待别人、方法无效、资源不足，还是这项投资本身不再值得？" /></label>
-					<button class="primary-action" :disabled="saving || !blockerText.trim()" @tap="submitBlocker">{{ saving ? '正在分析…' : '分析这一个瓶颈' }}</button>
-					<view v-if="blockerInsight" class="blocker-insight">
-						<text>判断</text><text>{{ blockerInsight.payload.analysis || blockerInsight.summary }}</text>
-						<text v-if="blockerInsight.payload.adjustedStep">建议调整为</text><text v-if="blockerInsight.payload.adjustedStep">{{ blockerInsight.payload.adjustedStep }}</text>
-						<button v-if="blockerInsight.payload.adjustedStep" :disabled="saving" @tap="adoptBlocker">由我确认采用这个下一步</button>
-					</view>
-				</view>
+				<view v-if="showValidationEditor" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">VALIDATION JUDGEMENT</text><text>{{ selectedPlan.title }} · 现在是什么</text></view><button @tap="closeEditors">×</button></view><text class="validation-guidance">这是对真实证据的判断，不是自我评分。没有复用或回报证据时，系统不允许宣布“复利已成立”。</text><view class="validation-options"><button v-for="option in validationOptions" :key="option.value" :class="{ active: validationDraft.status === option.value }" @tap="validationDraft.status = option.value"><text>{{ option.label }}</text><text>{{ option.description }}</text></button></view><label class="editor-field"><text>支持这个判断的证据</text><textarea v-model="validationDraft.note" maxlength="1600" auto-height placeholder="只写真实发生的复用、回报、基线变化或线性投入事实。" /></label><button class="primary-action" :disabled="saving || (validationDraft.status !== 'VALIDATING' && !validationDraft.note.trim())" @tap="saveValidation">{{ saving ? '正在保存…' : '确认当前判断' }}</button></view>
 
-				<view v-if="home.diarySuggestions.length" class="feedback-section">
-					<view class="section-intro">
-						<view><text class="eyebrow">REALITY FEEDBACK</text><text>来自日记的现实反馈</text></view>
-						<text>{{ home.diarySuggestions.length }}</text>
-					</view>
-					<view v-for="item in home.diarySuggestions" :key="item.linkId" class="diary-feedback">
-						<text>{{ item.sourceDate }} · {{ item.itemName }}</text>
-						<text>“{{ item.evidenceExcerpt }}”</text>
-						<view><button @tap="reviewDiary(item)">回看它怎样影响计划</button><button @tap="dismissDiary(item)">与计划无关</button></view>
-					</view>
-				</view>
+				<view v-if="showBlockerEditor" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">BOTTLENECK</text><text>{{ selectedPlan.title }} · 最大瓶颈</text></view><button @tap="closeEditors">×</button></view><label class="editor-field"><text>具体卡在哪里</text><textarea v-model="blockerText" maxlength="1800" auto-height placeholder="是本金没有留下、无人复用、回报无法再投入，还是这项本身不值得？" /></label><button class="primary-action" :disabled="saving || !blockerText.trim()" @tap="submitBlocker">{{ saving ? '正在分析…' : '分析这一个瓶颈' }}</button><view v-if="blockerInsight" class="blocker-insight"><text>判断</text><text>{{ blockerInsight.payload.analysis || blockerInsight.summary }}</text><text v-if="blockerInsight.payload.adjustedStep">建议调整为</text><text v-if="blockerInsight.payload.adjustedStep">{{ blockerInsight.payload.adjustedStep }}</text><button v-if="blockerInsight.payload.adjustedStep" :disabled="saving" @tap="adoptBlocker">由我确认采用</button></view></view>
 
-				<view v-if="diaryReviewDraft" class="editor-panel">
-					<view class="panel-heading">
-						<view><text class="eyebrow">JOURNAL FEEDBACK</text><text>事实与推测分开看</text></view>
-						<button @tap="diaryReviewDraft = null">×</button>
-					</view>
-					<view class="review-list"><text>日记支持的事实</text><text v-for="(fact, factIndex) in diaryReviewDraft.payload.facts" :key="factIndex">— {{ fact }}</text></view>
-					<view v-if="diaryReviewDraft.payload.inferences.length" class="review-list inference"><text>仍需验证</text><text v-for="(item, inferenceIndex) in diaryReviewDraft.payload.inferences" :key="inferenceIndex">— {{ item }}</text></view>
-					<label class="editor-field"><text>下次尝试</text><textarea v-model="diaryReviewDraft.payload.nextTry" maxlength="1000" auto-height /></label>
-					<button class="primary-action" :disabled="saving" @tap="confirmDiaryReview">确认作为下一次尝试</button>
-				</view>
+				<view v-if="home.diarySuggestions.length" class="feedback-section"><view class="section-intro"><view><text class="eyebrow">REALITY FEEDBACK</text><text>来自日记的现实反馈</text></view><text>{{ home.diarySuggestions.length }}</text></view><view v-for="item in home.diarySuggestions" :key="item.linkId" class="diary-feedback"><text>{{ item.sourceDate }} · {{ item.itemName }}</text><text>“{{ item.evidenceExcerpt }}”</text><view><button @tap="reviewDiary(item)">回看它怎样影响计划</button><button @tap="dismissDiary(item)">与计划无关</button></view></view></view>
+				<view v-if="diaryReviewDraft" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">JOURNAL FEEDBACK</text><text>事实与推测分开看</text></view><button @tap="diaryReviewDraft = null">×</button></view><view class="review-list"><text>日记支持的事实</text><text v-for="(fact, factIndex) in diaryReviewDraft.payload.facts" :key="factIndex">— {{ fact }}</text></view><label class="editor-field"><text>下次尝试</text><textarea v-model="diaryReviewDraft.payload.nextTry" maxlength="1000" auto-height /></label><button class="primary-action" :disabled="saving" @tap="confirmDiaryReview">确认作为下一次尝试</button></view>
 
-				<view v-if="home.recentResults.length" class="recent-section">
-					<view class="section-intro"><view><text class="eyebrow">PROGRESS LOG</text><text>近期真实进展</text></view></view>
-					<view v-for="item in home.recentResults" :key="item.id" class="result-row">
-						<view><text>{{ item.itemName }}</text><text>{{ eventTime(item.createdAt) }}</text></view>
-						<text>{{ item.payload.actualResult || item.summary }}</text>
-						<view class="result-meta"><text v-if="item.payload.spentMinutes">投入 {{ formatMinutes(item.payload.spentMinutes) }}</text><text v-if="item.payload.leadingMetricDelta">指标 +{{ item.payload.leadingMetricDelta }}</text></view>
-					</view>
-				</view>
+				<view v-if="home.recentResults.length" class="recent-section"><view class="section-intro"><view><text class="eyebrow">EVIDENCE LOG</text><text>近期真实证据</text></view></view><view v-for="item in home.recentResults" :key="item.id" class="result-row"><view><text>{{ item.itemName }}</text><text>{{ eventTime(item.createdAt) }}</text></view><text>{{ item.payload.actualResult || item.summary }}</text><view class="result-meta"><text v-if="item.payload.spentMinutes">投入 {{ formatMinutes(item.payload.spentMinutes) }}</text><text v-if="item.payload.principalMetricDelta">本金 +{{ item.payload.principalMetricDelta }}</text><text v-if="item.payload.returnMetricDelta">回报 +{{ item.payload.returnMetricDelta }}</text></view></view></view>
 
-				<view class="secondary-links">
-					<button @tap="openReview"><view><text>阶段回看</text><text>检验计划、方法和真实结果</text></view><text>›</text></button>
-					<button @tap="openYogaPractice"><view><text>每日自主练习</text><text>已有的身体练习保留为可选工具</text></view><text>›</text></button>
-					<button @tap="openDirections"><view><text>长期方向</text><text>只负责价值对齐，不代替计划</text></view><text>›</text></button>
-					<button @tap="openPrinciples"><view><text>人生 OS</text><text>决定什么才叫“更好”</text></view><text>›</text></button>
-				</view>
+				<view class="secondary-links"><button @tap="openReview"><view><text>阶段回看</text><text>用真实证据判断复利、线性积累或停止</text></view><text>›</text></button><button @tap="openYogaPractice"><view><text>身体练习</text><text>保障身体底盘的可选工具</text></view><text>›</text></button><button @tap="openPrinciples"><view><text>人生 OS</text><text>决定什么值得，但不自动创建复利项</text></view><text>›</text></button></view>
 				<view class="privacy-note"><view></view><text>{{ home.privacy }}</text></view>
 			</template>
 		</view>
@@ -255,1367 +126,151 @@
 
 <script>
 import {
-	compoundBlocker,
-	compoundDiaryDismiss,
-	compoundDiaryReview,
-	compoundDiaryReviewConfirm,
-	compoundHome,
-	compoundPlan,
-	compoundPlanWeek,
-	compoundPlanWeekAction,
-	compoundResultConfirm,
-	compoundResultDraft,
-	compoundSuggestionAdopt,
-	compoundThreadPrimary,
-	compoundThreads
+	compoundArchetypes, compoundBlocker, compoundDiaryDismiss, compoundDiaryReview,
+	compoundDiaryReviewConfirm, compoundHome, compoundPlan, compoundPlanValidation,
+	compoundPlanWeek, compoundPlanWeekAction, compoundResultConfirm, compoundResultDraft,
+	compoundSuggestionAdopt, compoundThreadPrimary, compoundThreads
 } from '@/api/compound-system';
 
-function pad(value) {
-	return String(value).padStart(2, '0');
+function pad(value) { return String(value).padStart(2, '0'); }
+function localDate(value) { const date = value ? new Date(value + 'T12:00:00') : new Date(); return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()); }
+function addDays(value, count) { const date = new Date(localDate(value) + 'T12:00:00'); date.setDate(date.getDate() + count); return localDate(date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())); }
+function freshHome() { return { needsOnboarding: true, plans: [], diarySuggestions: [], recentResults: [], portfolio: { activeCount: 0, capacity: 3, weekStart: '', weekEnd: '', plannedMinutes: 0, actualMinutes: 0, utilizationPercent: 0, unplannedCount: 0 }, privacy: '复利计划、时间配置、进度与回看仅本人可见，不进入发现。' }; }
+function percentWidth(value) { return Math.max(0, Math.min(100, Number(value) || 0)) + '%'; }
+function decorateHome(value) {
+	const home = { ...freshHome(), ...(value || {}) };
+	home.portfolio = { ...freshHome().portfolio, ...(home.portfolio || {}) };
+	home.portfolio.utilizationWidth = percentWidth(home.portfolio.utilizationPercent);
+	home.plans = (home.plans || []).map(plan => ({
+		...plan,
+		principalMetric: { ...(plan.principalMetric || {}), progressWidth: percentWidth(plan.principalMetric && plan.principalMetric.progressPercent) },
+		returnMetric: { ...(plan.returnMetric || {}), progressWidth: percentWidth(plan.returnMetric && plan.returnMetric.progressPercent) }
+	}));
+	return home;
 }
-
-function localDate(value) {
-	const date = value ? new Date(value + 'T12:00:00') : new Date();
-	return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
-}
-
-function addDays(value, count) {
-	const date = new Date(localDate(value) + 'T12:00:00');
-	date.setDate(date.getDate() + count);
-	return localDate(date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()));
-}
-
-function freshHome() {
-	return {
-		needsOnboarding: true,
-		current: null,
-		plans: [],
-		diarySuggestions: [],
-		recentResults: [],
-		portfolio: {
-			activeCount: 0,
-			capacity: 3,
-			weekStart: '',
-			weekEnd: '',
-			plannedMinutes: 0,
-			actualMinutes: 0,
-			utilizationPercent: 0,
-			unplannedCount: 0
-		},
-		directionCandidates: [],
-		privacy: '复利计划、时间配置、进度与回看仅本人可见，不进入发现。'
-	};
-}
-
-function freshPlanDraft() {
-	const start = localDate();
-	return {
-		title: '',
-		desiredOutcome: '',
-		compoundMechanism: '',
-		weeklyTimeBudgetMinutes: 180,
-		leadingMetricName: '',
-		leadingMetricTarget: '',
-		outcomeEvidence: '',
-		currentMilestone: '',
-		currentStep: '',
-		stopListText: '',
-		cycleStart: start,
-		cycleEnd: addDays(start, 83)
-	};
-}
+function freshPlanDraft() { const start = localDate(); return { archetypeKey: '', title: '', desiredOutcome: '', principalDefinition: '', returnDefinition: '', reinvestmentDefinition: '', weeklyTimeBudgetMinutes: 180, principalMetricName: '', principalMetricTarget: '', returnMetricName: '', returnMetricTarget: '', outcomeEvidence: '', currentMilestone: '', currentStep: '', stopListText: '', cycleStart: start, cycleEnd: addDays(start, 83) }; }
 
 export default {
 	data() {
 		return {
-			statusBarHeight: 0,
-			loading: true,
-			loadError: false,
-			saving: false,
-			home: freshHome(),
-			showPlanEditor: false,
-			showWeekEditor: false,
-			showProgressEditor: false,
-			showBlockerEditor: false,
-			editingPlanId: '',
-			directionIndex: 0,
-			selectedPlan: null,
-			planDraft: freshPlanDraft(),
-			weekDraft: { plannedMinutes: 180, actionsText: '', stopListText: '' },
-			progressDraft: { text: '', spentMinutes: '', leadingMetricDelta: '', weekActionId: '', weekActionTitle: '' },
-			resultDraft: null,
-			blockerText: '',
-			blockerInsight: null,
-			diaryReviewDraft: null,
-			resultStates: [
-				{ value: 'DONE', label: '已经发生' },
-				{ value: 'EFFECTIVE', label: '已有成效' },
-				{ value: 'UNVERIFIED', label: '效果待验证' },
-				{ value: 'PREPARING', label: '只是准备' }
-			]
+			statusBarHeight: 0, loading: true, loadError: false, saving: false,
+			home: freshHome(), catalog: { growth: [], protection: [] }, catalogMode: 'GROWTH',
+			showCatalog: false, selectedArchetype: null, showPlanEditor: false,
+			showWeekEditor: false, showProgressEditor: false, showValidationEditor: false,
+			showBlockerEditor: false, editingPlanId: '', selectedPlan: null,
+			planDraft: freshPlanDraft(), weekDraft: { plannedMinutes: 180, actionsText: '', stopListText: '' },
+			progressDraft: { text: '', spentMinutes: '', principalMetricDelta: '', returnMetricDelta: '', weekActionId: '', weekActionTitle: '' },
+			resultDraft: null, validationDraft: { status: 'VALIDATING', note: '' }, blockerText: '', blockerInsight: null, diaryReviewDraft: null
 		};
 	},
 	computed: {
-		directionChoices() {
-			return this.home.directionCandidates || [];
-		},
-		selectedDirectionName() {
-			const item = this.directionChoices[this.directionIndex];
-			return item ? item.name : '请选择长期方向';
-		},
-		weekRange() {
-			const portfolio = this.home.portfolio || {};
-			if (!portfolio.weekStart) return 'THIS WEEK';
-			return '本周 · ' + this.compactDate(portfolio.weekStart) + ' — ' + this.compactDate(portfolio.weekEnd);
-		},
-		canSavePlan() {
-			const draft = this.planDraft;
-			const directionReady = Boolean(this.editingPlanId || this.directionChoices[this.directionIndex]);
-			return directionReady && Boolean(
-				draft.title.trim()
-				&& draft.desiredOutcome.trim()
-				&& draft.compoundMechanism.trim()
-				&& Number(draft.weeklyTimeBudgetMinutes) > 0
-				&& draft.leadingMetricName.trim()
-				&& Number(draft.leadingMetricTarget) > 0
-				&& draft.outcomeEvidence.trim()
-				&& draft.currentMilestone.trim()
-				&& draft.currentStep.trim()
-			);
+		catalogItems() { return this.catalogMode === 'PROTECTION' ? this.catalog.protection : this.catalog.growth; },
+		weekRange() { const p = this.home.portfolio || {}; return p.weekStart ? '本周 · ' + this.compactDate(p.weekStart) + ' — ' + this.compactDate(p.weekEnd) : 'COMPOUND OPPORTUNITY MAP'; },
+		currentArchetype() { return this.selectedArchetype || (this.selectedPlan && this.selectedPlan.archetype) || null; },
+		currentArchetypeName() { return this.currentArchetype ? this.currentArchetype.name : '历史计划'; },
+		currentArchetypeSummary() { return this.currentArchetype ? this.currentArchetype.summary : '这项历史计划可以继续修订，新计划将从通用原型建立。'; },
+		currentArchetypeKindLabel() { const item = this.currentArchetype; return item && item.kind === 'PROTECTION' ? '底盘保障' : '直接积累'; },
+		canSavePlan() { const d = this.planDraft; return Boolean((this.editingPlanId || d.archetypeKey) && d.title.trim() && d.desiredOutcome.trim() && d.principalDefinition.trim() && d.returnDefinition.trim() && d.reinvestmentDefinition.trim() && Number(d.weeklyTimeBudgetMinutes) > 0 && d.principalMetricName.trim() && Number(d.principalMetricTarget) > 0 && d.returnMetricName.trim() && Number(d.returnMetricTarget) > 0 && d.outcomeEvidence.trim() && d.currentMilestone.trim() && d.currentStep.trim()); },
+		validationOptions() {
+			if (this.selectedPlan && this.selectedPlan.investmentKind === 'PROTECTION') return [
+				{ value: 'VALIDATING', label: '继续验证', description: '还需要更多基线和变化证据' },
+				{ value: 'PROTECTION', label: '保障有效', description: '已经观察到恢复力、稳定性或风险下降' }
+			];
+			return [
+				{ value: 'VALIDATING', label: '继续验证', description: '还不知道是否真的复利' },
+				{ value: 'LINEAR', label: '目前线性', description: '有投入和积累，但旧积累还没有产生回报' },
+				{ value: 'COMPOUNDING', label: '复利已出现', description: '已有可核对的复用或回报证据' }
+			];
 		}
 	},
-	onLoad() {
-		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
-	},
-	onShow() {
-		this.loadHome();
-	},
+	onLoad() { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; },
+	onShow() { this.loadAll(); },
 	methods: {
-		async loadHome() {
-			this.loading = true;
-			this.loadError = false;
-			try {
-				const response = await this.$http.get(compoundHome);
-				this.home = { ...freshHome(), ...(response.data || {}) };
-			} catch (error) {
-				this.loadError = true;
-				console.error('加载复利计划失败', error);
-			} finally {
-				this.loading = false;
-			}
-		},
-		changeDirection(event) {
-			this.directionIndex = Number(event.detail.value) || 0;
-		},
-		openNewPlan() {
-			if ((this.home.portfolio.activeCount || 0) >= 3) {
-				uni.showToast({ title: '同时只保留 3 项投资，请先调整现有计划', icon: 'none' });
-				return;
-			}
-			if (!this.directionChoices.length) {
-				uni.showToast({ title: '暂时没有可关联的长期方向', icon: 'none' });
-				return;
-			}
-			this.closeEditors();
-			this.editingPlanId = '';
-			this.directionIndex = 0;
-			this.planDraft = freshPlanDraft();
-			this.showPlanEditor = true;
-			this.scrollToEditors();
-		},
-		openEditPlan(plan) {
-			this.closeEditors();
-			this.editingPlanId = plan.id;
-			this.selectedPlan = plan;
-			this.planDraft = {
-				title: plan.title || '',
-				desiredOutcome: plan.desiredOutcome || '',
-				compoundMechanism: plan.compoundMechanism || '',
-				weeklyTimeBudgetMinutes: plan.weeklyTimeBudgetMinutes || 180,
-				leadingMetricName: plan.leadingMetric.name || '',
-				leadingMetricTarget: plan.leadingMetric.target || '',
-				outcomeEvidence: plan.outcomeEvidence || '',
-				currentMilestone: plan.currentMilestone || '',
-				currentStep: plan.currentStep || '',
-				stopListText: (plan.stopList || []).join('\n'),
-				cycleStart: plan.cycleStart,
-				cycleEnd: plan.cycleEnd
-			};
-			this.showPlanEditor = true;
-			this.scrollToEditors();
-		},
-		planPayload() {
-			const draft = this.planDraft;
-			const direction = this.directionChoices[this.directionIndex];
-			return {
-				itemKey: direction ? direction.stableKey : undefined,
-				title: draft.title.trim(),
-				desiredOutcome: draft.desiredOutcome.trim(),
-				compoundMechanism: draft.compoundMechanism.trim(),
-				weeklyTimeBudgetMinutes: Math.round(Number(draft.weeklyTimeBudgetMinutes) || 0),
-				leadingMetricName: draft.leadingMetricName.trim(),
-				leadingMetricTarget: Number(draft.leadingMetricTarget) || 0,
-				outcomeEvidence: draft.outcomeEvidence.trim(),
-				currentMilestone: draft.currentMilestone.trim(),
-				currentStep: draft.currentStep.trim(),
-				stopList: this.splitLines(draft.stopListText, 8),
-				cycleStart: draft.cycleStart,
-				cycleEnd: draft.cycleEnd,
-				contextReason: '由用户建立的 12 周复利计划'
-			};
-		},
-		async savePlan() {
-			if (this.saving || !this.canSavePlan) return;
-			this.saving = true;
-			try {
-				const payload = this.planPayload();
-				if (this.editingPlanId) await this.$http.patch(compoundPlan(this.editingPlanId), payload);
-				else await this.$http.post(compoundThreads, payload);
-				this.closeEditors();
-				await this.loadHome();
-				uni.showToast({ title: this.editingPlanId ? '计划已修订' : '复利计划已建立', icon: 'success' });
-			} catch (error) {
-				uni.showToast({ title: error.message || '计划没有保存成功', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		openWeekEditor(plan) {
-			this.closeEditors();
-			this.selectedPlan = plan;
-			this.weekDraft = {
-				plannedMinutes: plan.week.plannedMinutes || plan.weeklyTimeBudgetMinutes || 180,
-				actionsText: (plan.week.actions || []).map(item => item.title).join('\n'),
-				stopListText: (plan.week.stopList || []).join('\n')
-			};
-			this.showWeekEditor = true;
-			this.scrollToEditors();
-		},
-		async saveWeekPlan() {
-			if (!this.selectedPlan || this.saving) return;
-			const actions = this.splitLines(this.weekDraft.actionsText, 5);
-			if (!actions.length || Number(this.weekDraft.plannedMinutes) <= 0) return;
-			this.saving = true;
-			try {
-				await this.$http.put(compoundPlanWeek(this.selectedPlan.id), {
-					plannedMinutes: Math.round(Number(this.weekDraft.plannedMinutes)),
-					actions,
-					stopList: this.splitLines(this.weekDraft.stopListText, 8)
-				});
-				this.closeEditors();
-				await this.loadHome();
-				uni.showToast({ title: '本周配置已保存', icon: 'success' });
-			} catch (error) {
-				uni.showToast({ title: error.message || '本周配置没有保存成功', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async toggleWeekAction(plan, action) {
-			if (this.saving) return;
-			this.saving = true;
-			try {
-				await this.$http.patch(compoundPlanWeekAction(plan.id, action.id), { completed: !action.completed });
-				action.completed = !action.completed;
-			} catch (error) {
-				uni.showToast({ title: '行动状态没有保存成功', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		openProgress(plan, action) {
-			this.closeEditors();
-			this.selectedPlan = plan;
-			this.progressDraft = {
-				text: action ? action.title + '：' : '',
-				spentMinutes: action && action.plannedMinutes ? action.plannedMinutes : '',
-				leadingMetricDelta: '',
-				weekActionId: action ? action.id : '',
-				weekActionTitle: action ? action.title : ''
-			};
-			this.showProgressEditor = true;
-			this.scrollToEditors();
-		},
-		async prepareProgress() {
-			if (!this.selectedPlan || !this.progressDraft.text.trim() || this.saving) return;
-			this.saving = true;
-			try {
-				const response = await this.$http.post(compoundResultDraft(this.selectedPlan.id), {
-					text: this.progressDraft.text,
-					mediaIds: []
-				});
-				this.resultDraft = response.data.event;
-				this.showProgressEditor = false;
-			} catch (error) {
-				uni.showToast({ title: '这次进展没有整理好，请重试', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async confirmProgress() {
-			if (!this.selectedPlan || !this.resultDraft || this.saving) return;
-			this.saving = true;
-			try {
-				await this.$http.post(compoundResultConfirm(this.selectedPlan.id, this.resultDraft.id), {
-					...this.resultDraft.payload,
-					closeMode: 'CONTINUE',
-					spentMinutes: Math.round(Number(this.progressDraft.spentMinutes) || 0),
-					leadingMetricDelta: Number(this.progressDraft.leadingMetricDelta) || 0,
-					weekActionId: this.progressDraft.weekActionId
-				});
-				this.resultDraft = null;
-				this.selectedPlan = null;
-				await this.loadHome();
-				uni.showToast({ title: '已计入真实进度', icon: 'success' });
-			} catch (error) {
-				uni.showToast({ title: error.message || '进展没有保存成功', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		openBlocker(plan) {
-			this.closeEditors();
-			this.selectedPlan = plan;
-			this.blockerText = plan.blockerSummary || '';
-			this.blockerInsight = null;
-			this.showBlockerEditor = true;
-			this.scrollToEditors();
-		},
-		async submitBlocker() {
-			if (!this.selectedPlan || !this.blockerText.trim() || this.saving) return;
-			this.saving = true;
-			try {
-				await this.$http.post(compoundThreadPrimary(this.selectedPlan.id), {});
-				const response = await this.$http.post(compoundBlocker(this.selectedPlan.id), { blocker: this.blockerText });
-				this.blockerInsight = response.data.event;
-			} catch (error) {
-				uni.showToast({ title: '瓶颈暂时没有分析完成', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async adoptBlocker() {
-			if (!this.selectedPlan || !this.blockerInsight || this.saving) return;
-			this.saving = true;
-			try {
-				await this.$http.post(
-					compoundSuggestionAdopt(this.selectedPlan.id, this.blockerInsight.id),
-					{ currentStep: this.blockerInsight.payload.adjustedStep }
-				);
-				this.closeEditors();
-				await this.loadHome();
-				uni.showToast({ title: '已采用调整后的下一步', icon: 'success' });
-			} catch (error) {
-				uni.showToast({ title: '调整没有保存成功', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async reviewDiary(item) {
-			if (!this.home.current || this.saving) return;
-			this.saving = true;
-			try {
-				const response = await this.$http.post(compoundDiaryReview(this.home.current.id, item.linkId), {});
-				this.diaryReviewDraft = response.data.event;
-			} catch (error) {
-				uni.showToast({ title: '这次日记暂时没有回看完成', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async confirmDiaryReview() {
-			if (!this.home.current || !this.diaryReviewDraft || this.saving) return;
-			this.saving = true;
-			try {
-				await this.$http.post(
-					compoundDiaryReviewConfirm(this.home.current.id, this.diaryReviewDraft.id),
-					this.diaryReviewDraft.payload
-				);
-				this.diaryReviewDraft = null;
-				await this.loadHome();
-				uni.showToast({ title: '现实反馈已接入计划', icon: 'success' });
-			} catch (error) {
-				uni.showToast({ title: '这次反馈没有保存成功', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		async dismissDiary(item) {
-			if (!this.home.current || this.saving) return;
-			this.saving = true;
-			try {
-				await this.$http.post(compoundDiaryDismiss(this.home.current.id, item.linkId), {});
-				await this.loadHome();
-			} catch (error) {
-				uni.showToast({ title: '暂时没能忽略这条关联', icon: 'none' });
-			} finally {
-				this.saving = false;
-			}
-		},
-		createTask(plan, action) {
-			const title = action ? action.title : plan.currentStep;
-			uni.setStorageSync('todoPrefill', {
-				title,
-				description: '服务于复利计划：' + plan.title + '\n\n12 周结果：' + plan.desiredOutcome,
-				compoundItemId: plan.itemId,
-				sourceType: 'COMPOUND',
-				sourceRefId: plan.id,
-				sourceCompoundThreadId: plan.id
-			});
-			uni.navigateTo({ url: '/pages/todo/list' });
-		},
-		closeEditors() {
-			this.showPlanEditor = false;
-			this.showWeekEditor = false;
-			this.showProgressEditor = false;
-			this.showBlockerEditor = false;
-			this.resultDraft = null;
-			this.blockerInsight = null;
-			this.diaryReviewDraft = null;
-		},
-		scrollToEditors() {
-			setTimeout(() => uni.pageScrollTo({ scrollTop: 330, duration: 240 }), 40);
-		},
-		splitLines(value, max) {
-			return String(value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean).slice(0, max);
-		},
-		combinedStopList(plan) {
-			const source = (plan.week.stopList && plan.week.stopList.length) ? plan.week.stopList : plan.stopList;
-			return (source || []).slice(0, 5);
-		},
-		completedActionCount(plan) {
-			return (plan.week.actions || []).filter(item => item.completed).length;
-		},
-		boundedPercent(value) {
-			return Math.max(0, Math.min(100, Number(value) || 0));
-		},
-		formatMetric(value) {
-			const number = Number(value) || 0;
-			return Number.isInteger(number) ? String(number) : number.toFixed(1);
-		},
-		formatMinutes(value) {
-			const minutes = Math.max(0, Math.round(Number(value) || 0));
-			if (minutes < 60) return minutes + ' 分钟';
-			const hours = Math.floor(minutes / 60);
-			const remainder = minutes % 60;
-			return remainder ? hours + ' 小时 ' + remainder + ' 分' : hours + ' 小时';
-		},
-		compactDate(value) {
-			return String(value || '').slice(5).replace('-', '.');
-		},
-		eventTime(value) {
-			return String(value || '').replace('T', ' ').slice(0, 16);
-		},
-		openReview() {
-			uni.navigateTo({ url: '/pages/shroom/life-os-weekly' });
-		},
-		openYogaPractice() {
-			uni.navigateTo({ url: '/pages/shroom/yoga-practice' });
-		},
-		openDirections() {
-			uni.navigateTo({ url: '/pages/shroom/life-os-plan' });
-		},
-		openPrinciples() {
-			uni.navigateTo({ url: '/pages/shroom/life-os' });
-		},
-		goBack() {
-			const pages = getCurrentPages();
-			if (pages.length > 1) uni.navigateBack();
-			else uni.switchTab({ url: '/pages/diary/index' });
-		}
+		async loadAll() { this.loading = true; this.loadError = false; try { const results = await Promise.all([this.$http.get(compoundHome), this.$http.get(compoundArchetypes)]); this.home = decorateHome(results[0].data); this.catalog = { growth: results[1].data.growth || [], protection: results[1].data.protection || [] }; } catch (error) { this.loadError = true; console.error('加载复利系统失败', error); } finally { this.loading = false; } },
+		openCatalog() { if (this.home.portfolio.activeCount >= 3) return uni.showToast({ title: '同时最多验证 3 项', icon: 'none' }); this.closeEditors(); this.showCatalog = true; this.selectedArchetype = null; this.scrollTo(300); },
+		openNewPlan() { this.openCatalog(); },
+		selectArchetype(item) { this.selectedArchetype = item; setTimeout(() => this.scrollTo(700), 40); },
+		startFromArchetype() { if (!this.selectedArchetype) return; const item = this.selectedArchetype; this.editingPlanId = ''; this.selectedPlan = null; this.planDraft = { ...freshPlanDraft(), archetypeKey: item.key, principalMetricName: item.defaultPrincipalMetric, returnMetricName: item.defaultReturnMetric }; this.showCatalog = false; this.showPlanEditor = true; this.scrollTo(320); },
+		openEditPlan(plan) { this.closeEditors(); this.editingPlanId = plan.id; this.selectedPlan = plan; this.selectedArchetype = plan.archetype || null; this.planDraft = { archetypeKey: plan.archetypeKey || '', title: plan.title || '', desiredOutcome: plan.desiredOutcome || '', principalDefinition: plan.principalDefinition || plan.compoundMechanism || '', returnDefinition: plan.returnDefinition || plan.outcomeEvidence || '', reinvestmentDefinition: plan.reinvestmentDefinition || '由阶段回看确认如何再投入', weeklyTimeBudgetMinutes: plan.weeklyTimeBudgetMinutes || 180, principalMetricName: plan.principalMetric.name || plan.leadingMetric.name || '', principalMetricTarget: plan.principalMetric.target || plan.leadingMetric.target || '', returnMetricName: plan.returnMetric.name || '', returnMetricTarget: plan.returnMetric.target || '', outcomeEvidence: plan.outcomeEvidence || '', currentMilestone: plan.currentMilestone || '', currentStep: plan.currentStep || '', stopListText: (plan.stopList || []).join('\n'), cycleStart: plan.cycleStart, cycleEnd: plan.cycleEnd }; this.showPlanEditor = true; this.scrollTo(320); },
+		planPayload() { const d = this.planDraft; return { archetypeKey: this.editingPlanId ? undefined : d.archetypeKey, title: d.title.trim(), desiredOutcome: d.desiredOutcome.trim(), principalDefinition: d.principalDefinition.trim(), returnDefinition: d.returnDefinition.trim(), reinvestmentDefinition: d.reinvestmentDefinition.trim(), compoundMechanism: [d.principalDefinition, d.returnDefinition, d.reinvestmentDefinition].map(v => v.trim()).join('\n'), weeklyTimeBudgetMinutes: Math.round(Number(d.weeklyTimeBudgetMinutes) || 0), principalMetricName: d.principalMetricName.trim(), principalMetricTarget: Number(d.principalMetricTarget) || 0, returnMetricName: d.returnMetricName.trim(), returnMetricTarget: Number(d.returnMetricTarget) || 0, leadingMetricName: d.principalMetricName.trim(), leadingMetricTarget: Number(d.principalMetricTarget) || 0, outcomeEvidence: d.outcomeEvidence.trim(), currentMilestone: d.currentMilestone.trim(), currentStep: d.currentStep.trim(), stopList: this.splitLines(d.stopListText, 8), cycleStart: d.cycleStart, cycleEnd: d.cycleEnd, contextReason: '用户从通用复利原型建立的私人验证项' }; },
+		async savePlan() { if (this.saving || !this.canSavePlan) return; this.saving = true; try { const payload = this.planPayload(); if (this.editingPlanId) await this.$http.patch(compoundPlan(this.editingPlanId), payload); else await this.$http.post(compoundThreads, payload); this.closeEditors(); await this.loadAll(); uni.showToast({ title: this.editingPlanId ? '计划已修订' : '已开始验证', icon: 'success' }); } catch (error) { uni.showToast({ title: error.message || '计划没有保存成功', icon: 'none' }); } finally { this.saving = false; } },
+		openWeekEditor(plan) { this.closeEditors(); this.selectedPlan = plan; this.weekDraft = { plannedMinutes: plan.week.plannedMinutes || plan.weeklyTimeBudgetMinutes || 180, actionsText: (plan.week.actions || []).map(item => item.title).join('\n'), stopListText: (plan.week.stopList || []).join('\n') }; this.showWeekEditor = true; this.scrollTo(320); },
+		async saveWeekPlan() { if (!this.selectedPlan || this.saving) return; const actions = this.splitLines(this.weekDraft.actionsText, 5); if (!actions.length || Number(this.weekDraft.plannedMinutes) <= 0) return; this.saving = true; try { await this.$http.put(compoundPlanWeek(this.selectedPlan.id), { plannedMinutes: Math.round(Number(this.weekDraft.plannedMinutes)), actions, stopList: this.splitLines(this.weekDraft.stopListText, 8) }); this.closeEditors(); await this.loadAll(); uni.showToast({ title: '本周配置已保存', icon: 'success' }); } catch (error) { uni.showToast({ title: error.message || '本周配置没有保存', icon: 'none' }); } finally { this.saving = false; } },
+		async toggleWeekAction(plan, action) { if (this.saving) return; this.saving = true; try { await this.$http.patch(compoundPlanWeekAction(plan.id, action.id), { completed: !action.completed }); action.completed = !action.completed; } catch (error) { uni.showToast({ title: '行动状态没有保存', icon: 'none' }); } finally { this.saving = false; } },
+		openProgress(plan, action) { this.closeEditors(); this.selectedPlan = plan; this.progressDraft = { text: action ? action.title + '：' : '', spentMinutes: action && action.plannedMinutes ? action.plannedMinutes : '', principalMetricDelta: '', returnMetricDelta: '', weekActionId: action ? action.id : '', weekActionTitle: action ? action.title : '' }; this.showProgressEditor = true; this.scrollTo(320); },
+		async prepareProgress() { if (!this.selectedPlan || !this.progressDraft.text.trim() || this.saving) return; this.saving = true; try { const response = await this.$http.post(compoundResultDraft(this.selectedPlan.id), { text: this.progressDraft.text, mediaIds: [] }); this.resultDraft = response.data.event; this.showProgressEditor = false; } catch (error) { uni.showToast({ title: '这次证据没有整理好', icon: 'none' }); } finally { this.saving = false; } },
+		async confirmProgress() { if (!this.selectedPlan || !this.resultDraft || this.saving) return; this.saving = true; try { await this.$http.post(compoundResultConfirm(this.selectedPlan.id, this.resultDraft.id), { ...this.resultDraft.payload, closeMode: 'CONTINUE', spentMinutes: Math.round(Number(this.progressDraft.spentMinutes) || 0), principalMetricDelta: Number(this.progressDraft.principalMetricDelta) || 0, returnMetricDelta: Number(this.progressDraft.returnMetricDelta) || 0, leadingMetricDelta: Number(this.progressDraft.principalMetricDelta) || 0, weekActionId: this.progressDraft.weekActionId }); this.resultDraft = null; this.selectedPlan = null; await this.loadAll(); uni.showToast({ title: '真实证据已计入', icon: 'success' }); } catch (error) { uni.showToast({ title: error.message || '证据没有保存', icon: 'none' }); } finally { this.saving = false; } },
+		openValidation(plan) { this.closeEditors(); this.selectedPlan = plan; this.validationDraft = { status: plan.validation.status || 'VALIDATING', note: plan.validation.note || '' }; this.showValidationEditor = true; this.scrollTo(320); },
+		async saveValidation() { if (!this.selectedPlan || this.saving) return; this.saving = true; try { await this.$http.patch(compoundPlanValidation(this.selectedPlan.id), this.validationDraft); this.closeEditors(); await this.loadAll(); uni.showToast({ title: '当前判断已更新', icon: 'success' }); } catch (error) { uni.showToast({ title: error.message || '现在还不能确认这个判断', icon: 'none' }); } finally { this.saving = false; } },
+		openBlocker(plan) { this.closeEditors(); this.selectedPlan = plan; this.blockerText = plan.blockerSummary || ''; this.blockerInsight = null; this.showBlockerEditor = true; this.scrollTo(320); },
+		async submitBlocker() { if (!this.selectedPlan || !this.blockerText.trim() || this.saving) return; this.saving = true; try { await this.$http.post(compoundThreadPrimary(this.selectedPlan.id), {}); const response = await this.$http.post(compoundBlocker(this.selectedPlan.id), { blocker: this.blockerText }); this.blockerInsight = response.data.event; } catch (error) { uni.showToast({ title: '瓶颈暂时没有分析完成', icon: 'none' }); } finally { this.saving = false; } },
+		async adoptBlocker() { if (!this.selectedPlan || !this.blockerInsight || this.saving) return; this.saving = true; try { await this.$http.post(compoundSuggestionAdopt(this.selectedPlan.id, this.blockerInsight.id), { currentStep: this.blockerInsight.payload.adjustedStep }); this.closeEditors(); await this.loadAll(); } finally { this.saving = false; } },
+		async reviewDiary(item) { if (!this.home.current || this.saving) return; this.saving = true; try { const response = await this.$http.post(compoundDiaryReview(this.home.current.id, item.linkId), {}); this.diaryReviewDraft = response.data.event; } catch (error) { uni.showToast({ title: '这次日记暂时没有回看完成', icon: 'none' }); } finally { this.saving = false; } },
+		async confirmDiaryReview() { if (!this.home.current || !this.diaryReviewDraft || this.saving) return; this.saving = true; try { await this.$http.post(compoundDiaryReviewConfirm(this.home.current.id, this.diaryReviewDraft.id), this.diaryReviewDraft.payload); this.diaryReviewDraft = null; await this.loadAll(); } finally { this.saving = false; } },
+		async dismissDiary(item) { if (!this.home.current || this.saving) return; this.saving = true; try { await this.$http.post(compoundDiaryDismiss(this.home.current.id, item.linkId), {}); await this.loadAll(); } finally { this.saving = false; } },
+		createTask(plan, action) { const title = action ? action.title : plan.currentStep; uni.setStorageSync('todoPrefill', { title, description: '服务于复利验证项：' + plan.title + '\n\n12 周结果：' + plan.desiredOutcome, compoundItemId: plan.itemId || undefined, sourceType: 'COMPOUND', sourceRefId: plan.id, sourceCompoundThreadId: plan.id }); uni.navigateTo({ url: '/pages/todo/list' }); },
+		closeEditors() { this.showPlanEditor = false; this.showWeekEditor = false; this.showProgressEditor = false; this.showValidationEditor = false; this.showBlockerEditor = false; this.resultDraft = null; this.blockerInsight = null; this.diaryReviewDraft = null; },
+		scrollTo(value) { setTimeout(() => uni.pageScrollTo({ scrollTop: value, duration: 240 }), 40); },
+		splitLines(value, max) { return String(value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean).slice(0, max); },
+		combinedStopList(plan) { const source = plan.week.stopList && plan.week.stopList.length ? plan.week.stopList : plan.stopList; return (source || []).slice(0, 5); },
+		completedActionCount(plan) { return (plan.week.actions || []).filter(item => item.completed).length; },
+		validationLabel(value) { return { VALIDATING: '验证中', COMPOUNDING: '复利已出现', LINEAR: '目前线性', PROTECTION: '保障有效' }[value] || '验证中'; },
+		formatMetric(value) { const number = Number(value) || 0; return Number.isInteger(number) ? String(number) : number.toFixed(1); },
+		formatMinutes(value) { const minutes = Math.max(0, Math.round(Number(value) || 0)); if (minutes < 60) return minutes + ' 分钟'; const hours = Math.floor(minutes / 60); const remainder = minutes % 60; return remainder ? hours + ' 小时 ' + remainder + ' 分' : hours + ' 小时'; },
+		compactDate(value) { return String(value || '').slice(5).replace('-', '.'); },
+		eventTime(value) { return String(value || '').replace('T', ' ').slice(0, 16); },
+		padNumber(value) { return String(value).padStart(2, '0'); },
+		openReview() { uni.navigateTo({ url: '/pages/shroom/life-os-weekly' }); },
+		openYogaPractice() { uni.navigateTo({ url: '/pages/shroom/yoga-practice' }); },
+		openPrinciples() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
+		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack(); else uni.switchTab({ url: '/pages/diary/index' }); }
 	}
 };
 </script>
 
 <style lang="scss" scoped>
-button {
-	margin: 0;
-	padding: 0;
-	line-height: 1.25;
-	background: transparent;
-	border: 0;
-}
+button { margin: 0; padding: 0; line-height: 1.25; background: transparent; border: 0; }
 button::after { border: 0; }
 button[disabled] { opacity: .42; }
-input,
-textarea {
-	box-sizing: border-box;
-	width: 100%;
-	border: 1rpx solid rgba(26, 40, 29, .12);
-	border-radius: 18rpx;
-	background: rgba(255, 255, 255, .78);
-	color: #19231b;
-	font-size: 20rpx;
-}
-input {
-	height: 72rpx;
-	padding: 0 20rpx;
-}
-textarea {
-	min-height: 112rpx;
-	padding: 18rpx 20rpx;
-	line-height: 1.55;
-	overflow-wrap: anywhere;
-}
-.compound-page {
-	min-height: 100vh;
-	background:
-		radial-gradient(circle at 88% 4%, rgba(201, 237, 150, .38), transparent 28%),
-		#f2f6eb;
-	color: #19231b;
-}
-.status-bar { background: transparent; }
-.page-shell {
-	box-sizing: border-box;
-	width: 100%;
-	padding: 26rpx 30rpx calc(130rpx + env(safe-area-inset-bottom));
-}
-.topbar {
-	display: flex;
-	align-items: center;
-	gap: 17rpx;
-}
-.round-button {
-	display: flex;
-	width: 66rpx;
-	height: 66rpx;
-	flex: 0 0 66rpx;
-	align-items: center;
-	justify-content: center;
-	border: 1rpx solid rgba(25, 35, 27, .11);
-	border-radius: 50%;
-	background: rgba(255, 255, 255, .72);
-	color: #223027;
-}
-.back-button { font-size: 41rpx; }
-.add-button { font-size: 32rpx; font-weight: 400; }
-.topbar-copy {
-	display: flex;
-	min-width: 0;
-	flex: 1;
-	flex-direction: column;
-	gap: 3rpx;
-}
-.topbar-kicker,
-.eyebrow {
-	color: #718074;
-	font-size: 14rpx;
-	font-weight: 760;
-	letter-spacing: 2.3rpx;
-}
-.topbar-title {
-	font-family: Georgia, 'Songti SC', serif;
-	font-size: 32rpx;
-	font-weight: 720;
-}
-.state-card {
-	display: flex;
-	min-height: 330rpx;
-	margin-top: 28rpx;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 22rpx;
-	border-radius: 31rpx;
-	background: rgba(255, 255, 255, .72);
-	color: #667268;
-	font-size: 18rpx;
-}
-.loading-dot {
-	width: 17rpx;
-	height: 17rpx;
-	border-radius: 50%;
-	background: #6b846b;
-	box-shadow: 0 0 0 12rpx rgba(107, 132, 107, .13);
-}
-.dark-pill,
-.primary-action {
-	display: flex;
-	box-sizing: border-box;
-	min-height: 72rpx;
-	padding: 14rpx 25rpx;
-	align-items: center;
-	justify-content: center;
-	border-radius: 999rpx;
-	background: #1b2920;
-	color: #fff;
-	font-size: 19rpx;
-	font-weight: 710;
-}
-.portfolio-hero {
-	box-sizing: border-box;
-	margin-top: 28rpx;
-	padding: 38rpx 30rpx 30rpx;
-	overflow: hidden;
-	border-radius: 36rpx;
-	background: #18241c;
-	color: #fff;
-	box-shadow: 0 18rpx 45rpx rgba(26, 39, 29, .12);
-}
-.portfolio-hero .eyebrow { color: #9aab9d; }
-.portfolio-title {
-	display: block;
-	margin-top: 20rpx;
-	font-family: Georgia, 'Songti SC', serif;
-	font-size: 44rpx;
-	font-weight: 720;
-	line-height: 1.18;
-	letter-spacing: -.8rpx;
-}
-.portfolio-copy {
-	display: block;
-	max-width: 590rpx;
-	margin-top: 18rpx;
-	color: #b8c4ba;
-	font-size: 18rpx;
-	line-height: 1.65;
-}
-.week-ledger {
-	display: grid;
-	grid-template-columns: 1fr 1fr 1fr;
-	margin-top: 31rpx;
-	padding-top: 24rpx;
-	border-top: 1rpx solid rgba(255, 255, 255, .12);
-}
-.week-ledger > view {
-	display: flex;
-	min-width: 0;
-	padding-right: 12rpx;
-	flex-direction: column;
-	gap: 8rpx;
-}
-.week-ledger > view + view {
-	padding-left: 16rpx;
-	border-left: 1rpx solid rgba(255, 255, 255, .11);
-}
-.week-ledger text:first-child {
-	color: #8fa092;
-	font-size: 14rpx;
-}
-.week-ledger text:last-child {
-	font-size: 20rpx;
-	font-weight: 680;
-	line-height: 1.35;
-}
-.portfolio-progress {
-	display: flex;
-	margin-top: 22rpx;
-	align-items: center;
-	gap: 13rpx;
-}
-.portfolio-progress > view {
-	height: 8rpx;
-	flex: 1;
-	overflow: hidden;
-	border-radius: 999rpx;
-	background: rgba(255, 255, 255, .13);
-}
-.portfolio-progress > view > view {
-	height: 100%;
-	border-radius: inherit;
-	background: #c9ef91;
-}
-.portfolio-progress > text {
-	color: #b8c7ba;
-	font-size: 14rpx;
-}
-.allocation-note {
-	display: block;
-	margin-top: 18rpx;
-	color: #e4c990;
-	font-size: 15rpx;
-}
-.empty-state {
-	box-sizing: border-box;
-	margin-top: 25rpx;
-	padding: 40rpx 31rpx;
-	border-radius: 32rpx;
-	background: rgba(255, 255, 255, .82);
-}
-.empty-title {
-	display: block;
-	margin-top: 15rpx;
-	font-family: Georgia, 'Songti SC', serif;
-	font-size: 39rpx;
-	font-weight: 720;
-	line-height: 1.23;
-}
-.empty-copy {
-	display: block;
-	margin-top: 18rpx;
-	color: #657166;
-	font-size: 18rpx;
-	line-height: 1.66;
-}
-.empty-state .primary-action { width: 100%; margin-top: 27rpx; }
-.principle-list {
-	display: flex;
-	margin-top: 30rpx;
-	flex-direction: column;
-}
-.principle-list > view {
-	display: grid;
-	grid-template-columns: 46rpx 1fr;
-	gap: 12rpx;
-	padding: 17rpx 0;
-	border-top: 1rpx solid #e6ebe2;
-}
-.principle-list text:first-child {
-	color: #809083;
-	font-size: 14rpx;
-	font-weight: 730;
-}
-.principle-list text:last-child {
-	color: #4c5b50;
-	font-size: 17rpx;
-	line-height: 1.5;
-}
-.section-intro {
-	display: flex;
-	margin: 34rpx 4rpx 15rpx;
-	align-items: flex-end;
-	justify-content: space-between;
-	gap: 20rpx;
-}
-.section-intro > view {
-	display: flex;
-	flex-direction: column;
-	gap: 5rpx;
-}
-.section-intro > view text:last-child {
-	font-family: Georgia, 'Songti SC', serif;
-	font-size: 28rpx;
-	font-weight: 710;
-}
-.section-intro > text {
-	color: #78847a;
-	font-size: 15rpx;
-}
-.plan-card {
-	box-sizing: border-box;
-	margin-top: 14rpx;
-	padding: 29rpx;
-	border: 1rpx solid rgba(28, 42, 31, .07);
-	border-radius: 31rpx;
-	background: rgba(255, 255, 255, .9);
-	box-shadow: 0 10rpx 28rpx rgba(36, 51, 39, .045);
-}
-.plan-card.primary {
-	border-color: rgba(86, 117, 73, .18);
-	background: #fcfdf8;
-}
-.plan-head {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 18rpx;
-}
-.plan-head > view {
-	display: flex;
-	min-width: 0;
-	flex: 1;
-	flex-direction: column;
-	gap: 7rpx;
-}
-.plan-head > view text:first-child {
-	color: #7b897d;
-	font-size: 14rpx;
-	font-weight: 730;
-	letter-spacing: 1rpx;
-}
-.plan-head > view text:last-child {
-	font-family: Georgia, 'Songti SC', serif;
-	font-size: 29rpx;
-	font-weight: 720;
-	line-height: 1.35;
-	overflow-wrap: anywhere;
-}
-.plan-head > button {
-	padding: 7rpx 0 7rpx 17rpx;
-	color: #627264;
-	font-size: 16rpx;
-}
-.plan-outcome {
-	display: block;
-	margin-top: 16rpx;
-	color: #5c685f;
-	font-size: 18rpx;
-	line-height: 1.6;
-}
-.mechanism {
-	display: flex;
-	margin-top: 22rpx;
-	padding: 19rpx 20rpx;
-	flex-direction: column;
-	gap: 8rpx;
-	border-radius: 20rpx;
-	background: #e8f0d9;
-}
-.mechanism.missing { background: #f4ead7; }
-.mechanism text:first-child {
-	color: #61705f;
-	font-size: 14rpx;
-	font-weight: 740;
-}
-.mechanism text:last-child {
-	font-size: 17rpx;
-	line-height: 1.5;
-}
-.metric-line {
-	display: flex;
-	margin-top: 25rpx;
-	align-items: flex-end;
-	justify-content: space-between;
-	gap: 18rpx;
-}
-.metric-line > view {
-	display: flex;
-	min-width: 0;
-	flex-direction: column;
-	gap: 5rpx;
-}
-.metric-line > view text:first-child {
-	color: #7a867c;
-	font-size: 14rpx;
-}
-.metric-line > view text:last-child {
-	font-size: 17rpx;
-	font-weight: 670;
-}
-.metric-line > text {
-	font-family: Georgia, serif;
-	font-size: 22rpx;
-	font-weight: 690;
-	white-space: nowrap;
-}
-.metric-progress {
-	height: 8rpx;
-	margin-top: 12rpx;
-	overflow: hidden;
-	border-radius: 999rpx;
-	background: #e4eae0;
-}
-.metric-progress > view {
-	height: 100%;
-	border-radius: inherit;
-	background: #668461;
-}
-.plan-facts {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 10rpx;
-	margin-top: 21rpx;
-}
-.plan-facts > view {
-	display: flex;
-	padding: 15rpx 17rpx;
-	flex-direction: column;
-	gap: 6rpx;
-	border-radius: 16rpx;
-	background: #f3f5ef;
-}
-.plan-facts text:first-child {
-	color: #7c877f;
-	font-size: 13rpx;
-}
-.plan-facts text:last-child {
-	font-size: 16rpx;
-	font-weight: 660;
-	line-height: 1.4;
-}
-.milestone,
-.bottleneck {
-	display: grid;
-	grid-template-columns: 110rpx 1fr;
-	gap: 13rpx;
-	margin-top: 21rpx;
-	padding-top: 19rpx;
-	border-top: 1rpx solid #e7ebe4;
-}
-.milestone text:first-child,
-.bottleneck text:first-child {
-	color: #77837a;
-	font-size: 14rpx;
-}
-.milestone text:last-child,
-.bottleneck text:last-child {
-	font-size: 17rpx;
-	line-height: 1.5;
-}
-.bottleneck text:last-child { color: #926d37; }
-.week-plan {
-	margin-top: 24rpx;
-	padding: 20rpx;
-	border-radius: 22rpx;
-	background: #f0f4eb;
-}
-.week-plan-head {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 15rpx;
-}
-.week-plan-head > view {
-	display: flex;
-	flex-direction: column;
-	gap: 4rpx;
-}
-.week-plan-head > view text:first-child {
-	font-size: 18rpx;
-	font-weight: 710;
-}
-.week-plan-head > view text:last-child {
-	color: #7a867c;
-	font-size: 14rpx;
-}
-.week-plan-head > button {
-	color: #526854;
-	font-size: 15rpx;
-	font-weight: 680;
-}
-.week-action {
-	display: grid;
-	box-sizing: border-box;
-	width: 100%;
-	grid-template-columns: 33rpx 1fr auto;
-	gap: 11rpx;
-	margin-top: 15rpx;
-	align-items: start;
-}
-.action-check {
-	display: flex;
-	width: 29rpx;
-	height: 29rpx;
-	align-items: center;
-	justify-content: center;
-	border: 1rpx solid #8a9a8b;
-	border-radius: 50%;
-	color: #fff;
-	font-size: 15rpx;
-}
-.action-copy {
-	display: flex;
-	min-width: 0;
-	flex-direction: column;
-	align-items: flex-start;
-	gap: 3rpx;
-	text-align: left;
-}
-.action-copy text:first-child { font-size: 17rpx; line-height: 1.45; }
-.action-copy text:last-child {
-	color: #879188;
-	font-size: 13rpx;
-}
-.action-todo {
-	padding: 5rpx 0 5rpx 12rpx;
-	color: #5b705d;
-	font-size: 14rpx;
-	font-weight: 680;
-}
-.week-action.done .action-check {
-	border-color: #60785e;
-	background: #60785e;
-}
-.week-action.done .action-copy text:first-child {
-	color: #899289;
-	text-decoration: line-through;
-}
-.week-empty {
-	display: flex;
-	margin-top: 16rpx;
-	padding-top: 15rpx;
-	align-items: center;
-	justify-content: space-between;
-	gap: 15rpx;
-	border-top: 1rpx solid #dfe6d9;
-}
-.week-empty > text {
-	flex: 1;
-	color: #748075;
-	font-size: 15rpx;
-	line-height: 1.45;
-}
-.week-empty > button {
-	color: #526854;
-	font-size: 15rpx;
-	font-weight: 690;
-}
-.next-step {
-	display: flex;
-	margin-top: 22rpx;
-	flex-direction: column;
-	gap: 8rpx;
-}
-.next-step > text:first-child {
-	color: #768279;
-	font-size: 14rpx;
-}
-.next-step > text:nth-child(2) {
-	font-size: 20rpx;
-	font-weight: 670;
-	line-height: 1.5;
-	overflow-wrap: anywhere;
-}
-.next-step > view {
-	display: flex;
-	gap: 10rpx;
-	margin-top: 8rpx;
-}
-.next-step button {
-	display: flex;
-	min-height: 59rpx;
-	padding: 0 19rpx;
-	align-items: center;
-	justify-content: center;
-	border-radius: 999rpx;
-	background: #edf1e8;
-	color: #4d6150;
-	font-size: 15rpx;
-	font-weight: 670;
-}
-.next-step button:last-child {
-	background: #203027;
-	color: #fff;
-}
-.stop-list {
-	display: flex;
-	margin-top: 22rpx;
-	padding: 18rpx 19rpx;
-	flex-direction: column;
-	gap: 7rpx;
-	border-radius: 19rpx;
-	background: #f5eee2;
-}
-.stop-list text:first-child {
-	color: #806f55;
-	font-size: 14rpx;
-	font-weight: 720;
-}
-.stop-list text:not(:first-child) {
-	color: #655d50;
-	font-size: 15rpx;
-	line-height: 1.4;
-}
-.bottleneck-trigger {
-	width: 100%;
-	padding: 22rpx 0 2rpx;
-	color: #637165;
-	font-size: 15rpx;
-	text-align: left;
-}
-.editor-panel {
-	box-sizing: border-box;
-	margin-top: 24rpx;
-	padding: 28rpx;
-	border: 1rpx solid rgba(32, 49, 36, .08);
-	border-radius: 30rpx;
-	background: #fff;
-	box-shadow: 0 14rpx 38rpx rgba(35, 52, 39, .07);
-}
-.panel-heading {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 18rpx;
-}
-.panel-heading > view {
-	display: flex;
-	min-width: 0;
-	flex: 1;
-	flex-direction: column;
-	gap: 6rpx;
-}
-.panel-heading > view text:last-child {
-	font-family: Georgia, 'Songti SC', serif;
-	font-size: 27rpx;
-	font-weight: 710;
-	line-height: 1.35;
-}
-.panel-heading > button {
-	color: #718075;
-	font-size: 27rpx;
-}
-.editor-field {
-	display: flex;
-	margin-top: 21rpx;
-	flex-direction: column;
-	gap: 9rpx;
-}
-.editor-field > text:first-child {
-	color: #59675c;
-	font-size: 15rpx;
-	font-weight: 690;
-}
-.field-help,
-.boundary-note {
-	display: block;
-	color: #869087;
-	font-size: 14rpx;
-	line-height: 1.5;
-}
-.select-field {
-	display: flex;
-	box-sizing: border-box;
-	height: 72rpx;
-	padding: 0 20rpx;
-	align-items: center;
-	justify-content: space-between;
-	border: 1rpx solid rgba(26, 40, 29, .12);
-	border-radius: 18rpx;
-	background: rgba(255, 255, 255, .78);
-	font-size: 18rpx;
-}
-.select-field text { color: #738077; }
-.two-column {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 13rpx;
-}
-.cycle-note {
-	display: flex;
-	margin-top: 21rpx;
-	padding: 17rpx 0;
-	align-items: center;
-	justify-content: space-between;
-	gap: 18rpx;
-	border-top: 1rpx solid #e8ece5;
-	border-bottom: 1rpx solid #e8ece5;
-}
-.cycle-note text:first-child {
-	color: #758078;
-	font-size: 15rpx;
-}
-.cycle-note text:last-child {
-	font-size: 16rpx;
-	font-weight: 660;
-}
-.editor-panel .primary-action {
-	width: 100%;
-	margin-top: 24rpx;
-}
-.linked-action {
-	display: block;
-	margin-top: 18rpx;
-	padding: 15rpx 17rpx;
-	border-radius: 16rpx;
-	background: #edf3e8;
-	color: #516252;
-	font-size: 16rpx;
-}
-.state-options {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8rpx;
-	margin-top: 20rpx;
-}
-.state-options button {
-	display: flex;
-	min-height: 51rpx;
-	padding: 0 16rpx;
-	align-items: center;
-	justify-content: center;
-	border-radius: 999rpx;
-	background: #eef2e9;
-	color: #637066;
-	font-size: 15rpx;
-}
-.state-options button.active {
-	background: #203027;
-	color: #fff;
-}
-.confirmation-ledger {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 11rpx;
-	margin-top: 20rpx;
-}
-.confirmation-ledger > view {
-	display: flex;
-	padding: 16rpx 17rpx;
-	flex-direction: column;
-	gap: 6rpx;
-	border-radius: 17rpx;
-	background: #f1f4ed;
-}
-.confirmation-ledger text:first-child {
-	color: #79837b;
-	font-size: 13rpx;
-}
-.confirmation-ledger text:last-child {
-	font-size: 18rpx;
-	font-weight: 680;
-}
-.blocker-insight {
-	display: flex;
-	margin-top: 21rpx;
-	padding: 20rpx;
-	flex-direction: column;
-	gap: 9rpx;
-	border-radius: 20rpx;
-	background: #f3ecd9;
-}
-.blocker-insight > text:nth-child(odd) {
-	color: #827052;
-	font-size: 14rpx;
-	font-weight: 720;
-}
-.blocker-insight > text:nth-child(even) {
-	font-size: 17rpx;
-	line-height: 1.55;
-}
-.blocker-insight > button {
-	align-self: flex-start;
-	margin-top: 7rpx;
-	color: #4f654f;
-	font-size: 16rpx;
-	font-weight: 710;
-}
-.feedback-section,
-.recent-section { margin-top: 7rpx; }
-.diary-feedback,
-.result-row {
-	box-sizing: border-box;
-	margin-top: 12rpx;
-	padding: 23rpx 25rpx;
-	border-radius: 23rpx;
-	background: rgba(255, 255, 255, .78);
-}
-.diary-feedback {
-	display: flex;
-	flex-direction: column;
-	gap: 10rpx;
-}
-.diary-feedback > text:first-child {
-	color: #7b877d;
-	font-size: 14rpx;
-}
-.diary-feedback > text:nth-child(2) {
-	font-size: 18rpx;
-	line-height: 1.55;
-}
-.diary-feedback > view {
-	display: flex;
-	gap: 17rpx;
-	margin-top: 4rpx;
-}
-.diary-feedback button {
-	color: #526a55;
-	font-size: 15rpx;
-	font-weight: 680;
-}
-.diary-feedback button:last-child {
-	color: #8a918b;
-	font-weight: 500;
-}
-.review-list {
-	display: flex;
-	margin-top: 20rpx;
-	padding: 18rpx;
-	flex-direction: column;
-	gap: 8rpx;
-	border-radius: 18rpx;
-	background: #eef4e9;
-}
-.review-list.inference { background: #f5eddf; }
-.review-list text:first-child {
-	color: #617061;
-	font-size: 15rpx;
-	font-weight: 710;
-}
-.review-list text:not(:first-child) {
-	font-size: 16rpx;
-	line-height: 1.5;
-}
-.result-row {
-	display: flex;
-	flex-direction: column;
-	gap: 9rpx;
-}
-.result-row > view:first-child {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 14rpx;
-}
-.result-row > view:first-child text:first-child {
-	color: #526154;
-	font-size: 15rpx;
-	font-weight: 680;
-}
-.result-row > view:first-child text:last-child {
-	color: #8a938b;
-	font-size: 13rpx;
-}
-.result-row > text {
-	font-size: 18rpx;
-	line-height: 1.55;
-}
-.result-meta {
-	display: flex;
-	gap: 13rpx;
-	color: #778279;
-	font-size: 14rpx;
-}
-.secondary-links {
-	margin-top: 27rpx;
-	overflow: hidden;
-	border-radius: 27rpx;
-	background: rgba(255, 255, 255, .7);
-}
-.secondary-links > button {
-	display: flex;
-	box-sizing: border-box;
-	width: 100%;
-	padding: 22rpx 24rpx;
-	align-items: center;
-	justify-content: space-between;
-	gap: 16rpx;
-	border-top: 1rpx solid rgba(30, 42, 33, .08);
-	text-align: left;
-}
-.secondary-links > button:first-child { border-top: 0; }
-.secondary-links > button > view {
-	display: flex;
-	min-width: 0;
-	flex: 1;
-	flex-direction: column;
-	gap: 5rpx;
-}
-.secondary-links > button > view text:first-child {
-	font-size: 18rpx;
-	font-weight: 680;
-}
-.secondary-links > button > view text:last-child {
-	color: #748078;
-	font-size: 15rpx;
-	line-height: 1.4;
-}
-.secondary-links > button > text {
-	color: #748078;
-	font-size: 26rpx;
-}
-.privacy-note {
-	display: flex;
-	align-items: flex-start;
-	gap: 11rpx;
-	padding: 23rpx 7rpx 0;
-	color: #7a857c;
-	font-size: 14rpx;
-	line-height: 1.5;
-}
-.privacy-note > view {
-	width: 8rpx;
-	height: 8rpx;
-	margin-top: 6rpx;
-	flex: 0 0 8rpx;
-	border-radius: 50%;
-	background: #668166;
-}
+input, textarea { box-sizing: border-box; width: 100%; color: #172019; font-size: 21rpx; line-height: 1.55; }
+.compound-page { min-height: 100vh; background: #f0f6e9; color: #172019; }
+.status-bar { background: #f0f6e9; }
+.page-shell { box-sizing: border-box; padding: 26rpx 30rpx 140rpx; }
+.topbar { display: flex; align-items: center; gap: 17rpx; }
+.round-button { display: flex; width: 68rpx; height: 68rpx; flex: 0 0 68rpx; align-items: center; justify-content: center; border: 1rpx solid rgba(23,32,25,.1); border-radius: 50%; background: rgba(255,255,255,.72); font-size: 46rpx; }
+.add-button { background: #172019; color: #fff; font-size: 35rpx; }
+.topbar-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.topbar-kicker, .eyebrow { color: #718075; font-size: 14rpx; font-weight: 760; letter-spacing: 2.4rpx; }
+.topbar-title { margin-top: 5rpx; font-family: Georgia, 'Songti SC', serif; font-size: 37rpx; font-weight: 720; }
+.state-card { display: flex; min-height: 270rpx; margin-top: 26rpx; align-items: center; justify-content: center; gap: 16rpx; border-radius: 35rpx; background: #fff; color: #748078; font-size: 20rpx; }
+.state-card.error { flex-direction: column; }.loading-dot { width: 13rpx; height: 13rpx; border-radius: 50%; background: #5b725f; animation: pulse 1s infinite alternate; }.dark-pill { padding: 18rpx 30rpx; border-radius: 999rpx; background: #172019; color: #fff; }
+@keyframes pulse { to { opacity: .25; transform: scale(.7); } }
+.portfolio-hero { margin-top: 27rpx; padding: 42rpx 37rpx 34rpx; overflow: hidden; border-radius: 39rpx; background: #172019; color: #fff; }
+.portfolio-hero.empty { background: linear-gradient(145deg,#152019 0%,#26392b 65%,#657b4d 130%); }
+.portfolio-hero .eyebrow { color: #a7b5a8; }.portfolio-title { display: block; max-width: 620rpx; margin-top: 18rpx; font-family: Georgia, 'Songti SC', serif; font-size: 47rpx; font-weight: 720; line-height: 1.22; }.portfolio-copy { display: block; max-width: 610rpx; margin-top: 17rpx; color: #b9c4ba; font-size: 20rpx; line-height: 1.7; }
+.hero-action { margin-top: 31rpx; padding: 21rpx 29rpx; border-radius: 999rpx; background: #e5efd9; color: #172019; font-size: 19rpx; font-weight: 720; }
+.week-ledger { display: flex; margin-top: 31rpx; padding-top: 25rpx; border-top: 1rpx solid rgba(255,255,255,.13); }.week-ledger view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }.week-ledger view + view { padding-left: 20rpx; border-left: 1rpx solid rgba(255,255,255,.12); }.week-ledger text:first-child { color: #9eaa9f; font-size: 15rpx; }.week-ledger text:last-child { font-size: 23rpx; font-weight: 690; }
+.portfolio-progress { display: flex; align-items: center; gap: 15rpx; margin-top: 21rpx; }.portfolio-progress > view { height: 7rpx; overflow: hidden; flex: 1; border-radius: 99rpx; background: rgba(255,255,255,.13); }.portfolio-progress > view > view { height: 100%; border-radius: inherit; background: #dcebcc; }.portfolio-progress > text { color: #b7c2b8; font-size: 15rpx; }
+.catalog-panel, .editor-panel, .plan-card, .feedback-section, .recent-section { margin-top: 24rpx; padding: 31rpx; border-radius: 34rpx; background: #fff; }
+.catalog-panel { padding: 34rpx 29rpx; }.panel-heading, .section-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 20rpx; }.panel-heading > view, .section-intro > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }.panel-heading > view > text:last-child, .section-intro > view > text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 29rpx; font-weight: 690; }.panel-heading > button { color: #6f7b72; font-size: 33rpx; }.section-intro { margin-top: 34rpx; padding: 0 4rpx; }.section-intro > button { color: #4e6753; font-size: 17rpx; }.section-intro > text { color: #6d7a70; font-size: 18rpx; }
+.catalog-intro { display: block; margin-top: 17rpx; color: #69766d; font-size: 18rpx; line-height: 1.65; }.catalog-tabs { display: flex; margin-top: 25rpx; padding: 6rpx; border-radius: 18rpx; background: #edf1ea; }.catalog-tabs button { display: flex; min-height: 61rpx; flex: 1; align-items: center; justify-content: center; gap: 8rpx; border-radius: 14rpx; color: #69756c; font-size: 17rpx; }.catalog-tabs button.active { background: #172019; color: #fff; box-shadow: 0 4rpx 12rpx rgba(23,32,25,.13); }.catalog-tabs text { opacity: .68; font-size: 14rpx; }.protection-note { margin-top: 19rpx; padding: 18rpx 20rpx; border-radius: 18rpx; background: #f4eedf; color: #71664e; font-size: 17rpx; line-height: 1.55; }
+.archetype-grid { margin-top: 19rpx; }.archetype-card { display: flex; align-items: flex-start; gap: 16rpx; padding: 22rpx 7rpx; border-top: 1rpx solid #e8ede6; }.archetype-card:first-child { border-top: 0; }.archetype-card.selected { margin: 0 -10rpx; padding-right: 17rpx; padding-left: 17rpx; border-radius: 20rpx; background: #eff4e9; }.archetype-number { padding-top: 3rpx; color: #7e8d82; font-size: 15rpx; font-weight: 760; }.archetype-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }.archetype-copy text:first-child { font-size: 22rpx; font-weight: 700; }.archetype-copy text:last-child { color: #69756c; font-size: 17rpx; line-height: 1.55; }.archetype-arrow { color: #7a887e; font-size: 27rpx; }
+.archetype-detail { margin-top: 21rpx; padding: 27rpx; border-radius: 27rpx; background: #172019; color: #fff; }.detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }.detail-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }.detail-head > view text:first-child { color: #99a89b; font-size: 14rpx; letter-spacing: 1rpx; }.detail-head > view text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 28rpx; }.detail-head > text { padding: 8rpx 12rpx; border: 1rpx solid rgba(255,255,255,.18); border-radius: 999rpx; color: #c3cdc4; font-size: 13rpx; }.loop-statement { display: flex; margin-top: 25rpx; padding: 21rpx 0; flex-direction: column; gap: 8rpx; border-top: 1rpx solid rgba(255,255,255,.12); border-bottom: 1rpx solid rgba(255,255,255,.12); }.loop-statement text:first-child, .fit-grid view text:first-child, .example-list > text:first-child { color: #9daaa0; font-size: 14rpx; font-weight: 710; letter-spacing: 1rpx; }.loop-statement text:last-child { font-size: 19rpx; line-height: 1.62; }.fit-grid { display: flex; gap: 22rpx; margin-top: 23rpx; }.fit-grid view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }.fit-grid view text:last-child { color: #c4cdc5; font-size: 16rpx; line-height: 1.55; }.default-measures { display: flex; gap: 13rpx; margin-top: 22rpx; }.default-measures view { display: flex; min-width: 0; padding: 17rpx; flex: 1; flex-direction: column; gap: 7rpx; border-radius: 17rpx; background: rgba(255,255,255,.08); }.default-measures text:first-child { color: #9daa9e; font-size: 13rpx; }.default-measures text:last-child { font-size: 16rpx; line-height: 1.45; }.example-list { display: flex; margin-top: 22rpx; flex-direction: column; gap: 8rpx; }.example-list text:not(:first-child) { color: #c6cfc7; font-size: 16rpx; line-height: 1.5; }.archetype-detail .primary-action { background: #e4efd8; color: #172019; }
+.chosen-archetype { display: flex; align-items: flex-start; gap: 16rpx; margin-top: 23rpx; padding: 20rpx; border-radius: 21rpx; background: #edf3e8; }.chosen-archetype > text { flex: 0 0 auto; padding: 7rpx 11rpx; border-radius: 999rpx; background: #dbe7d3; color: #526156; font-size: 13rpx; }.chosen-archetype > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.chosen-archetype > view text:first-child { font-size: 20rpx; font-weight: 700; }.chosen-archetype > view text:last-child { color: #69756c; font-size: 15rpx; line-height: 1.5; }
+.editor-field { display: flex; margin-top: 22rpx; flex-direction: column; gap: 9rpx; }.editor-field > text { color: #5f6d63; font-size: 17rpx; font-weight: 650; }.editor-field input, .editor-field textarea, .metric-editor input { min-height: 69rpx; padding: 18rpx 20rpx; border: 1rpx solid #dfe6dc; border-radius: 18rpx; background: #f8faf6; }.editor-field textarea { min-height: 94rpx; }
+.two-column, .metric-editor { display: flex; gap: 14rpx; }.two-column > * { flex: 1; }.metric-editor { margin-top: 22rpx; }.metric-editor > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 9rpx; }.metric-editor > view > text { color: #5f6d63; font-size: 16rpx; font-weight: 650; }.metric-editor input { min-height: 63rpx; font-size: 17rpx; }.validation-notice { display: flex; margin-top: 24rpx; padding: 20rpx; flex-direction: column; gap: 7rpx; border-radius: 19rpx; background: #f2eedf; }.validation-notice text:first-child { color: #5d5544; font-size: 18rpx; font-weight: 700; }.validation-notice text:last-child { color: #746b58; font-size: 16rpx; line-height: 1.55; }.primary-action { width: 100%; min-height: 74rpx; margin-top: 26rpx; padding: 18rpx 24rpx; border-radius: 999rpx; background: #172019; color: #fff; font-size: 19rpx; font-weight: 720; }
+.plan-card.primary { box-shadow: inset 0 5rpx 0 #55725b; }.plan-card.protection { box-shadow: inset 0 5rpx 0 #af955f; }.plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }.plan-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }.plan-head > view text:first-child { color: #738078; font-size: 14rpx; letter-spacing: 1rpx; }.plan-head > view text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; font-weight: 700; line-height: 1.25; }.plan-head > button { padding: 8rpx 0 10rpx 14rpx; color: #66746a; font-size: 16rpx; }.validation-row { display: flex; align-items: center; gap: 9rpx; margin-top: 17rpx; flex-wrap: wrap; }.validation-row > text { padding: 7rpx 11rpx; border-radius: 999rpx; background: #eef2eb; color: #6b776e; font-size: 13rpx; }.validation-row > text:first-child { color: #4f604f; background: #dfe9d8; font-weight: 700; }.validation-row > text.compounding { background: #d8ead7; color: #2d6236; }.validation-row > text.linear { background: #eee7d8; color: #705e39; }.validation-row > text.protection { background: #ece3cc; color: #6a5730; }.validation-row > button { margin-left: auto; color: #4e6753; font-size: 14rpx; }.plan-outcome { display: block; margin-top: 19rpx; color: #4f5e53; font-size: 20rpx; line-height: 1.62; }
+.compound-loop { margin-top: 23rpx; border-top: 1rpx solid #e5eae3; }.compound-loop > view { display: grid; padding: 18rpx 0; border-bottom: 1rpx solid #edf0eb; grid-template-columns: 150rpx 1fr; gap: 14rpx; }.compound-loop text:first-child { color: #79867d; font-size: 14rpx; font-weight: 700; letter-spacing: .6rpx; }.compound-loop text:last-child { color: #48564c; font-size: 17rpx; line-height: 1.55; }
+.metric-pair { display: flex; gap: 12rpx; margin-top: 21rpx; }.metric-pair > view { display: flex; min-width: 0; padding: 19rpx; flex: 1; flex-direction: column; border-radius: 20rpx; background: #f0f4ed; }.metric-pair > view > text:first-child { color: #718075; font-size: 14rpx; font-weight: 710; }.metric-pair > view > text:nth-child(2) { min-height: 46rpx; margin-top: 6rpx; color: #59665c; font-size: 15rpx; line-height: 1.45; }.metric-pair strong { margin-top: 9rpx; font-size: 25rpx; }.metric-pair small { color: #849087; font-size: 14rpx; font-weight: 500; }.metric-pair > view > view { height: 6rpx; margin-top: 13rpx; overflow: hidden; border-radius: 99rpx; background: #dce4d9; }.metric-pair > view > view > view { height: 100%; border-radius: inherit; background: #5a755f; }
+.plan-facts { display: flex; margin-top: 18rpx; padding: 17rpx 0; border-top: 1rpx solid #e8ece6; border-bottom: 1rpx solid #e8ece6; }.plan-facts view { display: flex; flex: 1; flex-direction: column; gap: 5rpx; }.plan-facts view + view { padding-left: 21rpx; border-left: 1rpx solid #e5e9e3; }.plan-facts text:first-child { color: #7a877e; font-size: 14rpx; }.plan-facts text:last-child { font-size: 18rpx; font-weight: 660; }.milestone { display: flex; margin-top: 20rpx; padding: 20rpx; flex-direction: column; gap: 8rpx; border-radius: 19rpx; background: #172019; color: #fff; }.milestone text:first-child { color: #98a69a; font-size: 14rpx; }.milestone text:last-child { font-size: 18rpx; line-height: 1.55; }
+.week-plan { margin-top: 21rpx; }.week-plan-head { display: flex; align-items: flex-end; justify-content: space-between; }.week-plan-head > view { display: flex; flex-direction: column; gap: 5rpx; }.week-plan-head > view text:first-child { font-size: 20rpx; font-weight: 700; }.week-plan-head > view text:last-child { color: #7b877f; font-size: 14rpx; }.week-plan-head > button { color: #536b57; font-size: 16rpx; }.week-action { display: flex; align-items: center; gap: 12rpx; padding: 17rpx 0; border-top: 1rpx solid #e8ece6; }.week-action:first-of-type { margin-top: 13rpx; }.action-check { display: flex; width: 34rpx; height: 34rpx; flex: 0 0 34rpx; align-items: center; justify-content: center; border: 1rpx solid #94a097; border-radius: 50%; font-size: 18rpx; }.week-action.done .action-check { border-color: #55705a; background: #55705a; color: #fff; }.action-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: flex-start; gap: 4rpx; text-align: left; }.action-copy text:first-child { font-size: 18rpx; }.action-copy text:last-child { color: #7a877f; font-size: 13rpx; }.week-action.done .action-copy text:first-child { color: #88918a; text-decoration: line-through; }.action-todo { padding: 10rpx 13rpx; border-radius: 999rpx; background: #edf2e9; color: #617064; font-size: 13rpx; }.week-empty { display: flex; margin-top: 15rpx; padding: 19rpx; flex-direction: column; gap: 12rpx; border-radius: 17rpx; background: #f3f6f1; color: #6d796f; font-size: 16rpx; line-height: 1.5; }.week-empty button { align-self: flex-start; color: #426048; font-weight: 700; }
+.next-step { display: flex; margin-top: 21rpx; padding: 21rpx; flex-direction: column; gap: 8rpx; border-radius: 21rpx; background: #e5ecd3; }.next-step > text:first-child { color: #6f7b64; font-size: 14rpx; }.next-step > text:nth-child(2) { font-size: 19rpx; line-height: 1.5; }.next-step > view { display: flex; gap: 10rpx; margin-top: 8rpx; }.next-step button { padding: 12rpx 16rpx; border-radius: 999rpx; background: rgba(255,255,255,.65); color: #52624e; font-size: 14rpx; }.stop-list { display: flex; margin-top: 18rpx; flex-direction: column; gap: 7rpx; color: #6d6459; font-size: 16rpx; }.stop-list text:first-child { color: #4f493f; font-weight: 700; }.bottleneck-trigger { width: 100%; margin-top: 22rpx; padding: 17rpx; border-top: 1rpx solid #e5eae3; color: #66736a; font-size: 15rpx; text-align: left; }
+.linked-action, .validation-guidance, .confirmation-warning { display: block; margin-top: 18rpx; padding: 17rpx 19rpx; border-radius: 17rpx; background: #eef3ea; color: #657268; font-size: 16rpx; line-height: 1.55; }.confirm-ledger { display: flex; margin-top: 22rpx; padding: 19rpx 0; border-top: 1rpx solid #e4e9e2; border-bottom: 1rpx solid #e4e9e2; }.confirm-ledger view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }.confirm-ledger view + view { padding-left: 15rpx; border-left: 1rpx solid #e4e9e2; }.confirm-ledger text:first-child { color: #7a867e; font-size: 13rpx; }.confirm-ledger text:last-child { font-size: 19rpx; font-weight: 700; }.confirmation-warning { background: #f4efe2; color: #736950; }
+.validation-options { display: flex; margin-top: 19rpx; flex-direction: column; gap: 10rpx; }.validation-options button { display: flex; padding: 18rpx 19rpx; flex-direction: column; align-items: flex-start; gap: 5rpx; border: 1rpx solid #e0e6de; border-radius: 17rpx; text-align: left; }.validation-options button.active { border-color: #536c58; background: #eaf1e5; }.validation-options text:first-child { font-size: 18rpx; font-weight: 700; }.validation-options text:last-child { color: #728076; font-size: 15rpx; line-height: 1.45; }.blocker-insight { display: flex; margin-top: 20rpx; padding: 21rpx; flex-direction: column; gap: 8rpx; border-radius: 19rpx; background: #edf2e9; color: #526055; font-size: 17rpx; line-height: 1.55; }.blocker-insight > text:nth-child(odd) { color: #738079; font-size: 13rpx; font-weight: 700; }.blocker-insight button { margin-top: 9rpx; color: #3f5b45; font-weight: 700; text-align: left; }
+.diary-feedback, .result-row { padding: 20rpx 0; border-top: 1rpx solid #e8ece6; }.diary-feedback:first-of-type, .result-row:first-of-type { margin-top: 14rpx; }.diary-feedback > text { display: block; }.diary-feedback > text:first-child { color: #77847b; font-size: 14rpx; }.diary-feedback > text:nth-child(2) { margin-top: 9rpx; font-size: 18rpx; line-height: 1.55; }.diary-feedback > view { display: flex; gap: 15rpx; margin-top: 12rpx; }.diary-feedback button { color: #4f6954; font-size: 14rpx; }.review-list { display: flex; margin-top: 18rpx; flex-direction: column; gap: 7rpx; color: #5e6b61; font-size: 16rpx; }.review-list > text:first-child { color: #3f4d43; font-weight: 700; }
+.result-row > view:first-child { display: flex; justify-content: space-between; gap: 14rpx; }.result-row > view:first-child text:first-child { font-size: 17rpx; font-weight: 700; }.result-row > view:first-child text:last-child { color: #879189; font-size: 13rpx; }.result-row > text { display: block; margin-top: 8rpx; color: #566359; font-size: 17rpx; line-height: 1.55; }.result-meta { display: flex; gap: 9rpx; margin-top: 11rpx; flex-wrap: wrap; }.result-meta text { padding: 6rpx 10rpx; border-radius: 999rpx; background: #edf2e9; color: #637067; font-size: 13rpx; }
+.secondary-links { margin-top: 25rpx; overflow: hidden; border-radius: 29rpx; background: rgba(255,255,255,.72); }.secondary-links > button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18rpx; padding: 23rpx 27rpx; border-top: 1rpx solid rgba(23,32,25,.07); text-align: left; }.secondary-links > button:first-child { border-top: 0; }.secondary-links > button > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }.secondary-links > button > view text:first-child { font-size: 19rpx; font-weight: 680; }.secondary-links > button > view text:last-child { color: #758078; font-size: 15rpx; line-height: 1.45; }.secondary-links > button > text { color: #748078; font-size: 29rpx; }.privacy-note { display: flex; align-items: flex-start; gap: 12rpx; margin-top: 24rpx; padding: 18rpx 21rpx; border-radius: 20rpx; background: #e1ead9; color: #5a685e; font-size: 15rpx; line-height: 1.55; }.privacy-note view { width: 8rpx; height: 8rpx; margin-top: 7rpx; flex: 0 0 8rpx; border-radius: 50%; background: #56705b; }
 /* #ifdef H5 */
-@media (min-width: 980px) {
-	.compound-page { box-sizing: border-box; padding-left: 96px; }
-	.status-bar { display: none; }
-	.page-shell { max-width: 820px; margin: 0 auto; padding: 48px 38px 100px; }
-}
+@media (min-width: 980px) { .compound-page { box-sizing: border-box; padding-left: 96px; }.status-bar { display: none; }.page-shell { max-width: 960px; margin: 0 auto; padding: 55px 42px 100px; }.portfolio-hero { padding: 50px; }.portfolio-title { max-width: 720px; font-size: 42px; }.archetype-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }.archetype-card:nth-child(2) { border-top: 0; }.plan-card, .catalog-panel, .editor-panel { padding: 34px; }.metric-editor > view { min-width: 0; } }
 /* #endif */
 </style>

@@ -130,10 +130,10 @@ test('todo management and project creation use large cross-platform sheets', () 
   assert.doesNotMatch(list, /openPageMenu\(\)\s*\{[\s\S]{0,180}uni\.showActionSheet/);
 });
 
-test('compound system opens a segmented self-paced yoga practice', () => {
+test('compound system keeps segmented self-paced yoga as an optional body tool', () => {
   const compound = source('src/pages/shroom/compound.vue');
   const yoga = source('src/pages/shroom/yoga-practice.vue');
-  assert.match(compound, /每日自主练习/);
+  assert.match(compound, /身体练习/);
   assert.match(yoga, /initial-time/);
   assert.match(yoga, /:controls="false"/);
   assert.match(yoga, /暂停视频/);
@@ -197,7 +197,7 @@ test('life OS is reviewed as confirmed clauses and cards are not actions', () =>
   assert.match(me, /带到下一次相似时刻的理解/);
 });
 
-test('compound directions stay secondary while Life OS remains a separate principle module', () => {
+test('legacy long-term directions remain inspectable while new compound plans no longer depend on them', () => {
   const home = source('src/pages/diary/index.vue');
   const plan = source('src/pages/shroom/life-os-plan.vue');
   const item = source('src/pages/shroom/life-os-item.vue');
@@ -230,13 +230,18 @@ test('compound directions stay secondary while Life OS remains a separate princi
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-plan'));
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-item'));
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
+  const compound = source('src/pages/shroom/compound.vue');
+  assert.doesNotMatch(compound, /与哪个长期方向一致|compoundStartItemKey|openDirections/);
+  assert.match(compound, /人生 OS/);
 });
 
-test('compound system manages a time-bounded portfolio before execution and diary feedback', () => {
+test('compound system starts from a shared archetype catalog and verifies private compounding evidence', () => {
 	const me = source('src/pages/shroom/me.vue');
 	const compound = source('src/pages/shroom/compound.vue');
 	const compoundRoute = source('server/src/routes/compound-progress.js');
-	const migration = source('server/sql/033_compound_planning.sql');
+	const planningMigration = source('server/sql/033_compound_planning.sql');
+	const archetypeMigration = source('server/sql/035_compound_archetypes.sql');
+	const archetypes = source('server/src/compound-archetypes.js');
 	const pages = source('src/pages.json');
 	const api = source('src/api/compound-system.js');
 
@@ -244,16 +249,24 @@ test('compound system manages a time-bounded portfolio before execution and diar
 	assert.match(me, /复利系统/);
 	assert.match(pages, /pages\/shroom\/compound/);
 	assert.match(api, /\/compound\/v2\/home/);
-	assert.match(compound, /把有限时间/);
-	assert.match(compound, /日记记录真实发生/);
-	assert.match(compound, /12 周要发生的变化/);
-	assert.match(compound, /为什么它会产生复利/);
-	assert.match(compound, /每周预算/);
-	assert.match(compound, /领先指标/);
+	assert.match(api, /\/compound\/v2\/archetypes/);
+	assert.match(api, /\/validation/);
+	assert.match(compound, /从真正会积累的东西里/);
+	assert.match(compound, /这些是所有用户共享的复利原型/);
+	assert.match(compound, /直接产生积累/);
+	assert.match(compound, /保护长期底盘/);
+	assert.match(compound, /每次投入后，会留下什么本金/);
+	assert.match(compound, /旧积累将如何产生复用或回报/);
+	assert.match(compound, /回报如何进入下一轮/);
+	assert.match(compound, /先验证 4 周/);
+	assert.match(compound, /复利已出现/);
+	assert.match(compound, /目前线性/);
+	assert.match(compound, /新增本金/);
+	assert.match(compound, /新增复用 \/ 回报/);
 	assert.match(compound, /周期结果用什么证明/);
 	assert.match(compound, /当前里程碑/);
-	assert.match(compound, /这段时间明确不做/);
-	assert.match(compound, /本周实际分给它多少分钟/);
+	assert.match(compound, /为了保护它/);
+	assert.match(compound, /本周真实分给它多少分钟/);
 	assert.match(compound, /来自日记的现实反馈/);
 	assert.match(compound, /人生 OS/);
 	assert.match(compound, /重新读取/);
@@ -262,9 +275,15 @@ test('compound system manages a time-bounded portfolio before execution and diar
 	assert.doesNotMatch(compound, /必要完成/);
 	assert.match(compoundRoute, /compound_threads/);
 	assert.match(compoundRoute, /compound_week_plans/);
-	assert.match(migration, /weekly_time_budget_minutes/);
-	assert.match(migration, /leading_metric_current/);
-	assert.match(migration, /CREATE TABLE IF NOT EXISTS compound_week_plans/);
+	assert.match(planningMigration, /CREATE TABLE IF NOT EXISTS compound_week_plans/);
+	assert.match(archetypeMigration, /ALTER COLUMN item_id DROP NOT NULL/);
+	assert.match(archetypeMigration, /principal_metric_current/);
+	assert.match(archetypeMigration, /return_metric_current/);
+	assert.match(archetypes, /capability_feedback/);
+	assert.match(archetypes, /financial_capital/);
+	assert.match(archetypes, /body_capacity/);
+	assert.match(compoundRoute, /return_metric_current/);
+	assert.match(compoundRoute, /validation_status/);
 	assert.match(compoundRoute, /compound_events/);
 	assert.match(compoundRoute, /status = 'DRAFT'/);
 	assert.match(compoundRoute, /source_diary_id/);

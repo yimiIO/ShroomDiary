@@ -6,7 +6,8 @@ const db = require('../db');
 const { callJson, isAiConfigured } = require('../ai-engine');
 const { usageSummary } = require('../ai-usage');
 const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http');
-const { ensureDefaultLifeOsItems, SECTIONS } = require('../life-os-long-term');
+const { SECTIONS } = require('../life-os-long-term');
+const { CATALOG_VERSION, archetypeByKey, listArchetypes } = require('../compound-archetypes');
 const { normalizeYogaSelection, presentYogaPractice, shanghaiDate } = require('../compound-system');
 const { signPrivateObjectUrl } = require('../media-storage');
 const {
@@ -29,10 +30,6 @@ const {
 
 const router = express.Router();
 router.use(requireUser);
-router.use(asyncRoute(async (req, res, next) => {
-  await ensureDefaultLifeOsItems(db, req.user.id);
-  next();
-}));
 
 function uuid(value) {
   const id = String(value || '');
@@ -128,14 +125,43 @@ function mapEvent(row) {
 function mapThread(row, events = []) {
   const metricTarget = Number(row.leading_metric_target || 0);
   const metricCurrent = Number(row.leading_metric_current || 0);
+  const principalTarget = Number(row.principal_metric_target || 0);
+  const principalCurrent = Number(row.principal_metric_current || 0);
+  const returnTarget = Number(row.return_metric_target || 0);
+  const returnCurrent = Number(row.return_metric_current || 0);
   const plannedMinutes = Number(row.week_planned_minutes || 0);
   const actualMinutes = Number(row.week_actual_minutes || 0);
   return {
     id: row.id,
     itemId: row.item_id,
-    itemKey: row.stable_key,
-    itemName: row.item_name,
-    section: row.section,
+    itemKey: row.stable_key || null,
+    itemName: row.item_name || row.title,
+    section: row.section || '',
+    archetypeKey: row.archetype_key || 'legacy_direction',
+    archetypeVersion: row.archetype_version || 'legacy-v1',
+    archetype: archetypeByKey(row.archetype_key),
+    investmentKind: row.investment_kind || 'GROWTH',
+    principalDefinition: row.principal_definition || '',
+    returnDefinition: row.return_definition || '',
+    reinvestmentDefinition: row.reinvestment_definition || '',
+    validation: {
+      status: row.validation_status || 'VALIDATING',
+      startedAt: dateOnly(row.validation_started_at),
+      dueAt: dateOnly(row.validation_due_at),
+      note: row.validation_note || ''
+    },
+    principalMetric: {
+      name: row.principal_metric_name || '',
+      target: principalTarget,
+      current: principalCurrent,
+      progressPercent: principalTarget > 0 ? Math.min(100, Math.round(principalCurrent / principalTarget * 100)) : null
+    },
+    returnMetric: {
+      name: row.return_metric_name || '',
+      target: returnTarget,
+      current: returnCurrent,
+      progressPercent: returnTarget > 0 ? Math.min(100, Math.round(returnCurrent / returnTarget * 100)) : null
+    },
     progressMode: row.progress_mode,
     title: row.title || row.item_name,
     cycleStart: dateOnly(row.cycle_start),
@@ -238,13 +264,15 @@ async function eventsFor(threadId, limit = 20) {
 async function ownedThread(userId, threadId, options = {}) {
   const id = uuid(threadId);
   if (!id) return null;
-  const lock = options.lock ? ' FOR UPDATE' : '';
+  // A new archetype-backed plan has no Life OS item. Lock only the owned
+  // thread row; PostgreSQL cannot lock the nullable side of this LEFT JOIN.
+  const lock = options.lock ? ' FOR UPDATE OF t' : '';
   const queryable = options.queryable || db;
   const result = await queryable.query(
     `SELECT t.*, i.stable_key, i.name AS item_name, i.section,
             i.description AS item_description, i.minimum_action
        FROM compound_threads t
-       JOIN life_os_items i ON i.id = t.item_id AND i.user_id = t.user_id
+       LEFT JOIN life_os_items i ON i.id = t.item_id AND i.user_id = t.user_id
       WHERE t.id = $1 AND t.user_id = $2${lock}`,
     [id, userId]
   );
@@ -253,7 +281,7 @@ async function ownedThread(userId, threadId, options = {}) {
 
 async function contextFor(userId, itemId, threadId = null) {
   const [links, refs, principles, events] = await Promise.all([
-    db.query(
+    itemId ? db.query(
       `SELECT l.id, l.record_type, l.evidence_excerpt, l.summary, l.suggested_next_step,
               to_char(d.occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
          FROM life_os_item_links l
@@ -261,12 +289,12 @@ async function contextFor(userId, itemId, threadId = null) {
         WHERE l.user_id = $1 AND l.item_id = $2 AND l.status = 'ACTIVE' AND l.source_valid
         ORDER BY d.occurred_at DESC LIMIT 8`,
       [userId, itemId]
-    ),
-    db.query(
+    ) : Promise.resolve({ rows: [] }),
+    itemId ? db.query(
       `SELECT ref_type, label, external_url FROM life_os_item_refs
         WHERE user_id = $1 AND item_id = $2 ORDER BY created_at DESC LIMIT 10`,
       [userId, itemId]
-    ),
+    ) : Promise.resolve({ rows: [] }),
     db.query(
       `SELECT statement, boundary FROM life_os_clauses
         WHERE user_id = $1 AND status = 'active' ORDER BY position LIMIT 12`,
@@ -290,10 +318,10 @@ async function contextFor(userId, itemId, threadId = null) {
 async function principalOptionsFor(userId, limit = 20) {
   const result = await db.query(
     `SELECT e.id, e.summary, e.payload, e.created_at,
-            i.stable_key, i.name AS item_name
+            i.stable_key, COALESCE(i.name, t.title) AS item_name
        FROM compound_events e
        JOIN compound_threads t ON t.id = e.thread_id AND t.user_id = e.user_id
-       JOIN life_os_items i ON i.id = t.item_id AND i.user_id = e.user_id
+       LEFT JOIN life_os_items i ON i.id = t.item_id AND i.user_id = e.user_id
       WHERE e.user_id = $1 AND e.kind = 'RESULT' AND e.status = 'CONFIRMED'
         AND e.payload->>'accumulationType' = 'PRINCIPAL'
       ORDER BY e.created_at DESC LIMIT $2`,
@@ -388,14 +416,13 @@ router.delete('/body-practice/check-in', asyncRoute(async (req, res) => {
 }));
 
 router.get('/home', asyncRoute(async (req, res) => {
-  const rows = await directionsFor(req.user.id);
   const threadRows = await db.query(
     `SELECT t.*, i.stable_key, i.name AS item_name, i.section,
             wp.week_start, wp.planned_minutes AS week_planned_minutes,
             wp.actual_minutes AS week_actual_minutes,
             wp.actions AS week_actions, wp.stop_list AS week_stop_list
        FROM compound_threads t
-       JOIN life_os_items i ON i.id = t.item_id AND i.user_id = t.user_id
+       LEFT JOIN life_os_items i ON i.id = t.item_id AND i.user_id = t.user_id
        LEFT JOIN compound_week_plans wp ON wp.thread_id = t.id AND wp.user_id = t.user_id
         AND wp.week_start = date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date
       WHERE t.user_id = $1 AND t.status = 'ACTIVE'
@@ -424,10 +451,10 @@ router.get('/home', asyncRoute(async (req, res) => {
     [currentRow.id, req.user.id]
   ) : { rows: [] };
   const recentResults = await db.query(
-    `SELECT e.*, i.stable_key, i.name AS item_name
+    `SELECT e.*, i.stable_key, COALESCE(i.name, t.title) AS item_name
        FROM compound_events e
        JOIN compound_threads t ON t.id = e.thread_id AND t.user_id = e.user_id
-       JOIN life_os_items i ON i.id = t.item_id
+       LEFT JOIN life_os_items i ON i.id = t.item_id
       WHERE e.user_id = $1 AND e.kind = 'RESULT' AND e.status = 'CONFIRMED'
       ORDER BY e.created_at DESC LIMIT 6`,
     [req.user.id]
@@ -441,20 +468,20 @@ router.get('/home', asyncRoute(async (req, res) => {
     principalOptionsFor(req.user.id, 20),
     db.query(
       `SELECT p.id, p.summary, p.payload, p.created_at,
-              i.stable_key, i.name AS item_name,
+              i.stable_key, COALESCE(i.name, t.title) AS item_name,
               count(e.id)::int AS use_count,
               (count(e.id) FILTER (WHERE e.payload->>'accumulationType' = 'RETURN'))::int AS return_count,
               max(e.created_at) AS last_used_at
          FROM compound_events p
          JOIN compound_threads t ON t.id = p.thread_id AND t.user_id = p.user_id
-         JOIN life_os_items i ON i.id = t.item_id AND i.user_id = p.user_id
+         LEFT JOIN life_os_items i ON i.id = t.item_id AND i.user_id = p.user_id
          JOIN compound_events e ON e.user_id = p.user_id
           AND e.kind = 'RESULT' AND e.status = 'CONFIRMED'
           AND e.payload->>'principalEventId' = p.id::text
           AND e.payload->>'accumulationType' IN ('REUSE', 'RETURN')
         WHERE p.user_id = $1 AND p.kind = 'RESULT' AND p.status = 'CONFIRMED'
           AND p.payload->>'accumulationType' = 'PRINCIPAL'
-        GROUP BY p.id, i.stable_key, i.name
+        GROUP BY p.id, i.stable_key, i.name, t.title
         ORDER BY max(e.created_at) DESC LIMIT 6`,
       [req.user.id]
     ),
@@ -471,7 +498,6 @@ router.get('/home', asyncRoute(async (req, res) => {
               to_char((date_trunc('week', now() AT TIME ZONE 'Asia/Shanghai')::date + 6), 'YYYY-MM-DD') AS week_end`
     )
   ]);
-  const directions = rows.map(mapDirection);
   const plans = activeRows.map((row, index) => mapThread(row, index === 0 ? currentEvents : []));
   const plannedMinutes = plans.reduce((sum, plan) => sum + plan.week.plannedMinutes, 0);
   const actualMinutes = plans.reduce((sum, plan) => sum + plan.week.actualMinutes, 0);
@@ -504,10 +530,23 @@ router.get('/home', asyncRoute(async (req, res) => {
       lastUsedAt: row.last_used_at
     })),
     quietToday: quietToday.rowCount > 0,
-    directionCandidates: directions.filter(item => item.status === 'ACTIVE' && !item.hasActiveThread),
-    directionCount: directions.length,
+    archetypeCount: listArchetypes().length,
+    catalogVersion: CATALOG_VERSION,
+    directionCandidates: [],
+    directionCount: 0,
     latestReview: latestReview.rowCount ? mapReview(latestReview.rows[0]) : null,
     privacy: '复利计划、时间配置、进度与回看仅本人可见，不进入发现。'
+  });
+}));
+
+router.get('/archetypes', asyncRoute(async (req, res) => {
+  const items = listArchetypes();
+  return ok(res, {
+    version: CATALOG_VERSION,
+    growth: items.filter(item => item.kind === 'GROWTH'),
+    protection: items.filter(item => item.kind === 'PROTECTION'),
+    count: items.length,
+    note: '原型是所有用户共享的产品知识；选择后生成的计划、时间和证据仅本人可见。'
   });
 }));
 
@@ -549,14 +588,32 @@ router.post('/starter', asyncRoute(async (req, res) => {
 
 router.post('/threads', asyncRoute(async (req, res) => {
   const key = stableKey(req.body.itemKey);
+  const archetype = archetypeByKey(req.body.archetypeKey);
   const desiredOutcome = text(req.body.desiredOutcome, 1200);
   const currentStep = text(req.body.currentStep, 1000);
-  if (!key || !desiredOutcome || !currentStep) return fail(res, 400, '请确认这次要做到什么，以及现在的最小一步');
+  if ((!key && !archetype) || !desiredOutcome || !currentStep) {
+    return fail(res, 400, '请选择一种复利原型，并确认 12 周结果和现在的最小一步');
+  }
   const title = text(req.body.title, 240);
-  const compoundMechanism = text(req.body.compoundMechanism, 1600);
+  const principalDefinition = text(req.body.principalDefinition, 1600)
+    || text(req.body.compoundMechanism, 1600);
+  const returnDefinition = text(req.body.returnDefinition, 1600)
+    || text(req.body.outcomeEvidence, 1600);
+  const reinvestmentDefinition = text(req.body.reinvestmentDefinition, 1600);
+  if (archetype && (!title || !principalDefinition || !returnDefinition || !reinvestmentDefinition)) {
+    return fail(res, 400, '请说清在你的现实中积累什么、如何产生回报，以及回报如何进入下一轮');
+  }
+  const compoundMechanism = [principalDefinition, returnDefinition, reinvestmentDefinition].filter(Boolean).join('\n');
   const weeklyTimeBudgetMinutes = Math.round(boundedNumber(req.body.weeklyTimeBudgetMinutes, 0, 10080, 180));
-  const leadingMetricName = text(req.body.leadingMetricName, 240);
-  const leadingMetricTarget = boundedNumber(req.body.leadingMetricTarget, 0, 1000000000, 0);
+  const principalMetricName = text(req.body.principalMetricName, 240)
+    || text(req.body.leadingMetricName, 240)
+    || archetype?.defaultPrincipalMetric || '';
+  const principalMetricTarget = boundedNumber(
+    req.body.principalMetricTarget === undefined ? req.body.leadingMetricTarget : req.body.principalMetricTarget,
+    0, 1000000000, 0
+  );
+  const returnMetricName = text(req.body.returnMetricName, 240) || archetype?.defaultReturnMetric || '';
+  const returnMetricTarget = boundedNumber(req.body.returnMetricTarget, 0, 1000000000, 0);
   const outcomeEvidence = text(req.body.outcomeEvidence, 1600);
   const currentMilestone = text(req.body.currentMilestone, 1200) || desiredOutcome;
   const stopList = textList(req.body.stopList, 8, 300);
@@ -564,16 +621,20 @@ router.post('/threads', asyncRoute(async (req, res) => {
   const cycleEnd = dateOnly(req.body.cycleEnd);
   if (cycleStart && cycleEnd && cycleEnd < cycleStart) return fail(res, 400, '周期结束日期不能早于开始日期');
   const created = await db.transaction(async client => {
-    const itemResult = await client.query(
-      `SELECT * FROM life_os_items WHERE user_id = $1 AND stable_key = $2 AND status = 'ACTIVE' FOR UPDATE`,
-      [req.user.id, key]
-    );
-    if (!itemResult.rowCount) return { error: 'item' };
-    const existing = await client.query(
-      `SELECT id FROM compound_threads WHERE user_id = $1 AND item_id = $2 AND status = 'ACTIVE'`,
-      [req.user.id, itemResult.rows[0].id]
-    );
-    if (existing.rowCount) return { error: 'existing', id: existing.rows[0].id };
+    let item = null;
+    if (key) {
+      const itemResult = await client.query(
+        `SELECT * FROM life_os_items WHERE user_id = $1 AND stable_key = $2 AND status = 'ACTIVE' FOR UPDATE`,
+        [req.user.id, key]
+      );
+      if (!itemResult.rowCount) return { error: 'item' };
+      item = itemResult.rows[0];
+      const existing = await client.query(
+        `SELECT id FROM compound_threads WHERE user_id = $1 AND item_id = $2 AND status = 'ACTIVE'`,
+        [req.user.id, item.id]
+      );
+      if (existing.rowCount) return { error: 'existing', id: existing.rows[0].id };
+    }
     const count = await client.query(
       `SELECT count(*)::int AS count FROM compound_threads WHERE user_id = $1 AND status = 'ACTIVE'`,
       [req.user.id]
@@ -581,44 +642,60 @@ router.post('/threads', asyncRoute(async (req, res) => {
     if (Number(count.rows[0].count) >= 3) return { error: 'limit' };
     await client.query(`UPDATE compound_threads SET is_primary = false WHERE user_id = $1 AND status = 'ACTIVE'`, [req.user.id]);
     const id = crypto.randomUUID();
-    const item = itemResult.rows[0];
     const inserted = await client.query(
       `INSERT INTO compound_threads
         (id, user_id, item_id, progress_mode, title, cycle_start, cycle_end,
          compound_mechanism, weekly_time_budget_minutes, leading_metric_name,
          leading_metric_target, outcome_evidence, current_milestone, stop_list,
-         desired_outcome, context_summary, current_step, is_primary)
+         desired_outcome, context_summary, current_step, is_primary,
+         archetype_key, archetype_version, investment_kind,
+         principal_definition, return_definition, reinvestment_definition,
+         validation_status, validation_started_at, validation_due_at,
+         principal_metric_name, principal_metric_target,
+         return_metric_name, return_metric_target)
        VALUES ($1, $2, $3, $4, $5,
          COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date),
          COALESCE($7::date, COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date) + 83),
-         $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, true)
+         $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, true,
+         $18, $19, $20, $21, $22, $23, 'VALIDATING',
+         COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date),
+         COALESCE($6::date, (now() AT TIME ZONE 'Asia/Shanghai')::date) + 27,
+         $24, $25, $26, $27)
        RETURNING *`,
-      [id, req.user.id, item.id, modeForItem(key), title || item.name, cycleStart, cycleEnd,
-        compoundMechanism, weeklyTimeBudgetMinutes, leadingMetricName, leadingMetricTarget,
+      [id, req.user.id, item?.id || null, archetype?.kind === 'PROTECTION' ? 'MAINTENANCE' : (key ? modeForItem(key) : 'OUTCOME'),
+        title || item?.name, cycleStart, cycleEnd,
+        compoundMechanism, weeklyTimeBudgetMinutes, principalMetricName, principalMetricTarget,
         outcomeEvidence, currentMilestone, JSON.stringify(stopList), desiredOutcome,
-        text(req.body.contextReason, 1200), currentStep]
+        text(req.body.contextReason, 1200), currentStep,
+        archetype?.key || 'legacy_direction', archetype?.version || 'legacy-v1', archetype?.kind || 'GROWTH',
+        principalDefinition, returnDefinition, reinvestmentDefinition,
+        principalMetricName, principalMetricTarget, returnMetricName, returnMetricTarget]
     );
     await client.query(
       `INSERT INTO compound_events
         (id, user_id, thread_id, kind, status, actor, input_text, summary, payload)
        VALUES ($1, $2, $3, 'START', 'CONFIRMED', 'USER', $4, $5, $6::jsonb)`,
       [crypto.randomUUID(), req.user.id, id, desiredOutcome, '确认建立复利计划', JSON.stringify({
-        title: title || item.name, desiredOutcome, compoundMechanism, weeklyTimeBudgetMinutes,
-        leadingMetricName, leadingMetricTarget, outcomeEvidence, currentMilestone,
-        stopList, currentStep, cycleStart, cycleEnd
+        title: title || item?.name, desiredOutcome, compoundMechanism, weeklyTimeBudgetMinutes,
+        archetypeKey: archetype?.key || 'legacy_direction', investmentKind: archetype?.kind || 'GROWTH',
+        principalDefinition, returnDefinition, reinvestmentDefinition,
+        principalMetricName, principalMetricTarget, returnMetricName, returnMetricTarget,
+        outcomeEvidence, currentMilestone, stopList, currentStep, cycleStart, cycleEnd
       })]
     );
-    await client.query(
-      `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
-        WHERE user_id = $1 AND id = $2`,
-      [req.user.id, item.id, currentStep]
-    );
-    return { row: { ...inserted.rows[0], stable_key: item.stable_key, item_name: item.name, section: item.section } };
+    if (item) {
+      await client.query(
+        `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
+          WHERE user_id = $1 AND id = $2`,
+        [req.user.id, item.id, currentStep]
+      );
+    }
+    return { row: { ...inserted.rows[0], stable_key: item?.stable_key || null, item_name: item?.name || title, section: item?.section || '' } };
   });
   if (created.error === 'item') return fail(res, 404, '长期方向不存在');
   if (created.error === 'existing') return fail(res, 409, '这个方向已经在推进，可以直接接着做', { threadId: created.id });
   if (created.error === 'limit') return fail(res, 400, '同时推进的事不超过 3 件；请先暂缓或结束一件');
-  return ok(res, mapThread(created.row), '复利计划已建立');
+  return ok(res, mapThread(created.row), '已建立一项待验证的复利计划');
 }));
 
 router.patch('/plans/:id', asyncRoute(async (req, res) => {
@@ -633,6 +710,12 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
     if (cycleEnd < cycleStart) return { error: 'dates' };
     const compoundMechanism = req.body.compoundMechanism === undefined
       ? thread.compound_mechanism : text(req.body.compoundMechanism, 1600);
+    const principalDefinition = req.body.principalDefinition === undefined
+      ? thread.principal_definition : text(req.body.principalDefinition, 1600);
+    const returnDefinition = req.body.returnDefinition === undefined
+      ? thread.return_definition : text(req.body.returnDefinition, 1600);
+    const reinvestmentDefinition = req.body.reinvestmentDefinition === undefined
+      ? thread.reinvestment_definition : text(req.body.reinvestmentDefinition, 1600);
     const weeklyTimeBudgetMinutes = req.body.weeklyTimeBudgetMinutes === undefined
       ? Number(thread.weekly_time_budget_minutes || 0)
       : Math.round(boundedNumber(req.body.weeklyTimeBudgetMinutes, 0, 10080, 0));
@@ -641,6 +724,16 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
     const leadingMetricTarget = req.body.leadingMetricTarget === undefined
       ? Number(thread.leading_metric_target || 0)
       : boundedNumber(req.body.leadingMetricTarget, 0, 1000000000, 0);
+    const principalMetricName = req.body.principalMetricName === undefined
+      ? thread.principal_metric_name : text(req.body.principalMetricName, 240);
+    const principalMetricTarget = req.body.principalMetricTarget === undefined
+      ? Number(thread.principal_metric_target || 0)
+      : boundedNumber(req.body.principalMetricTarget, 0, 1000000000, 0);
+    const returnMetricName = req.body.returnMetricName === undefined
+      ? thread.return_metric_name : text(req.body.returnMetricName, 240);
+    const returnMetricTarget = req.body.returnMetricTarget === undefined
+      ? Number(thread.return_metric_target || 0)
+      : boundedNumber(req.body.returnMetricTarget, 0, 1000000000, 0);
     const outcomeEvidence = req.body.outcomeEvidence === undefined
       ? thread.outcome_evidence : text(req.body.outcomeEvidence, 1600);
     const currentMilestone = req.body.currentMilestone === undefined
@@ -649,19 +742,25 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
       ? thread.current_step : text(req.body.currentStep, 1000);
     const stopList = req.body.stopList === undefined
       ? (Array.isArray(thread.stop_list) ? thread.stop_list : []) : textList(req.body.stopList, 8, 300);
-    if (!currentStep) return { error: 'required' };
+    if (!currentStep || !principalDefinition || !returnDefinition || !reinvestmentDefinition) return { error: 'required' };
     const result = await client.query(
       `UPDATE compound_threads SET title = $3, desired_outcome = $4,
          cycle_start = $5, cycle_end = $6, compound_mechanism = $7,
          weekly_time_budget_minutes = $8, leading_metric_name = $9,
          leading_metric_target = $10, outcome_evidence = $11,
          current_milestone = $12, current_step = $13, stop_list = $14::jsonb,
+         principal_definition = $15, return_definition = $16,
+         reinvestment_definition = $17, principal_metric_name = $18,
+         principal_metric_target = $19, return_metric_name = $20,
+         return_metric_target = $21,
          plan_version = plan_version + 1, updated_at = now()
        WHERE id = $1 AND user_id = $2 RETURNING *`,
       [thread.id, req.user.id, title, desiredOutcome, cycleStart, cycleEnd,
         compoundMechanism, weeklyTimeBudgetMinutes, leadingMetricName,
         leadingMetricTarget, outcomeEvidence, currentMilestone, currentStep,
-        JSON.stringify(stopList)]
+        JSON.stringify(stopList), principalDefinition, returnDefinition,
+        reinvestmentDefinition, principalMetricName, principalMetricTarget,
+        returnMetricName, returnMetricTarget]
     );
     await client.query(
       `INSERT INTO compound_events
@@ -674,9 +773,52 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
     return { row: { ...result.rows[0], stable_key: thread.stable_key, item_name: thread.item_name, section: thread.section } };
   });
   if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
-  if (saved.error === 'required') return fail(res, 400, '计划名称、周期目标和当前一步不能为空');
+  if (saved.error === 'required') return fail(res, 400, '计划名称、周期目标、本金、回报、再投入和当前一步不能为空');
   if (saved.error === 'dates') return fail(res, 400, '周期结束日期不能早于开始日期');
   return ok(res, mapThread(saved.row), '复利计划已更新');
+}));
+
+router.patch('/plans/:id/validation', asyncRoute(async (req, res) => {
+  const requested = ['VALIDATING', 'COMPOUNDING', 'LINEAR', 'PROTECTION'].includes(req.body.status)
+    ? req.body.status : null;
+  const note = text(req.body.note, 1600);
+  if (!requested) return fail(res, 400, '请选择一个可验证的当前判断');
+  if (requested !== 'VALIDATING' && !note) return fail(res, 400, '请写下支持这个判断的真实证据');
+  const saved = await db.transaction(async client => {
+    const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
+    if (!thread || thread.status !== 'ACTIVE') return { error: 'missing' };
+    if (requested === 'PROTECTION' && thread.investment_kind !== 'PROTECTION') return { error: 'kind' };
+    if (requested === 'COMPOUNDING') {
+      const evidence = await client.query(
+        `SELECT 1 FROM compound_events
+          WHERE user_id = $1 AND thread_id = $2 AND kind = 'RESULT' AND status = 'CONFIRMED'
+            AND payload->>'accumulationType' IN ('REUSE', 'RETURN')
+          LIMIT 1`,
+        [req.user.id, thread.id]
+      );
+      if (!evidence.rowCount && Number(thread.return_metric_current || 0) <= 0) return { error: 'evidence' };
+    }
+    const updated = await client.query(
+      `UPDATE compound_threads SET validation_status = $3, validation_note = $4,
+         plan_version = plan_version + 1, updated_at = now()
+       WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [thread.id, req.user.id, requested, note]
+    );
+    await client.query(
+      `INSERT INTO compound_events
+        (id, user_id, thread_id, kind, status, actor, summary, payload)
+       VALUES ($1, $2, $3, 'ADJUSTMENT', 'CONFIRMED', 'USER', $4, $5::jsonb)`,
+      [crypto.randomUUID(), req.user.id, thread.id, '更新复利验证判断', JSON.stringify({
+        action: 'VALIDATION_UPDATED', previousStatus: thread.validation_status,
+        validationStatus: requested, note
+      })]
+    );
+    return { row: { ...updated.rows[0], stable_key: thread.stable_key, item_name: thread.item_name, section: thread.section } };
+  });
+  if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
+  if (saved.error === 'kind') return fail(res, 400, '只有底盘保障原型可以确认为保障项');
+  if (saved.error === 'evidence') return fail(res, 400, '还没有复用或回报证据，现在不能宣布复利已成立');
+  return ok(res, mapThread(saved.row), '复利验证判断已更新');
 }));
 
 router.put('/plans/:id/week', asyncRoute(async (req, res) => {
@@ -819,11 +961,13 @@ router.post('/threads/:id/suggestions/:eventId/adopt', asyncRoute(async (req, re
        WHERE id = $1 AND user_id = $2`,
       [thread.id, req.user.id, requestedStep, payload.assistance || event.summary]
     );
-    await client.query(
-      `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
-        WHERE user_id = $1 AND id = $2`,
-      [req.user.id, thread.item_id, requestedStep]
-    );
+    if (thread.item_id) {
+      await client.query(
+        `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
+          WHERE user_id = $1 AND id = $2`,
+        [req.user.id, thread.item_id, requestedStep]
+      );
+    }
     await client.query(
       `INSERT INTO compound_events
         (id, user_id, thread_id, kind, status, actor, summary, payload)
@@ -1031,6 +1175,10 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
       ? 0 : Math.round(boundedNumber(req.body.spentMinutes, 0, 1440, 0));
     const leadingMetricDelta = value.state === 'PREPARING'
       ? 0 : boundedNumber(req.body.leadingMetricDelta, 0, 1000000000, 0);
+    const principalMetricDelta = value.state === 'PREPARING'
+      ? 0 : boundedNumber(req.body.principalMetricDelta, 0, 1000000000, 0);
+    const returnMetricDelta = value.state === 'PREPARING'
+      ? 0 : boundedNumber(req.body.returnMetricDelta, 0, 1000000000, 0);
     const weekActionId = text(req.body.weekActionId, 80);
     const closeMode = ['CONTINUE', 'PAUSE', 'END'].includes(req.body.closeMode) ? req.body.closeMode : 'CONTINUE';
     const updated = await client.query(
@@ -1039,7 +1187,7 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
        WHERE id = $1 AND user_id = $2 AND thread_id = $3 RETURNING *`,
       [eventId, req.user.id, thread.id, value.summary, JSON.stringify({
         ...value, rawInput: original.rawInput || draft.input_text, closeMode,
-        spentMinutes, leadingMetricDelta, weekActionId
+        spentMinutes, leadingMetricDelta, principalMetricDelta, returnMetricDelta, weekActionId
       })]
     );
     const nextStatus = closeMode === 'PAUSE' ? 'PAUSED' : (closeMode === 'END' ? 'ENDED' : 'ACTIVE');
@@ -1048,12 +1196,15 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
       `UPDATE compound_threads SET last_completed = $3, current_step = $4,
          context_summary = $5, blocker_summary = '', status = $6::varchar,
          leading_metric_current = leading_metric_current + $7,
+         principal_metric_current = principal_metric_current + $8,
+         return_metric_current = return_metric_current + $9,
          is_primary = CASE WHEN $6::varchar = 'ACTIVE' THEN is_primary ELSE false END,
          paused_at = CASE WHEN $6::varchar = 'PAUSED' THEN now() ELSE paused_at END,
          ended_at = CASE WHEN $6::varchar = 'ENDED' THEN now() ELSE ended_at END,
          last_activity_at = now(), updated_at = now()
        WHERE id = $1 AND user_id = $2`,
-      [thread.id, req.user.id, completed, value.nextStep, value.progressSummary || value.summary, nextStatus, leadingMetricDelta]
+      [thread.id, req.user.id, completed, value.nextStep, value.progressSummary || value.summary,
+        nextStatus, leadingMetricDelta || principalMetricDelta, principalMetricDelta, returnMetricDelta]
     );
     if (spentMinutes > 0 || weekActionId) {
       const weekResult = await client.query(
@@ -1088,11 +1239,13 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
       }
     }
     if (nextStatus === 'ACTIVE') {
-      await client.query(
-        `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
-          WHERE user_id = $1 AND id = $2`,
-        [req.user.id, thread.item_id, value.nextStep]
-      );
+      if (thread.item_id) {
+        await client.query(
+          `UPDATE life_os_items SET current_next_step = $3, updated_at = now()
+            WHERE user_id = $1 AND id = $2`,
+          [req.user.id, thread.item_id, value.nextStep]
+        );
+      }
     } else if (thread.is_primary) {
       await pickNextPrimary(client, req.user.id);
     }
@@ -1282,10 +1435,10 @@ router.post('/threads/:id/diary-links/:linkId/dismiss', asyncRoute(async (req, r
 async function reviewSources(userId, scopeStart, scopeEnd) {
   const result = await db.query(
     `SELECT e.id, e.kind, e.summary, e.payload, e.source_diary_id, e.source_valid,
-            e.created_at, i.stable_key, i.name AS item_name, t.progress_mode
+            e.created_at, i.stable_key, COALESCE(i.name, t.title) AS item_name, t.progress_mode
        FROM compound_events e
        JOIN compound_threads t ON t.id = e.thread_id AND t.user_id = e.user_id
-       JOIN life_os_items i ON i.id = t.item_id
+       LEFT JOIN life_os_items i ON i.id = t.item_id
       WHERE e.user_id = $1 AND e.status = 'CONFIRMED'
         AND e.created_at >= $2::date
         AND e.created_at < ($3::date + 1)
@@ -1381,7 +1534,17 @@ router.post('/reviews/:id/confirm', asyncRoute(async (req, res) => {
 function compoundMarkdown(payload) {
   const lines = ['# Shroom 复利系统', '', `> 导出时间：${payload.exportedAt}`, '', '推进与结果仅来自已确认记录，不代表人生评分。'];
   for (const thread of payload.threads) {
-    lines.push('', `## ${thread.itemKey} · ${thread.itemName}`, '', `- 目标：${thread.desiredOutcome}`, `- 做到：${thread.lastCompleted || '尚未记录'}`, `- 下一步：${thread.currentStep || '待确认'}`, `- 状态：${thread.status}`);
+    const archetype = thread.archetype?.name || thread.itemName || '自定义计划';
+    lines.push('', `## ${thread.title || thread.itemName}`, '',
+      `- 参考原型：${archetype}`,
+      `- 当前判断：${thread.validation?.status || '待验证'}`,
+      `- 本金：${thread.principalDefinition || '待补充'}`,
+      `- 回报：${thread.returnDefinition || '待补充'}`,
+      `- 再投入：${thread.reinvestmentDefinition || '待补充'}`,
+      `- 12 周目标：${thread.desiredOutcome}`,
+      `- 做到：${thread.lastCompleted || '尚未记录'}`,
+      `- 下一步：${thread.currentStep || '待确认'}`,
+      `- 计划状态：${thread.status}`);
     payload.events.filter(event => event.threadId === thread.id && event.status === 'CONFIRMED')
       .forEach(event => lines.push(`  - ${String(event.createdAt).slice(0, 10)} · ${event.kind} · ${event.summary}`));
   }
@@ -1394,7 +1557,7 @@ function compoundMarkdown(payload) {
 
 router.get('/export', asyncRoute(async (req, res) => {
   const [threadRows, eventRows, reviewRows, directionRows, refs, legacyCheckins] = await Promise.all([
-    db.query(`SELECT t.*, i.stable_key, i.name AS item_name, i.section FROM compound_threads t JOIN life_os_items i ON i.id = t.item_id WHERE t.user_id = $1 ORDER BY t.created_at`, [req.user.id]),
+    db.query(`SELECT t.*, i.stable_key, COALESCE(i.name, t.title) AS item_name, i.section FROM compound_threads t LEFT JOIN life_os_items i ON i.id = t.item_id WHERE t.user_id = $1 ORDER BY t.created_at`, [req.user.id]),
     db.query(`SELECT * FROM compound_events WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query(`SELECT * FROM compound_reviews WHERE user_id = $1 AND status = 'CONFIRMED' ORDER BY scope_end, created_at`, [req.user.id]),
     directionsFor(req.user.id),
@@ -1403,8 +1566,10 @@ router.get('/export', asyncRoute(async (req, res) => {
   ]);
   const payload = {
     format: 'shroom-compound-v1',
+    catalogVersion: CATALOG_VERSION,
     exportedAt: new Date().toISOString(),
     privacy: 'SELF_ONLY',
+    archetypes: listArchetypes(),
     directions: directionRows.map(mapDirection),
     threads: threadRows.rows.map(row => mapThread(row)),
     events: eventRows.rows.map(mapEvent),

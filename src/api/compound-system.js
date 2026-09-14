@@ -3,10 +3,12 @@ const compoundToday = '/compound/v1/today';
 const compoundCheckIn = '/compound/v1/check-in';
 const compoundUndo = '/compound/v1/undo';
 const compoundHome = '/compound/v2/home';
+const compoundArchetypes = '/compound/v2/archetypes';
 const compoundDirections = '/compound/v2/directions';
 const compoundStarter = '/compound/v2/starter';
 const compoundThreads = '/compound/v2/threads';
 const compoundPlan = id => `/compound/v2/plans/${id}`;
+const compoundPlanValidation = id => `/compound/v2/plans/${id}/validation`;
 const compoundPlanWeek = id => `/compound/v2/plans/${id}/week`;
 const compoundPlanWeekAction = (id, actionId) => `/compound/v2/plans/${id}/week/actions/${encodeURIComponent(actionId)}`;
 const compoundThread = id => `/compound/v2/threads/${id}`;
@@ -39,9 +41,11 @@ export {
 	compoundDiaryReview,
 	compoundDiaryReviewConfirm,
 	compoundDirections,
+	compoundArchetypes,
 	compoundExport,
 	compoundHome,
 	compoundPlan,
+	compoundPlanValidation,
 	compoundPlanWeek,
 	compoundPlanWeekAction,
 	compoundQuietDay,

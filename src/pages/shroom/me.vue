@@ -43,7 +43,7 @@
 					<text class="compound-kicker">PERSONAL OPERATING RHYTHM</text>
 					<text class="compound-title">复利系统</text>
 					<text class="compound-description">{{ compoundDescription }}</text>
-					<view class="compound-accounts"><text>接着做</text><text>处理卡点</text><text>记录结果</text></view>
+					<view class="compound-accounts"><text>发现复利</text><text>控制投入</text><text>验证回报</text></view>
 				</view>
 				<view class="compound-progress">
 					<text v-if="compoundOverview && compoundOverview.current">继续</text>
@@ -164,8 +164,8 @@ export default {
 			return this.$mStore.state.userInfo || {};
 		},
 		compoundDescription() {
-			if (!this.compoundOverview || !this.compoundOverview.current) return '选一件值得开始的事，做成一步后下次接着做';
-			return `正在推进：${this.compoundOverview.current.itemName}`;
+			if (!this.compoundOverview || !this.compoundOverview.current) return '从通用复利机会地图中，找到适合自己的积累';
+			return `正在验证：${this.compoundOverview.current.title || this.compoundOverview.current.itemName}`;
 		},
 		displayName() {
 			return this.userInfo.nickname || this.userInfo.realname || this.userInfo.mobile || '我的 Shroom';

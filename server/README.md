@@ -107,9 +107,11 @@ active clauses; every support/challenge reference is revalidated as belonging to
 the same account. See `../docs/LIFE_OS.md` for the full contract.
 
 The current Compounding System is mounted at `/api/compound/v2` for every
-authenticated user. It persists a user-confirmed direction, outcome, current
-step, blockers, real results, diary reviews, and evidence-linked stage reviews.
-It may read confirmed Life OS clauses as context but cannot modify them. The old
+authenticated user. It begins with a shared, versioned archetype catalog, then
+persists each user's private mapping, four-week validation state, twelve-week
+plan, principal/return metrics, time allocation, blockers, real results, diary
+reviews, and evidence-linked stage reviews. It may read confirmed Life OS
+clauses as context but cannot modify them. The old
 owner-only `/api/compound/v1` four-account endpoint and its
 `compound_settings`/`compound_checkins` records remain available only for
 backward compatibility and export. Neither API accepts a client-provided user
