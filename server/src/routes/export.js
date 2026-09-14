@@ -2,6 +2,7 @@
 
 const express = require('express');
 const db = require('../db');
+const { decryptFinancialPayload } = require('../financial-data-crypto');
 const { asyncRoute, ok, requireUser } = require('../http');
 
 const router = express.Router();
@@ -22,6 +23,13 @@ function redactValue(value, replacements) {
   return value;
 }
 
+function financialRows(rows) {
+  return rows.map(row => {
+    const { private_payload: privatePayload, ...metadata } = row;
+    return { ...metadata, data: decryptFinancialPayload(privatePayload) };
+  });
+}
+
 router.get('/all', asyncRoute(async (req, res) => {
   const redacted = ['1', 'true', 'yes'].includes(String(req.query.redacted || '').toLowerCase());
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
@@ -29,7 +37,9 @@ router.get('/all', asyncRoute(async (req, res) => {
     compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, wellbeingRecords, aiUsage,
     lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews,
     compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents,
-    dataSourceConnections, externalActivities] = await Promise.all([
+    dataSourceConnections, externalActivities, financialProfiles, financialRecords,
+    financialSnapshots, financialHoldings, financialAliases, financialRules,
+    financialNotes, financialReviews, financialImportDrafts] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
     db.query(`SELECT id, content, description, project_id, scheduled_date, deadline, tags, status,
       recurrence_rule_id, occurrence_date, compound_item_id, source_type, source_ref_id,
@@ -91,7 +101,16 @@ router.get('/all', asyncRoute(async (req, res) => {
     db.query(`SELECT id, connection_id, provider, external_id, activity_type, title,
       project_label, source_kind, started_at, completed_at, task_runtime_seconds,
       active_seconds_estimate, outcome_status, metadata, created_at, updated_at
-      FROM external_activity_events WHERE user_id = $1 ORDER BY completed_at`, [req.user.id])
+      FROM external_activity_events WHERE user_id = $1 ORDER BY completed_at`, [req.user.id]),
+    db.query('SELECT * FROM financial_plan_profiles WHERE user_id = $1 ORDER BY updated_at', [req.user.id]),
+    db.query('SELECT * FROM financial_records WHERE user_id = $1 ORDER BY occurred_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_snapshots WHERE user_id = $1 ORDER BY valued_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_holdings WHERE user_id = $1 ORDER BY valued_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_aliases WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_rule_versions WHERE user_id = $1 ORDER BY thread_id, version', [req.user.id]),
+    db.query('SELECT * FROM financial_decision_notes WHERE user_id = $1 ORDER BY decided_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_reviews WHERE user_id = $1 ORDER BY scope_end, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_import_drafts WHERE user_id = $1 ORDER BY created_at', [req.user.id])
   ]);
   const replacements = friends.rows.map((item, index) => ({ from: item.name, to: `人物${index + 1}` }))
     .filter(item => item.from).concat([
@@ -140,7 +159,18 @@ router.get('/all', asyncRoute(async (req, res) => {
     todoRecurrenceRules: todoRecurrenceRules.rows,
     todoEvents: todoEvents.rows,
     dataSourceConnections: dataSourceConnections.rows,
-    externalActivities: externalActivities.rows
+    externalActivities: externalActivities.rows,
+    financialLedger: req.authKind === 'session' && !redacted ? {
+      profiles: financialRows(financialProfiles.rows),
+      records: financialRows(financialRecords.rows),
+      snapshots: financialRows(financialSnapshots.rows),
+      holdings: financialRows(financialHoldings.rows),
+      aliases: financialRows(financialAliases.rows),
+      rules: financialRows(financialRules.rows),
+      notes: financialRows(financialNotes.rows),
+      reviews: financialRows(financialReviews.rows),
+      importDrafts: financialRows(financialImportDrafts.rows)
+    } : { redacted: true, reason: req.authKind === 'session' ? '脱敏导出不包含私人财务金额、持有和规则。' : 'API Token 无权导出私人财务台账。' }
   };
   if (!redacted) return ok(res, payload);
   const clean = redactValue(payload, replacements);

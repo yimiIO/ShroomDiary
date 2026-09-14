@@ -27,9 +27,9 @@ test('financial capital supplies a tailored, non-advisory setup instead of askin
   const route = source('server/src/routes/compound-progress.js');
   const page = source('src/pages/shroom/compound.vue');
 
+  assert.match(archetypes, /这项长期本金计划叫什么/);
   assert.match(archetypes, /这项长期本金计划为了什么/);
-  assert.match(archetypes, /你准备怎样稳定增加本金/);
-  assert.match(archetypes, /12 周后看到什么，说明这套机制在正常运行/);
+  assert.match(archetypes, /第一项核对行动/);
   assert.match(archetypes, /不承诺收益/);
   assert.doesNotMatch(archetypes, /预期收益率|预计年化收益/);
   assert.match(archetypes, /不提供具体产品、买卖时点、仓位比例、收益预测或自动交易/);
@@ -43,7 +43,7 @@ test('financial capital supplies a tailored, non-advisory setup instead of askin
   assert.match(route, /isFinancialCompound\(thread\) \? thread\.id : null/);
   assert.match(route, /financial-policy-blocked/);
   assert.match(page, /financialBoundaryAccepted/);
-  assert.match(page, /再投入机制已验证/);
-  assert.match(page, /12 周机制验证/);
+  assert.match(page, /计划范围将在私人台账中由用户确认/);
+  assert.match(page, /按月核对 · 按季度回看/);
   assert.doesNotMatch(page, /新增本金<\/text>/);
 });
