@@ -29,6 +29,7 @@ const HYPOTHESIS_DISMISS_REASONS = new Set([
   'TOO_SPECULATIVE',
   'ALREADY_RESOLVED'
 ]);
+const WELLBEING_MEDICAL_DISCLAIMER = '身心记录及“可能问题”由 AI 根据用户提供的线索生成，可能不完整、不准确或误解原文，仅供自我观察和就医沟通参考，不构成医学诊断、治疗建议或专业心理意见。';
 
 function uuid(value) {
   const id = String(value || '');
@@ -175,6 +176,8 @@ async function hypothesisList(userId) {
   const lastReviewedSourceAt = state.last_reviewed_source_at ? new Date(state.last_reviewed_source_at) : null;
   return {
     list: hypotheses.rows.map(row => mapHypothesis(row, recordMap)),
+    medicalDisclaimer: WELLBEING_MEDICAL_DISCLAIMER,
+    aiGenerated: true,
     sourceCount: Number(state.source_count || 0),
     reviewDue: Boolean(Number(state.stale_review_count || 0)
       || (latestSourceAt && (!lastReviewedSourceAt || latestSourceAt > lastReviewedSourceAt))),

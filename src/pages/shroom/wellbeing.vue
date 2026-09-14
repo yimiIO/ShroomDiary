@@ -21,6 +21,11 @@
 					<view :class="{ attention: summary.pendingCount }"><text>{{ summary.pendingCount || 0 }}</text><text>等待确认</text></view>
 				</view>
 
+				<view class="medical-notice" role="note">
+					<view class="medical-notice-mark">i</view>
+					<view><text>AI 辅助观察 · 仅供参考</text><text>{{ medicalDisclaimer }}</text><text>不要仅凭本页开始、停止或更改药物与治疗，也不要因此延误就医。</text></view>
+				</view>
+
 				<view class="possibility-section">
 					<view class="possibility-heading">
 						<view><text>POSSIBLE DIRECTIONS</text><text>可能需要留意的问题</text></view>
@@ -37,7 +42,7 @@
 									<text class="named-name">{{ possibility.name }}</text>
 									<text class="named-why">{{ possibility.why }}</text>
 								</view>
-								<text class="named-note">这是值得核对的方向，不是患病概率或诊断。</text>
+								<text class="named-note">AI 基于日记生成，仅供参考；这是值得核对的方向，不是患病概率或诊断。</text>
 							</view>
 							<text class="pattern-label">日记里出现的模式</text>
 							<text class="possibility-name">{{ item.name }}</text>
@@ -99,28 +104,34 @@
 				<view class="bottom-space"></view>
 			</view>
 		</scroll-view>
+		<wellbeing-safety-sheet :visible="safetyConsentVisible" @cancel="safetyConsentVisible = false" @confirm="confirmHypothesisRefresh" />
 	</view>
 </template>
 
 <script>
 import moment from '@/common/moment.js';
 import { wellbeingHypotheses, wellbeingHypothesesRefresh, wellbeingHypothesisStatus, wellbeingList, wellbeingStatus, wellbeingSummary } from '@/api/wellbeing';
+import WellbeingSafetySheet from '@/components/WellbeingSafetySheet.vue';
+
+const DEFAULT_MEDICAL_DISCLAIMER = '身心记录及“可能问题”由 AI 根据你提供的线索生成，可能不完整、不准确或误解原文，仅供自我观察和就医沟通参考，不构成医学诊断、治疗建议或专业心理意见。';
 
 const emptyDraft = () => ({ recordedOn: moment().format('YYYY-MM-DD'), note: '', psychologicalFeelings: '', physicalSymptoms: '', sleepHours: '', sleepQuality: '', behaviors: '', measurements: '', testResults: '' });
 
 export default {
+	components: { WellbeingSafetySheet },
 	data() {
 		return {
 			statusBarHeight: 0, items: [], total: 0, page: 1,
 			pageSize: 20, category: '', loading: false, processingId: '', creating: false, saving: false,
 			summary: {}, draft: emptyDraft(), hypotheses: [], hypothesisState: {}, hypothesesLoading: false,
-			refreshing: false, hypothesisProcessingId: '', expandedHypothesisId: '',
+			refreshing: false, hypothesisProcessingId: '', expandedHypothesisId: '', safetyConsentVisible: false,
 			categories: [{ value: '', label: '全部' }, { value: 'PSYCHOLOGICAL', label: '心理' }, { value: 'PHYSICAL', label: '身体' }, { value: 'SLEEP', label: '睡眠' }, { value: 'HABIT', label: '习惯' }, { value: 'MEASUREMENT', label: '测量' }, { value: 'TEST_RESULT', label: '检查' }]
 		};
 	},
 	computed: {
 		canSave() { return Boolean(this.draft.note.trim() || this.draft.psychologicalFeelings.trim() || this.draft.physicalSymptoms.trim() || this.draft.sleepHours || this.draft.sleepQuality || this.draft.behaviors.trim() || this.draft.measurements.trim() || this.draft.testResults.trim()); },
-		categoryTitle() { return this.category ? this.categoryLabel(this.category) + '记录' : '全部身心记录'; }
+		categoryTitle() { return this.category ? this.categoryLabel(this.category) + '记录' : '全部身心记录'; },
+		medicalDisclaimer() { return this.hypothesisState.medicalDisclaimer || DEFAULT_MEDICAL_DISCLAIMER; }
 	},
 	onLoad() {
 		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
@@ -150,8 +161,13 @@ export default {
 			} catch (error) { console.error('加载身心问题候选失败', error); }
 			finally { this.hypothesesLoading = false; }
 		},
-		async refreshHypotheses() {
+		refreshHypotheses() {
 			if (this.refreshing || !this.hypothesisState.sourceCount) return;
+			this.safetyConsentVisible = true;
+		},
+		async confirmHypothesisRefresh() {
+			if (this.refreshing || !this.hypothesisState.sourceCount) return;
+			this.safetyConsentVisible = false;
 			this.refreshing = true;
 			try {
 				const res = await this.$http.post(wellbeingHypothesesRefresh, { healthConsent: true });
@@ -283,6 +299,12 @@ button::after { border: 0; }
 .hero-copy { display: block; max-width: 740rpx; margin-top: 20rpx; color: #b9c5b7; font-size: 21rpx; line-height: 1.7; }
 .hero-rule { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 27rpx; }
 .hero-rule text { padding: 10rpx 16rpx; border-radius: 99rpx; background: rgba(218,233,177,.12); color: #dce9bd; font-size: 17rpx; }
+.medical-notice { margin-top: 18rpx; padding: 23rpx 24rpx; border: 1rpx solid rgba(101,117,65,.16); border-radius: 25rpx; background: #e7edd8; display: flex; align-items: flex-start; gap: 16rpx; }
+.medical-notice-mark { width: 34rpx; height: 34rpx; flex: 0 0 34rpx; border: 1rpx solid #71804d; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #667544; font-family: Georgia, serif; font-size: 19rpx; font-weight: 700; }
+.medical-notice > view:last-child { min-width: 0; display: flex; flex-direction: column; }
+.medical-notice > view:last-child text:first-child { color: #52603a; font-size: 18rpx; font-weight: 750; letter-spacing: 1rpx; }
+.medical-notice > view:last-child text:nth-child(2) { margin-top: 8rpx; color: #485248; font-size: 18rpx; line-height: 1.62; }
+.medical-notice > view:last-child text:last-child { margin-top: 7rpx; color: #737b70; font-size: 16rpx; line-height: 1.58; }
 .overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12rpx; margin-top: 18rpx; }
 .overview > view { padding: 23rpx 18rpx; border-radius: 24rpx; background: #fffdf7; border: 1rpx solid rgba(23,32,25,.07); display: flex; flex-direction: column; }
 .overview > view > text:first-child { font-family: Georgia, serif; font-size: 34rpx; }
