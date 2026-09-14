@@ -33,9 +33,9 @@
 
 					<view class="pairing" v-if="pairing">
 						<text class="pairing-label">10 分钟内有效的配对码</text>
-						<view class="code-row"><text>{{ pairing.pairingCode }}</text><button @tap="copy(pairing.pairingCode)">复制</button></view>
+						<view class="code-row"><text>{{ pairing.pairingCode }}</text><button :class="{ copied: copiedTarget === 'code' }" @tap="copy(pairing.pairingCode, 'code')">{{ copiedTarget === 'code' ? '已复制' : '复制' }}</button></view>
 						<text class="pairing-help">在这台电脑的 Codex 终端运行一次下面的连接命令。</text>
-						<view class="command-row"><text>{{ pairing.command }}</text><button @tap="copy(pairing.command)">复制命令</button></view>
+						<view class="command-row"><text>{{ pairing.command }}</text><button :class="{ copied: copiedTarget === 'command' }" @tap="copy(pairing.command, 'command')">{{ copiedTarget === 'command' ? '已复制' : '复制命令' }}</button></view>
 					</view>
 
 					<view class="settings" v-if="connection.status === 'ACTIVE' || connection.status === 'PAUSED'">
@@ -76,6 +76,8 @@ export default {
 			pairing: null,
 			creating: false,
 			pollTimer: null,
+			copyTimer: null,
+			copiedTarget: null,
 			intervals: [{ value: 24, label: '每天' }, { value: 72, label: '每 3 天' }, { value: 168, label: '每周' }]
 		};
 	},
@@ -104,6 +106,45 @@ export default {
 		},
 		startPolling() { this.stopPolling(); this.pollTimer = setTimeout(() => this.load(), 2500); },
 		stopPolling() { if (this.pollTimer) clearTimeout(this.pollTimer); this.pollTimer = null; },
+		markCopied(target) {
+			this.copiedTarget = target;
+			if (this.copyTimer) clearTimeout(this.copyTimer);
+			this.copyTimer = setTimeout(() => { this.copiedTarget = null; this.copyTimer = null; }, 2200);
+		},
+		copySucceeded(target) {
+			this.markCopied(target);
+			uni.showToast({ title: '已复制', icon: 'none' });
+		},
+		copyFailed() {
+			uni.showModal({
+				title: '复制失败',
+				content: '请长按上方的配对码或命令，选择后手动复制。',
+				showCancel: false
+			});
+		},
+		copyWithBrowserFallback(text, target) {
+			let textarea = null;
+			try {
+				textarea = document.createElement('textarea');
+				textarea.value = text;
+				textarea.setAttribute('readonly', '');
+				textarea.style.position = 'fixed';
+				textarea.style.left = '-9999px';
+				textarea.style.top = '0';
+				textarea.style.opacity = '0';
+				textarea.style.fontSize = '16px';
+				document.body.appendChild(textarea);
+				textarea.focus();
+				textarea.select();
+				textarea.setSelectionRange(0, text.length);
+				if (!document.execCommand('copy')) throw new Error('copy command rejected');
+				this.copySucceeded(target);
+			} catch (error) {
+				this.copyFailed();
+			} finally {
+				if (textarea && textarea.parentNode) textarea.parentNode.removeChild(textarea);
+			}
+		},
 		async createConnection() {
 			if (this.creating) return;
 			this.creating = true;
@@ -115,7 +156,26 @@ export default {
 			} catch (error) { console.error('创建 Codex 连接失败', error); }
 			finally { this.creating = false; }
 		},
-		copy(value) { uni.setClipboardData({ data: String(value || ''), success: () => uni.showToast({ title: '已复制', icon: 'success' }) }); },
+		copy(value, target) {
+			const text = String(value || '');
+			if (!text) { this.copyFailed(); return; }
+			// #ifdef H5
+			const clipboard = window.navigator && window.navigator.clipboard;
+			if (clipboard && typeof clipboard.writeText === 'function') {
+				clipboard.writeText(text)
+					.then(() => this.copySucceeded(target))
+					.catch(() => this.copyWithBrowserFallback(text, target));
+				return;
+			}
+			this.copyWithBrowserFallback(text, target);
+			return;
+			// #endif
+			uni.setClipboardData({
+				data: text,
+				success: () => this.copySucceeded(target),
+				fail: () => this.copyFailed()
+			});
+		},
 		async update(patch) {
 			if (!this.connection) return;
 			try {
@@ -184,7 +244,9 @@ export default {
 .code-row > text { font-family: monospace; font-size: 32rpx; font-weight: 750; letter-spacing: 4rpx; }
 .pairing-help { color: #aebbad; font-size: 17rpx; line-height: 1.6; }
 .command-row > text { overflow: hidden; flex: 1; color: #dbe5d7; font-family: monospace; font-size: 16rpx; line-height: 1.5; word-break: break-all; }
+.code-row > text, .command-row > text { -webkit-user-select: text; user-select: text; }
 .pairing button { flex: 0 0 auto; margin: 0; border: 0; border-radius: 999rpx; background: rgba(255,255,255,.12); color: #fff; font-size: 17rpx; }
+.pairing button.copied { background: #dce9cf; color: #314234; }
 .settings { margin-top: 23rpx; border-top: 1rpx solid #edf0eb; }
 .setting-row, .interval-setting { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; padding: 23rpx 0; border-bottom: 1rpx solid #edf0eb; }
 .setting-row > view, .interval-setting > view:first-child { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }

@@ -53,6 +53,18 @@ test('Codex is a user-level Shroom data source with explicit provenance and cont
   assert.match(migration, /external_activity_events/);
 });
 
+test('Codex pairing copy works on H5 and always gives visible feedback', () => {
+  const settings = source('src/pages/shroom/data-sources.vue');
+
+  assert.match(settings, /window\.navigator\.clipboard/);
+  assert.match(settings, /clipboard\.writeText/);
+  assert.match(settings, /document\.execCommand\('copy'\)/);
+  assert.match(settings, /复制失败/);
+  assert.match(settings, /copiedTarget === 'code'/);
+  assert.match(settings, /copiedTarget === 'command'/);
+  assert.match(settings, /-webkit-user-select:\s*text/);
+});
+
 test('todo execution layer has current views, projects, recurrence and reversible action records', () => {
   const list = source('src/pages/todo/list.vue');
   const edit = source('src/pages/todo/edit.vue');
