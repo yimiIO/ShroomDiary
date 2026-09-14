@@ -1,6 +1,43 @@
 'use strict';
 
-const CATALOG_VERSION = '2026-09-14-v1';
+const CATALOG_VERSION = '2026-09-14-v2';
+
+const DEFAULT_SETUP = Object.freeze({
+  titleLabel: '这项积累在你的生活里叫什么？',
+  titlePlaceholder: '例如：让专业能力能解决更难的真实问题',
+  commitmentLabel: '你准备持续投入什么？',
+  commitmentPlaceholder: '写一种能反复发生的投入，不用解释复利理论',
+  outcomeLabel: '12 周后看到什么，说明它值得继续？',
+  outcomePlaceholder: '写一个你能亲自核对的变化或结果',
+  nextStepLabel: '下一次最小的具体动作是什么？',
+  nextStepPlaceholder: '写下离开页面后就能开始的一步',
+  reinvestmentSummary: '系统会在进展回看时确认，真实回报是否进入了下一轮。',
+  reinvestmentDefinition: '已经确认的复用、节省或回报，会由用户安排进入下一轮投入。',
+  weeklyTimeBudgetMinutes: 120,
+  principalMetricTarget: 4,
+  returnMetricTarget: 1,
+  currentMilestone: '四周内完成第一轮真实投入，并留下可以核对的结果'
+});
+
+const SETUP_BY_KEY = Object.freeze({
+  financial_capital: {
+    titleLabel: '这项长期本金计划为了什么？',
+    titlePlaceholder: '例如：长期安全垫或未来选择权；不要填写账户信息',
+    commitmentLabel: '你准备怎样稳定增加本金？',
+    commitmentPlaceholder: '例如：每月固定转入可承担的金额，同时保留应急资金',
+    outcomeLabel: '12 周后看到什么，说明这套机制在正常运行？',
+    outcomePlaceholder: '例如：连续完成 3 次投入，费用和风险清楚，实际收益按计划处理',
+    nextStepLabel: '建立这套机制的下一步是什么？',
+    nextStepPlaceholder: '例如：确认可承担金额，并设置第一次定期转入',
+    returnDefinition: '本金按用户选择的工具产生经费用核对后的实际收益；收益可能为负，本功能不承诺收益。',
+    reinvestmentSummary: '只有你确认已经保留或再投入的实际收益，才算进入下一轮；系统不会自动交易。',
+    reinvestmentDefinition: '只有用户确认已经保留或再投入的实际收益，才计入下一轮；系统不会自动执行交易。',
+    weeklyTimeBudgetMinutes: 15,
+    principalMetricTarget: 3,
+    returnMetricTarget: 1,
+    currentMilestone: '四周内完成第一轮本金投入，并确认费用、风险和收益处理方式'
+  }
+});
 
 const ARCHETYPES = [
   {
@@ -129,8 +166,8 @@ const ARCHETYPES = [
     mechanism: '收益不全部被消费，而是重新成为下一期本金。',
     fits: '有稳定结余、理解风险并愿意长期执行的人。',
     notThis: '频繁交易、追涨杀跌、忽略费用和风险的短期投机。',
-    defaultPrincipalMetric: '净投入本金',
-    defaultReturnMetric: '经费用与风险调整后的再投入收益',
+    defaultPrincipalMetric: '按计划增加本金的次数',
+    defaultReturnMetric: '已确认收益再投入的次数',
     examples: ['建立稳定、低费用并且自动再投入的长期本金计划']
   },
   {
@@ -172,7 +209,15 @@ const ARCHETYPES = [
     defaultReturnMetric: '被防止或显著减轻的中断',
     examples: ['建立可覆盖必要开支的现金缓冲', '建立关键数据的备份与恢复演练']
   }
-].map((item, index) => ({ ...item, version: CATALOG_VERSION, order: index + 1 }));
+].map((item, index) => {
+  const specificSetup = SETUP_BY_KEY[item.key] || {};
+  const setup = {
+    ...DEFAULT_SETUP,
+    ...specificSetup,
+    returnDefinition: specificSetup.returnDefinition || item.mechanism
+  };
+  return { ...item, setup, version: CATALOG_VERSION, order: index + 1 };
+});
 
 const ARCHETYPE_MAP = new Map(ARCHETYPES.map(item => [item.key, item]));
 
@@ -181,7 +226,7 @@ function archetypeByKey(value) {
 }
 
 function listArchetypes() {
-  return ARCHETYPES.map(item => ({ ...item, examples: [...item.examples] }));
+  return ARCHETYPES.map(item => ({ ...item, examples: [...item.examples], setup: { ...item.setup } }));
 }
 
 module.exports = { ARCHETYPES, CATALOG_VERSION, archetypeByKey, listArchetypes };

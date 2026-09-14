@@ -595,27 +595,42 @@ router.post('/threads', asyncRoute(async (req, res) => {
     return fail(res, 400, '请选择一种复利原型，并确认 12 周结果和现在的最小一步');
   }
   const title = text(req.body.title, 240);
+  const setup = archetype?.setup || {};
   const principalDefinition = text(req.body.principalDefinition, 1600)
     || text(req.body.compoundMechanism, 1600);
   const returnDefinition = text(req.body.returnDefinition, 1600)
+    || text(setup.returnDefinition, 1600)
     || text(req.body.outcomeEvidence, 1600);
-  const reinvestmentDefinition = text(req.body.reinvestmentDefinition, 1600);
+  const reinvestmentDefinition = text(req.body.reinvestmentDefinition, 1600)
+    || text(setup.reinvestmentDefinition, 1600);
   if (archetype && (!title || !principalDefinition || !returnDefinition || !reinvestmentDefinition)) {
-    return fail(res, 400, '请说清在你的现实中积累什么、如何产生回报，以及回报如何进入下一轮');
+    return fail(res, 400, '请填写这项积累的名称，以及你准备持续投入什么');
   }
   const compoundMechanism = [principalDefinition, returnDefinition, reinvestmentDefinition].filter(Boolean).join('\n');
-  const weeklyTimeBudgetMinutes = Math.round(boundedNumber(req.body.weeklyTimeBudgetMinutes, 0, 10080, 180));
+  const weeklyTimeBudgetMinutes = Math.round(boundedNumber(
+    req.body.weeklyTimeBudgetMinutes,
+    0,
+    10080,
+    Number(setup.weeklyTimeBudgetMinutes || 180)
+  ));
   const principalMetricName = text(req.body.principalMetricName, 240)
     || text(req.body.leadingMetricName, 240)
     || archetype?.defaultPrincipalMetric || '';
   const principalMetricTarget = boundedNumber(
     req.body.principalMetricTarget === undefined ? req.body.leadingMetricTarget : req.body.principalMetricTarget,
-    0, 1000000000, 0
+    0, 1000000000, Number(setup.principalMetricTarget || 1)
   );
   const returnMetricName = text(req.body.returnMetricName, 240) || archetype?.defaultReturnMetric || '';
-  const returnMetricTarget = boundedNumber(req.body.returnMetricTarget, 0, 1000000000, 0);
-  const outcomeEvidence = text(req.body.outcomeEvidence, 1600);
-  const currentMilestone = text(req.body.currentMilestone, 1200) || desiredOutcome;
+  const returnMetricTarget = boundedNumber(
+    req.body.returnMetricTarget,
+    0,
+    1000000000,
+    Number(setup.returnMetricTarget || 1)
+  );
+  const outcomeEvidence = text(req.body.outcomeEvidence, 1600) || desiredOutcome;
+  const currentMilestone = text(req.body.currentMilestone, 1200)
+    || text(setup.currentMilestone, 1200)
+    || desiredOutcome;
   const stopList = textList(req.body.stopList, 8, 300);
   const cycleStart = dateOnly(req.body.cycleStart);
   const cycleEnd = dateOnly(req.body.cycleEnd);
