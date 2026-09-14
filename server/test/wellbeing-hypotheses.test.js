@@ -3,7 +3,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  WELLBEING_CONCEPT_CATALOG_VERSION,
   WELLBEING_HYPOTHESIS_PROMPT,
+  hydrateNamedPossibilities,
   normalizeWellbeingHypotheses,
   unsafeDiagnosticWording
 } = require('../src/wellbeing-hypotheses');
@@ -19,7 +21,7 @@ function valid(overrides = {}) {
     domain: 'PSYCHOLOGICAL',
     kind: 'CLINICAL_CONDITION',
     name: '抑郁相关问题需要评估',
-    namedPossibilities: [{ name: '抑郁相关症状', role: 'PRIMARY_DIRECTION', why: '持续低落、兴趣减退与功能影响同时出现' }],
+    namedPossibilities: [{ conceptId: 'psych.depressive-symptom-cluster', role: 'PRIMARY_DIRECTION', why: '持续低落、兴趣减退与功能影响同时出现' }],
     possibilityStatement: '持续低落和兴趣减退可能与抑郁相关问题一致，但日记不能完成诊断。',
     whyPossible: '两个时间点都记录了兴趣下降，并出现工作和社交功能影响。',
     evidenceStrength: 'MODERATE',
@@ -50,7 +52,7 @@ test('named wellbeing possibilities retain evidence and uncertainty', () => {
   assert.equal(result[0].name, '抑郁相关问题需要评估');
   assert.equal(result[0].supportingEvidence.length, 2);
   assert.equal(result[0].supportingEvidence[0].excerpt, records[0].sourceExcerpt);
-  assert.equal(result[0].namedPossibilities[0].name, '抑郁相关症状');
+  assert.equal(result[0].namedPossibilities[0].conceptId, 'psych.depressive-symptom-cluster');
   assert.deepEqual(result[0].alternatives, ['睡眠不足或近期生活事件']);
   assert.match(result[0].hypothesisKey, /^psychological:/u);
 });
@@ -76,6 +78,7 @@ test('hypothesis evidence must select an evidence id from the owned source recor
 test('physical clinical directions require persistence or an objective finding', () => {
   const physical = valid({
     stableKey: 'hyperhidrosis', domain: 'PHYSICAL', name: '多汗症方向需要排查',
+    namedPossibilities: [{ conceptId: 'physical.hyperhidrosis', role: 'PRIMARY_DIRECTION', why: '多个日期出现反复手汗' }],
     possibilityStatement: '反复手汗可能与多汗症相关，也需要排查其他原因。',
     whyPossible: '记录出现反复手汗。',
     thresholdChecks: { repeatedOrPersistent: false, functionalImpact: false, objectiveFinding: false, differentialConsidered: true, grounded: true }
@@ -86,7 +89,36 @@ test('physical clinical directions require persistence or an objective finding',
 });
 
 test('prompt asks for named possibilities without turning a diary into a diagnosis', () => {
-  for (const phrase of ['主体归属', '不得把对方的症状', 'evidenceId', '服务器按编号回填', '明确叫出', 'namedPossibilities', '日记中出现的模式', '抑郁相关症状', 'RULE_OUT', '不能用“持续低落”', '多汗症方向', '不为了控制比例', '最多 8 项', '笼统名称', '覆盖和优先级', '防漏检清单', '一次性', '替代解释', '不是患病概率', '不得给药名']) {
+  for (const phrase of ['主体归属', '不得把对方的症状', 'evidenceId', '服务器按编号回填', 'professionalConcepts', '受控专业概念库', '不能发明', 'conceptId', 'RESEARCH_CONSTRUCT', 'RULE_OUT', '体重增加与活动下降', '不为了控制比例', '最多 8 项', '覆盖和优先级', '防漏检清单', '一次性', '替代解释', '不是患病概率', '不得给药名']) {
     assert.match(WELLBEING_HYPOTHESIS_PROMPT, new RegExp(phrase, 'u'));
   }
+});
+
+test('free-form professional-sounding labels are rejected by the controlled catalog', () => {
+  assert.equal(normalizeWellbeingHypotheses([valid({
+    namedPossibilities: [{ name: '情绪状态依赖的判断波动', role: 'PRIMARY_DIRECTION', why: '听起来像概念' }]
+  })], records).length, 0);
+  assert.equal(normalizeWellbeingHypotheses([valid({
+    namedPossibilities: [{ conceptId: 'psych.not-a-real-concept', role: 'PRIMARY_DIRECTION', why: '不存在的 ID' }]
+  })], records).length, 0);
+});
+
+test('stored concepts are hydrated with an explanation, boundary and source', () => {
+  const result = hydrateNamedPossibilities([
+    { conceptId: 'psych.anger-rumination', role: 'PRIMARY_DIRECTION', why: '冲突后多次反复回想' }
+  ], 'PSYCHOLOGICAL');
+  assert.equal(result[0].name, '愤怒反刍');
+  assert.match(result[0].concept.definition, /愤怒/u);
+  assert.match(result[0].concept.boundary, /不是疾病诊断/u);
+  assert.match(result[0].concept.source.url, /^https:\/\//u);
+  assert.match(WELLBEING_CONCEPT_CATALOG_VERSION, /^wellbeing-concepts-/u);
+});
+
+test('legacy model labels only map when they are recognized aliases', () => {
+  const recognized = hydrateNamedPossibilities([
+    { name: '社交评价敏感', role: 'PRIMARY_DIRECTION', why: '多次担忧他人评价' },
+    { name: '情绪状态依赖的判断波动', role: 'ALTERNATIVE', why: '模型生成复合词' }
+  ], 'PSYCHOLOGICAL');
+  assert.equal(recognized.length, 1);
+  assert.equal(recognized[0].conceptId, 'psych.fear-negative-evaluation');
 });

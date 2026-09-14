@@ -2,8 +2,15 @@
 
 const crypto = require('node:crypto');
 const { mapWellbeingRecord } = require('./wellbeing-records');
+const {
+  WELLBEING_CONCEPT_CATALOG_VERSION,
+  conceptCatalogForModel,
+  findLegacyWellbeingConcept,
+  findWellbeingConcept,
+  publicConcept
+} = require('./wellbeing-concepts');
 
-const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-13-v6';
+const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-14-v7';
 const WELLBEING_HYPOTHESIS_DOMAINS = ['PSYCHOLOGICAL', 'PHYSICAL'];
 const WELLBEING_HYPOTHESIS_KINDS = [
   'PSYCHOLOGICAL_CONCEPT',
@@ -14,19 +21,19 @@ const WELLBEING_HYPOTHESIS_KINDS = [
 const WELLBEING_HYPOTHESIS_STRENGTHS = ['LIMITED', 'MODERATE', 'STRONG'];
 const WELLBEING_HYPOTHESIS_STATUSES = ['PENDING', 'OBSERVING', 'DISMISSED', 'ARCHIVED'];
 
-const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性整理器”。你读取的是用户多次日记中已经抽出的观察，不是完整病历。你的价值是把零散事实整理成“可能需要留意什么问题”，明确叫出有意义的心理学概念、症状模式或医学排查方向；不能只复述“有压力、失眠、疼痛”。
+const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性整理器”。你读取的是用户多次日记中已经抽出的观察，不是完整病历。你的价值是把零散事实与输入的 professionalConcepts 受控专业概念库进行匹配；你不能发明、拼接或改写专业概念名称。
 
 这不是诊断。你必须遵守：
 1. 只使用 records 中用户本人的观察。先做“主体归属”检查：出现姓名、他/她、亲友、案件当事人或其他人称时，不得把对方的症状当成用户症状；归属不能确定就不使用。用户曾确认整条记录，也不等于其中每个症状都属于用户。
 2. 每个 supportingEvidence 和 challengingEvidence 必须输出 recordId 以及该记录 evidenceItems 中的 evidenceId；证据原文由服务器按编号回填，你不要复述或改写 excerpt。说明它为何支持或不支持。不能补造病史、持续时间、症状、检查或因果。
-3. 每个候选必须有一个明确、可理解的问题名称，并在 namedPossibilities 中列出它具体可能涉及的概念或医学方向。name 用“日记中出现的模式：具体方向”的用户语言，而不是再把现象重复一遍。例如在证据真的支持时，可以写“抑郁相关症状”“广泛性焦虑需要评估”“情绪调节困难”“社交评价敏感”“多汗症方向”“贫血需要排查”。不能只写“持续低落”“身体不舒服”而不说明它可能指向什么。这些只是格式示例，不得因为示例而输出。
-4. 心理疾病名称门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，kind 只能是 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN，不能把人写成已患某病；但如果某个临床方向确实值得进一步筛查，必须在 namedPossibilities 中明确列为 RULE_OUT（例如“抑郁相关症状需评估”），不能用“持续低落”这种泛称把真正需要用户知道的方向藏起来。
+3. name 只描述“日记里反复出现的事实模式”，使用普通用户语言，不能把它包装成疾病或学术名称。专业名称只能来自 professionalConcepts，并在 namedPossibilities 中仅输出 conceptId、role 和 why。conceptId 必须逐字等于库中的 ID；没有合适 ID 就不要生成该候选，绝不创造听起来专业的新词。
+4. 严格区分概念类型。RESEARCH_CONSTRUCT 是研究构念，不是疾病；CLINICAL_SCREENING_DIRECTION 是筛查方向，不是诊断；CLINICAL_CONDITION/MEDICAL_CONDITION 只是值得专业评估或排查的方向。心理临床方向门槛较高：必须同时看到重复或持续、明显痛苦或功能影响，并考虑身体状况、物质/药物、生活事件等替代解释。证据未达到门槛时，kind 只能是 PSYCHOLOGICAL_CONCEPT 或 SYMPTOM_PATTERN。
 5. 身体疾病方向需要具体症状、测量或检查依据，并有持续/反复或客观异常。优先列常见且可核对的鉴别方向；非特异症状不能直接指向罕见重病。一个症状可以有多个 namedPossibilities，不能假装只有一个答案。证据能直接支持的设为 PRIMARY_DIRECTION；仅值得排除但当前证据不足的设为 RULE_OUT，并明确缺少什么。
 6. evidenceStrength 只是“现有日记证据的一致程度”，不是患病概率。LIMITED 也可以保留，只要它能告诉用户下一步记录或就医时该核对什么。
 7. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
 8. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
 9. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
-10. 不按数量凑结果，也不为了控制比例删掉真实且有用的方向。没有达到“值得用户知道的具名可能性”就返回空数组。每个 domainScope 最多 8 项，重复问题合并。不要用“情绪问题”“健康问题”“压力反应”之类无法帮助用户区分和验证的笼统名称。
+10. 不按数量凑结果，也不为了控制比例删掉真实且有用的方向。没有达到 professionalConcepts 中某项 matchGuidance 的关键条件就返回空数组。每个 domainScope 最多 8 项，重复问题合并。不能把“体重增加与活动下降”“冲突回避与告别困难”“情绪状态依赖的判断波动”等事实描述冒充专业概念；它们只能出现在 name 或证据解释中。
 11. 在 FINAL/SYNTHESIS 阶段先做覆盖和优先级检查：优先保留紧急风险、跨时间重复/持续、功能影响、客观异常和能改变下一步观察或专业评估的方向。一次性、影响较小的反应不能因为“更容易命名”而挤掉长期重要模式。同一个核心问题的不同表现合并为一项。
 12. 心理领域在不输出中间思考的前提下，完整核对情绪/兴趣/精力与功能、焦虑与回避、重大生活事件与应激、睡眠、物质/药物、情绪调节及社交模式；身体领域核对症状部位与时程、客观测量/检查、生活与环境因素以及常见鉴别方向。这是防漏检清单，不是输出清单；没有证据的方向不得输出。
 13. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
@@ -35,7 +42,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 16. analysisStage 为 CANDIDATE 时只找当前批次的真实模式；为 SYNTHESIS 时需要合并 candidateHypotheses 中重复或互补的方向，并只引用 records 证据索引中存在的 recordId；为 FINAL 时直接给最终结果。
 
 只返回 JSON，不要 Markdown：
-{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"明确的问题名称","namedPossibilities":[{"name":"明确心理概念或医学方向","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么列入；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
+{"hypotheses":[{"stableKey":"简短稳定英文key","domain":"PSYCHOLOGICAL|PHYSICAL","kind":"PSYCHOLOGICAL_CONCEPT|SYMPTOM_PATTERN|CLINICAL_CONDITION|RISK_SIGNAL","name":"日记中反复出现的事实模式，不是专业名称","namedPossibilities":[{"conceptId":"必须来自professionalConcepts的精确ID","role":"PRIMARY_DIRECTION|ALTERNATIVE|RULE_OUT","why":"为什么本人的记录与此概念匹配；若待排除要说明证据不足"}],"possibilityStatement":"为什么它可能相关且为什么尚不能确定","whyPossible":"综合哪些时间模式、症状组合或功能影响后值得留意","evidenceStrength":"LIMITED|MODERATE|STRONG","thresholdChecks":{"repeatedOrPersistent":true,"functionalImpact":false,"objectiveFinding":false,"differentialConsidered":true,"grounded":true},"supportingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录支持什么"}],"challengingEvidence":[{"recordId":"真实记录ID","evidenceId":"该记录中的真实evidenceId","reason":"这条记录为何不一致或构成反例"}],"alternatives":["其他合理解释"],"missingInformation":["还缺什么"],"nextObservations":["下一步最值得记录什么"],"careGuidance":"何时值得寻求哪类专业评估；没有必要可为空","redFlags":[{"recordId":"真实记录ID","signal":"原记录已有的风险信号","action":"建议采取的就医行动"}]}]}`;
 
 function bounded(value, limit = 1000) {
   return String(value || '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -101,18 +108,35 @@ function normalizeRedFlags(value, recordMap) {
   }).filter(Boolean);
 }
 
-function normalizeNamedPossibilities(value) {
+function normalizeNamedPossibilities(value, domain) {
   const seen = new Set();
   const result = [];
   for (const item of Array.isArray(value) ? value : []) {
-    const name = bounded(item?.name, 100);
+    const concept = findWellbeingConcept(item?.conceptId || item?.concept_id);
     const role = ['PRIMARY_DIRECTION', 'ALTERNATIVE', 'RULE_OUT'].includes(item?.role)
       ? item.role : null;
     const why = bounded(item?.why, 500);
-    const key = name.normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
-    if (!name || !role || !why || seen.has(key) || unsafeDiagnosticWording(`${name} ${why}`)) continue;
-    result.push({ name, role, why });
-    seen.add(key);
+    if (!concept || concept.domain !== domain || !role || !why || seen.has(concept.id)
+      || unsafeDiagnosticWording(`${concept.name} ${why}`)) continue;
+    result.push({ conceptId: concept.id, role, why });
+    seen.add(concept.id);
+    if (result.length >= 5) break;
+  }
+  return result;
+}
+
+function hydrateNamedPossibilities(value, domain) {
+  const seen = new Set();
+  const result = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    const concept = findWellbeingConcept(item?.conceptId || item?.concept_id)
+      || findLegacyWellbeingConcept(item?.name);
+    const role = ['PRIMARY_DIRECTION', 'ALTERNATIVE', 'RULE_OUT'].includes(item?.role)
+      ? item.role : null;
+    const why = bounded(item?.why, 500);
+    if (!concept || concept.domain !== domain || !role || !why || seen.has(concept.id)) continue;
+    result.push({ conceptId: concept.id, name: concept.name, role, why, concept: publicConcept(concept) });
+    seen.add(concept.id);
     if (result.length >= 5) break;
   }
   return result;
@@ -133,7 +157,7 @@ function normalizeWellbeingHypotheses(value, records = []) {
     const evidenceStrength = WELLBEING_HYPOTHESIS_STRENGTHS.includes(item.evidenceStrength || item.evidence_strength)
       ? (item.evidenceStrength || item.evidence_strength) : 'LIMITED';
     const supportingEvidence = normalizeEvidence(item.supportingEvidence || item.supporting_evidence, recordMap);
-    const namedPossibilities = normalizeNamedPossibilities(item.namedPossibilities || item.named_possibilities);
+    const namedPossibilities = normalizeNamedPossibilities(item.namedPossibilities || item.named_possibilities, domain);
     if (!domain || !kind || !name || !possibilityStatement || !whyPossible || !supportingEvidence.length || !namedPossibilities.length) continue;
     if (unsafeDiagnosticWording(`${name} ${possibilityStatement} ${whyPossible}`)) continue;
     if (!/(?:可能|相关|倾向|风险|待评估|需评估|需要评估|待排查|需排查|需要排查|方向|症状|模式)/u.test(`${name}${possibilityStatement}`)) continue;
@@ -252,7 +276,7 @@ function mapHypothesis(row, recordMap = new Map()) {
     domain: row.domain,
     kind: row.kind,
     name: row.name,
-    namedPossibilities: Array.isArray(row.named_possibilities) ? row.named_possibilities : [],
+    namedPossibilities: hydrateNamedPossibilities(row.named_possibilities, row.domain),
     possibilityStatement: row.possibility_statement,
     whyPossible: row.why_possible,
     evidenceStrength: row.evidence_strength,
@@ -362,6 +386,7 @@ function compactHypothesisDraft(item) {
 }
 
 async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
+  const professionalConcepts = conceptCatalogForModel(scope.domain);
   const request = (input, label, maxTokens) => callJson(
     WELLBEING_HYPOTHESIS_PROMPT,
     input,
@@ -370,7 +395,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
   );
   if (scope.records.length <= 14) {
     return request(
-      { analysisStage: 'FINAL', domainScope: scope.domain, records: scope.records, dismissedFeedback },
+      { analysisStage: 'FINAL', domainScope: scope.domain, professionalConcepts, records: scope.records, dismissedFeedback },
       scope.domain === 'PSYCHOLOGICAL' ? '心理问题可能性识别' : '身体问题可能性识别',
       4200
     );
@@ -378,7 +403,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
   const batches = [];
   for (let index = 0; index < scope.records.length; index += 12) batches.push(scope.records.slice(index, index + 12));
   const batchResults = await Promise.allSettled(batches.map((records, index) => request(
-    { analysisStage: 'CANDIDATE', domainScope: scope.domain, records, dismissedFeedback },
+    { analysisStage: 'CANDIDATE', domainScope: scope.domain, professionalConcepts, records, dismissedFeedback },
     `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题候选 ${index + 1}/${batches.length}`,
     3200
   )));
@@ -399,6 +424,7 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
     return await request({
       analysisStage: 'SYNTHESIS',
       domainScope: scope.domain,
+      professionalConcepts,
       candidateHypotheses: drafts.map(compactHypothesisDraft),
       records: evidenceIndex,
       dismissedFeedback
@@ -459,6 +485,7 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
 }
 
 module.exports = {
+  WELLBEING_CONCEPT_CATALOG_VERSION,
   WELLBEING_HYPOTHESIS_DOMAINS,
   WELLBEING_HYPOTHESIS_KINDS,
   WELLBEING_HYPOTHESIS_PROMPT,
@@ -466,6 +493,7 @@ module.exports = {
   WELLBEING_HYPOTHESIS_STATUSES,
   WELLBEING_HYPOTHESIS_STRENGTHS,
   mapHypothesis,
+  hydrateNamedPossibilities,
   normalizeWellbeingHypotheses,
   refreshWellbeingHypotheses,
   stableHypothesisKey,

@@ -8,6 +8,7 @@ const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http
 const { healthObservationLine, normalizeHealthObservation } = require('../inquiry-health');
 const { dateOnly, mapWellbeingRecord } = require('../wellbeing-records');
 const {
+  WELLBEING_CONCEPT_CATALOG_VERSION,
   WELLBEING_HYPOTHESIS_REVIEW_VERSION,
   mapHypothesis,
   refreshWellbeingHypotheses
@@ -175,7 +176,9 @@ async function hypothesisList(userId) {
   const latestSourceAt = state.latest_source_at ? new Date(state.latest_source_at) : null;
   const lastReviewedSourceAt = state.last_reviewed_source_at ? new Date(state.last_reviewed_source_at) : null;
   return {
-    list: hypotheses.rows.map(row => mapHypothesis(row, recordMap)),
+    list: hypotheses.rows.map(row => mapHypothesis(row, recordMap))
+      .filter(item => item.namedPossibilities.length),
+    conceptCatalogVersion: WELLBEING_CONCEPT_CATALOG_VERSION,
     medicalDisclaimer: WELLBEING_MEDICAL_DISCLAIMER,
     aiGenerated: true,
     sourceCount: Number(state.source_count || 0),

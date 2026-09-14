@@ -34,3 +34,15 @@ test('AI wellbeing review requires a dedicated cross-platform acknowledgement sh
   ]) assert.match(sheet, new RegExp(phrase));
   assert.match(route, /req\.body\.healthConsent !== true/);
 });
+
+test('professional wellbeing concepts open an explanatory cross-platform sheet', () => {
+  const page = source('src/pages/shroom/wellbeing.vue');
+  const hypotheses = source('server/src/wellbeing-hypotheses.js');
+
+  assert.match(page, /@tap\.stop="openConcept\(possibility\)"/u);
+  for (const phrase of ['概念解释', '概念是什么', '判断边界', '为什么在这里出现', '专业依据', '不代表你符合诊断标准']) {
+    assert.match(page, new RegExp(phrase, 'u'));
+  }
+  assert.match(hypotheses, /hydrateNamedPossibilities/u);
+  assert.match(hypotheses, /publicConcept\(concept\)/u);
+});

@@ -37,11 +37,11 @@
 							<view class="possibility-topline"><view><text>{{ domainLabel(item.domain) }}</text><text>{{ kindLabel(item.kind) }}</text></view><text>{{ strengthLabel(item.evidenceStrength) }}</text></view>
 							<view v-if="item.namedPossibilities && item.namedPossibilities.length" class="named-possibilities">
 								<text class="named-label">这组线索可能涉及</text>
-								<view v-for="possibility in item.namedPossibilities" :key="possibility.name" class="named-row" :class="{ rule_out: possibility.role === 'RULE_OUT', alternative: possibility.role === 'ALTERNATIVE' }">
+								<button v-for="possibility in item.namedPossibilities" :key="possibility.conceptId" class="named-row" :class="{ rule_out: possibility.role === 'RULE_OUT', alternative: possibility.role === 'ALTERNATIVE' }" @tap.stop="openConcept(possibility)">
 									<text class="named-role">{{ possibilityRoleLabel(possibility.role) }}</text>
-									<text class="named-name">{{ possibility.name }}</text>
+									<view class="named-title"><text class="named-name">{{ possibility.name }}</text><text class="named-open">概念解释 ›</text></view>
 									<text class="named-why">{{ possibility.why }}</text>
-								</view>
+								</button>
 								<text class="named-note">AI 基于日记生成，仅供参考；这是值得核对的方向，不是患病概率或诊断。</text>
 							</view>
 							<text class="pattern-label">日记里出现的模式</text>
@@ -104,6 +104,25 @@
 				<view class="bottom-space"></view>
 			</view>
 		</scroll-view>
+		<view v-if="selectedConcept" class="concept-overlay" @tap="closeConcept" @touchmove.stop.prevent>
+			<view class="concept-sheet" role="dialog" aria-modal="true" @tap.stop>
+				<view class="concept-handle"></view>
+				<view class="concept-heading">
+					<view><text>{{ selectedConcept.concept.typeLabel }}</text><text>{{ possibilityRoleLabel(selectedConcept.role) }}</text></view>
+					<button aria-label="关闭概念解释" @tap="closeConcept">×</button>
+				</view>
+				<scroll-view class="concept-scroll" scroll-y>
+					<text class="concept-name">{{ selectedConcept.concept.name }}</text>
+					<text class="concept-english">{{ selectedConcept.concept.englishName }}</text>
+					<view class="concept-block relation"><text>为什么在这里出现</text><text>{{ selectedConcept.why }}</text></view>
+					<view class="concept-block"><text>概念是什么</text><text>{{ selectedConcept.concept.definition }}</text></view>
+					<view class="concept-block boundary"><text>判断边界</text><text>{{ selectedConcept.concept.boundary }}</text></view>
+					<view class="concept-source"><text>专业依据</text><text>{{ selectedConcept.concept.source.organization }}</text><text>{{ selectedConcept.concept.source.title }}</text><button @tap="openConceptSource">查看或复制资料来源 ›</button></view>
+					<text class="concept-disclaimer">这是专业概念与当前日记线索的匹配解释，不代表你符合诊断标准，也不能替代医生或心理专业人员的评估。</text>
+				</scroll-view>
+				<button class="concept-done" @tap="closeConcept">知道了</button>
+			</view>
+		</view>
 		<wellbeing-safety-sheet :visible="safetyConsentVisible" @cancel="safetyConsentVisible = false" @confirm="confirmHypothesisRefresh" />
 	</view>
 </template>
@@ -124,7 +143,7 @@ export default {
 			statusBarHeight: 0, items: [], total: 0, page: 1,
 			pageSize: 20, category: '', loading: false, processingId: '', creating: false, saving: false,
 			summary: {}, draft: emptyDraft(), hypotheses: [], hypothesisState: {}, hypothesesLoading: false,
-			refreshing: false, hypothesisProcessingId: '', expandedHypothesisId: '', safetyConsentVisible: false,
+			refreshing: false, hypothesisProcessingId: '', expandedHypothesisId: '', safetyConsentVisible: false, selectedConcept: null,
 			categories: [{ value: '', label: '全部' }, { value: 'PSYCHOLOGICAL', label: '心理' }, { value: 'PHYSICAL', label: '身体' }, { value: 'SLEEP', label: '睡眠' }, { value: 'HABIT', label: '习惯' }, { value: 'MEASUREMENT', label: '测量' }, { value: 'TEST_RESULT', label: '检查' }]
 		};
 	},
@@ -201,6 +220,16 @@ export default {
 			finally { this.hypothesisProcessingId = ''; }
 		},
 		toggleHypothesis(item) { this.expandedHypothesisId = this.expandedHypothesisId === item.id ? '' : item.id; },
+		openConcept(possibility) { if (possibility && possibility.concept) this.selectedConcept = possibility; },
+		closeConcept() { this.selectedConcept = null; },
+		openConceptSource() {
+			const url = this.selectedConcept && this.selectedConcept.concept && this.selectedConcept.concept.source && this.selectedConcept.concept.source.url;
+			if (!url) return;
+			// #ifdef H5
+			if (typeof window !== 'undefined' && window.open) { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+			// #endif
+			uni.setClipboardData({ data: url, success: () => uni.showToast({ title: '资料链接已复制', icon: 'none' }) });
+		},
 		async loadItems(reset = false) {
 			if (this.loading) return;
 			if (reset) { this.page = 1; this.items = []; }
@@ -331,13 +360,15 @@ button::after { border: 0; }
 .possibility-statement { display: block; margin-top: 10rpx; color: #4f5a50; font-size: 19rpx; line-height: 1.68; word-break: break-word; }
 .named-possibilities { margin-top: 18rpx; padding: 20rpx; border-radius: 20rpx; background: #172019; display: flex; flex-direction: column; gap: 13rpx; }
 .named-label { color: #dce9bd; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
-.named-row { position: relative; padding: 15rpx 0 2rpx 23rpx; border-top: 1rpx solid rgba(255,255,255,.1); display: flex; flex-direction: column; }
+.named-row { position: relative; width: 100%; padding: 15rpx 0 2rpx 23rpx; border-top: 1rpx solid rgba(255,255,255,.1); display: flex; flex-direction: column; box-sizing: border-box; text-align: left; }
 .named-row::before { content: ''; position: absolute; left: 0; top: 22rpx; width: 9rpx; height: 9rpx; border-radius: 50%; background: #dce9bd; }
 .named-row.rule_out::before { background: #f2c78e; }
 .named-row.alternative::before { background: #9ba69a; }
 .named-role { align-self: flex-start; padding: 5rpx 9rpx; border-radius: 10rpx; background: rgba(220,233,189,.13); color: #dce9bd; font-size: 13rpx; }
 .named-row.rule_out .named-role { background: rgba(242,199,142,.13); color: #f2c78e; }
-.named-name { margin-top: 9rpx; color: #fff; font-family: Georgia, 'Songti SC', serif; font-size: 24rpx; line-height: 1.42; word-break: break-word; }
+.named-title { width: 100%; margin-top: 9rpx; display: flex; align-items: baseline; justify-content: space-between; gap: 15rpx; }
+.named-name { min-width: 0; color: #fff; font-family: Georgia, 'Songti SC', serif; font-size: 24rpx; line-height: 1.42; word-break: break-word; }
+.named-open { flex: 0 0 auto; color: #dce9bd; font-size: 14rpx; line-height: 1.4; }
 .named-why { margin-top: 6rpx; color: #bdc8ba; font-size: 16rpx; line-height: 1.58; word-break: break-word; }
 .named-note { padding-top: 13rpx; border-top: 1rpx solid rgba(255,255,255,.1); color: #899488; font-size: 14rpx; line-height: 1.55; }
 .possibility-reason { margin-top: 18rpx; padding: 17rpx 18rpx; border-left: 4rpx solid #91a463; background: rgba(255,255,255,.55); display: flex; flex-direction: column; }
@@ -430,5 +461,26 @@ button::after { border: 0; }
 .load-more { width: 100%; height: 72rpx; margin-top: 16rpx; border-radius: 36rpx; background: #e3e9d8; color: #606b5f; font-size: 19rpx; }
 .privacy-note { display: block; margin: 28rpx 18rpx 0; color: #8a9189; font-size: 17rpx; line-height: 1.65; text-align: center; }
 .bottom-space { height: calc(80rpx + env(safe-area-inset-bottom)); }
-@media (min-width: 900px) { .page-shell { padding-left: 52rpx; padding-right: 52rpx; } .possibility-list, .record-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.concept-overlay { position: fixed; z-index: 1100; inset: 0; padding: 28rpx; box-sizing: border-box; background: rgba(10,16,12,.56); display: flex; align-items: flex-end; justify-content: center; }
+.concept-sheet { width: 100%; max-width: 720rpx; max-height: min(84vh, 1080rpx); padding: 17rpx 29rpx calc(23rpx + env(safe-area-inset-bottom)); box-sizing: border-box; border: 1rpx solid rgba(23,32,25,.08); border-radius: 34rpx 34rpx 20rpx 20rpx; background: #fbfcf5; box-shadow: 0 30rpx 90rpx rgba(7,12,9,.24); display: flex; flex-direction: column; overflow: hidden; }
+.concept-handle { width: 67rpx; height: 7rpx; margin: 0 auto 15rpx; border-radius: 99rpx; background: #c8cec0; }
+.concept-heading { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
+.concept-heading > view { display: flex; flex-wrap: wrap; gap: 8rpx; }
+.concept-heading > view text { padding: 7rpx 11rpx; border-radius: 12rpx; background: #e6ecd5; color: #5e6d48; font-size: 14rpx; line-height: 1.2; }
+.concept-heading > button { width: 55rpx; height: 55rpx; flex: 0 0 55rpx; border-radius: 50%; background: #edf0e7; color: #657064; display: flex; align-items: center; justify-content: center; font-size: 31rpx; }
+.concept-scroll { min-height: 0; flex: 1; margin-top: 19rpx; }
+.concept-name { display: block; padding-right: 20rpx; font-family: Georgia, 'Songti SC', serif; font-size: 40rpx; line-height: 1.3; color: #172019; }
+.concept-english { display: block; margin-top: 6rpx; color: #829076; font-family: Georgia, serif; font-size: 17rpx; line-height: 1.5; }
+.concept-block { margin-top: 24rpx; padding-top: 21rpx; border-top: 1rpx solid rgba(23,32,25,.09); display: flex; flex-direction: column; gap: 9rpx; }
+.concept-block text:first-child, .concept-source > text:first-child { color: #758452; font-size: 14rpx; font-weight: 750; letter-spacing: 1rpx; }
+.concept-block text:last-child { color: #344037; font-size: 19rpx; line-height: 1.68; word-break: break-word; }
+.concept-block.relation { padding: 19rpx 20rpx; border: 0; border-radius: 19rpx; background: #e5ecd2; }
+.concept-block.boundary { padding: 19rpx 20rpx; border: 0; border-radius: 19rpx; background: #f1eee3; }
+.concept-source { margin-top: 23rpx; padding-top: 20rpx; border-top: 1rpx solid rgba(23,32,25,.09); display: flex; flex-direction: column; gap: 7rpx; }
+.concept-source > text:nth-child(2) { color: #455240; font-size: 18rpx; font-weight: 700; line-height: 1.45; }
+.concept-source > text:nth-child(3) { color: #737d70; font-size: 16rpx; line-height: 1.5; }
+.concept-source > button { align-self: flex-start; min-height: 54rpx; margin-top: 5rpx; padding: 0 16rpx; border-radius: 28rpx; background: #edf1e4; color: #5d6c45; display: flex; align-items: center; font-size: 15rpx; }
+.concept-disclaimer { display: block; margin: 23rpx 0 10rpx; color: #8a9087; font-size: 15rpx; line-height: 1.62; }
+.concept-done { flex: 0 0 auto; width: 100%; min-height: 68rpx; margin-top: 16rpx; border-radius: 35rpx; background: #172019; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 19rpx; font-weight: 700; }
+@media (min-width: 900px) { .page-shell { padding-left: 52rpx; padding-right: 52rpx; } .possibility-list, .record-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } .concept-overlay { align-items: center; } .concept-sheet { border-radius: 34rpx; } .concept-handle { display: none; } }
 </style>
