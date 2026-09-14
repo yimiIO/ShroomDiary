@@ -12,6 +12,15 @@ const { normalizeYogaSelection, presentYogaPractice, shanghaiDate } = require('.
 const { signPrivateObjectUrl } = require('../media-storage');
 const { requireFeature } = require('../billing-store');
 const {
+  FINANCIAL_COMPOUND_POLICY_VERSION,
+  SAFE_FINANCIAL_ASSISTANCE,
+  containsFinancialSecret,
+  containsRestrictedFinancialGuidance,
+  financialPrompt,
+  isFinancialCompound,
+  redactFinancialSecrets
+} = require('../financial-compound-policy');
+const {
   ACCUMULATION_TYPES,
   BLOCKER_PROMPT,
   CONTINUE_PROMPT,
@@ -317,7 +326,7 @@ async function contextFor(userId, itemId, threadId = null) {
   };
 }
 
-async function principalOptionsFor(userId, limit = 20) {
+async function principalOptionsFor(userId, limit = 20, threadId = null) {
   const result = await db.query(
     `SELECT e.id, e.summary, e.payload, e.created_at,
             i.stable_key, COALESCE(i.name, t.title) AS item_name
@@ -326,8 +335,9 @@ async function principalOptionsFor(userId, limit = 20) {
        LEFT JOIN life_os_items i ON i.id = t.item_id AND i.user_id = e.user_id
       WHERE e.user_id = $1 AND e.kind = 'RESULT' AND e.status = 'CONFIRMED'
         AND e.payload->>'accumulationType' = 'PRINCIPAL'
+        AND ($3::uuid IS NULL OR e.thread_id = $3)
       ORDER BY e.created_at DESC LIMIT $2`,
-    [userId, limit]
+    [userId, limit, threadId]
   );
   return result.rows.map(row => ({
     id: row.id,
@@ -338,20 +348,44 @@ async function principalOptionsFor(userId, limit = 20) {
   }));
 }
 
-async function aiOrFallback({ prompt, input, label, normalizer, fallback, usageContext }) {
-  if (!isAiConfigured()) return { value: normalizer({}, fallback), usedAi: false };
+function financialPolicyMetadata(result) {
+  if (!result.financialPolicyApplied) return undefined;
+  return {
+    type: 'PERSONAL_PLAN_AND_FACT_RECORDING_ONLY',
+    version: FINANCIAL_COMPOUND_POLICY_VERSION,
+    outputBlocked: result.policyBlocked === true
+  };
+}
+
+async function aiOrFallback({ prompt, input, label, normalizer, fallback, usageContext, financial = false, policyFallback }) {
+  const financialPolicyApplied = financial || isFinancialCompound(input?.thread);
+  const safeInput = financialPolicyApplied ? redactFinancialSecrets(input) : input;
+  if (!isAiConfigured()) {
+    return { value: normalizer({}, fallback), usedAi: false, calledAi: false, financialPolicyApplied };
+  }
   try {
-    const raw = await callJson(prompt, input, label, {
+    const raw = await callJson(financialPrompt(prompt, financialPolicyApplied), safeInput, label, {
       temperature: 0.2,
       maxTokens: 2200,
       usageContext: { ...(usageContext || {}), billable: true }
     });
-    return { value: normalizer(raw, fallback), usedAi: true };
+    const value = normalizer(raw, fallback);
+    if (financialPolicyApplied && containsRestrictedFinancialGuidance(value)) {
+      console.warn('financial compound AI output blocked', { label, policyVersion: FINANCIAL_COMPOUND_POLICY_VERSION });
+      return {
+        value: policyFallback || normalizer({}, fallback),
+        usedAi: false,
+        calledAi: true,
+        policyBlocked: true,
+        financialPolicyApplied: true
+      };
+    }
+    return { value, usedAi: true, calledAi: true, financialPolicyApplied };
   } catch (error) {
     if (String(error.code || '').startsWith('SHROOM_BILLING_')
       || ['SHROOM_BALANCE_INSUFFICIENT', 'SHROOM_AI_PRICING_UNAVAILABLE'].includes(error.code)) throw error;
     console.error('compound progress AI fallback', { label, code: error.code, message: error.message });
-    return { value: normalizer({}, fallback), usedAi: false };
+    return { value: normalizer({}, fallback), usedAi: false, calledAi: false, financialPolicyApplied };
   }
 }
 
@@ -643,6 +677,22 @@ router.post('/threads', asyncRoute(async (req, res) => {
   const cycleStart = dateOnly(req.body.cycleStart);
   const cycleEnd = dateOnly(req.body.cycleEnd);
   if (cycleStart && cycleEnd && cycleEnd < cycleStart) return fail(res, 400, '周期结束日期不能早于开始日期');
+  if (isFinancialCompound(archetype) && req.body.financialBoundaryAccepted !== true) {
+    return fail(res, 400, '请先确认财务计划的风险与服务边界');
+  }
+  if (isFinancialCompound(archetype) && containsFinancialSecret({
+    title,
+    desiredOutcome,
+    principalDefinition,
+    returnDefinition,
+    reinvestmentDefinition,
+    outcomeEvidence,
+    currentMilestone,
+    currentStep,
+    stopList
+  })) {
+    return fail(res, 400, '请删除银行或证券账户、卡号、密码、验证码等敏感信息后再保存');
+  }
   const created = await db.transaction(async client => {
     let item = null;
     if (key) {
@@ -703,7 +753,12 @@ router.post('/threads', asyncRoute(async (req, res) => {
         archetypeKey: archetype?.key || 'legacy_direction', investmentKind: archetype?.kind || 'GROWTH',
         principalDefinition, returnDefinition, reinvestmentDefinition,
         principalMetricName, principalMetricTarget, returnMetricName, returnMetricTarget,
-        outcomeEvidence, currentMilestone, stopList, currentStep, cycleStart, cycleEnd
+        outcomeEvidence, currentMilestone, stopList, currentStep, cycleStart, cycleEnd,
+        financialBoundary: isFinancialCompound(archetype) ? {
+          accepted: true,
+          version: FINANCIAL_COMPOUND_POLICY_VERSION,
+          scope: 'PERSONAL_PLAN_AND_FACT_RECORDING_ONLY'
+        } : undefined
       })]
     );
     if (item) {
@@ -766,6 +821,18 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
     const stopList = req.body.stopList === undefined
       ? (Array.isArray(thread.stop_list) ? thread.stop_list : []) : textList(req.body.stopList, 8, 300);
     if (!currentStep || !principalDefinition || !returnDefinition || !reinvestmentDefinition) return { error: 'required' };
+    if (isFinancialCompound(thread) && containsFinancialSecret({
+      title,
+      desiredOutcome,
+      compoundMechanism,
+      principalDefinition,
+      returnDefinition,
+      reinvestmentDefinition,
+      outcomeEvidence,
+      currentMilestone,
+      currentStep,
+      stopList
+    })) return { error: 'financial_secret' };
     const result = await client.query(
       `UPDATE compound_threads SET title = $3, desired_outcome = $4,
          cycle_start = $5, cycle_end = $6, compound_mechanism = $7,
@@ -798,6 +865,7 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
   if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
   if (saved.error === 'required') return fail(res, 400, '计划名称、周期目标、本金、回报、再投入和当前一步不能为空');
   if (saved.error === 'dates') return fail(res, 400, '周期结束日期不能早于开始日期');
+  if (saved.error === 'financial_secret') return fail(res, 400, '请删除银行或证券账户、卡号、密码、验证码等敏感信息后再保存');
   return ok(res, mapThread(saved.row), '复利计划已更新');
 }));
 
@@ -810,16 +878,23 @@ router.patch('/plans/:id/validation', asyncRoute(async (req, res) => {
   const saved = await db.transaction(async client => {
     const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
     if (!thread || thread.status !== 'ACTIVE') return { error: 'missing' };
+    if (isFinancialCompound(thread) && containsFinancialSecret(note)) return { error: 'financial_secret' };
     if (requested === 'PROTECTION' && thread.investment_kind !== 'PROTECTION') return { error: 'kind' };
     if (requested === 'COMPOUNDING') {
+      const financialPlan = isFinancialCompound(thread);
       const evidence = await client.query(
         `SELECT 1 FROM compound_events
           WHERE user_id = $1 AND thread_id = $2 AND kind = 'RESULT' AND status = 'CONFIRMED'
-            AND payload->>'accumulationType' IN ('REUSE', 'RETURN')
+            AND ($3::boolean = false AND payload->>'accumulationType' IN ('REUSE', 'RETURN')
+              OR $3::boolean = true AND payload->>'accumulationType' = 'RETURN'
+                AND NULLIF(payload->>'principalEventId', '') IS NOT NULL
+                AND NULLIF(payload->>'actualResult', '') IS NOT NULL)
           LIMIT 1`,
-        [req.user.id, thread.id]
+        [req.user.id, thread.id, financialPlan]
       );
-      if (!evidence.rowCount && Number(thread.return_metric_current || 0) <= 0) return { error: 'evidence' };
+      if (!evidence.rowCount && (!financialPlan && Number(thread.return_metric_current || 0) <= 0)) {
+        return { error: 'evidence', financialPlan };
+      }
     }
     const updated = await client.query(
       `UPDATE compound_threads SET validation_status = $3, validation_note = $4,
@@ -840,7 +915,10 @@ router.patch('/plans/:id/validation', asyncRoute(async (req, res) => {
   });
   if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
   if (saved.error === 'kind') return fail(res, 400, '只有底盘保障原型可以确认为保障项');
-  if (saved.error === 'evidence') return fail(res, 400, '还没有复用或回报证据，现在不能宣布复利已成立');
+  if (saved.error === 'evidence') return fail(res, 400, saved.financialPlan
+    ? '还没有经你确认、关联既有本金的实际结果再投入记录，现在不能确认再投入机制已验证'
+    : '还没有复用或回报证据，现在不能宣布复利已成立');
+  if (saved.error === 'financial_secret') return fail(res, 400, '请删除账户、卡号、密码或验证码等敏感信息后再保存');
   return ok(res, mapThread(saved.row), '复利验证判断已更新');
 }));
 
@@ -851,6 +929,9 @@ router.put('/plans/:id/week', asyncRoute(async (req, res) => {
   const actions = weekActions(req.body.actions);
   const stopList = textList(req.body.stopList, 8, 300);
   if (!plannedMinutes || !actions.length) return fail(res, 400, '请分配本周时间，并保留至少一个具体行动');
+  if (isFinancialCompound(thread) && containsFinancialSecret({ actions, stopList })) {
+    return fail(res, 400, '本周计划不需要账户、卡号、密码或验证码，请删除后再保存');
+  }
   const result = await db.query(
     `INSERT INTO compound_week_plans
       (id, user_id, thread_id, week_start, planned_minutes, actions, stop_list)
@@ -926,6 +1007,10 @@ router.post('/threads/:id/continue', asyncRoute(async (req, res) => {
   const context = await contextFor(req.user.id, thread.item_id, thread.id);
   const eventId = crypto.randomUUID();
   const intent = req.body.intent === 'EASIER' ? 'EASIER' : 'HELP';
+  const userRequest = text(req.body.request, 1600);
+  if (isFinancialCompound(thread) && containsFinancialSecret(userRequest)) {
+    return fail(res, 400, '这里不需要账户、卡号、密码或验证码，请删除后再继续');
+  }
   const fallback = {
     workMode: 'REAL_WORLD',
     assistance: `现在只推进这一步：${thread.current_step}`,
@@ -935,25 +1020,35 @@ router.post('/threads/:id/continue', asyncRoute(async (req, res) => {
   };
   const generated = await aiOrFallback({
     prompt: CONTINUE_PROMPT,
-    input: { intent, thread, userRequest: text(req.body.request, 1600), context },
+    input: { intent, thread, userRequest, context },
     label: intent === 'EASIER' ? '复利系统·让行动更容易' : '复利系统·按需协助',
     normalizer: raw => normalizeContinuation(raw, thread.current_step),
     fallback: thread.current_step,
+    policyFallback: {
+      workMode: 'REAL_WORLD',
+      assistance: SAFE_FINANCIAL_ASSISTANCE,
+      currentStep: '只核对并记录你自己的目标、期限、费用和已经发生的结果。',
+      completionCriteria: '记录来自你自己的真实决定和已发生事实。',
+      neededInput: '',
+      easyVersions: [],
+      rationale: { evidenceBasis: '', assumptions: '', omissions: '未评价具体投资产品、交易方式或未来收益。' }
+    },
     usageContext: { userId: req.user.id, feature: 'compound_continue', taskId: eventId }
   });
-  const value = generated.usedAi ? generated.value : fallback;
+  const value = generated.usedAi || generated.policyBlocked ? generated.value : fallback;
   const result = await db.query(
     `INSERT INTO compound_events
       (id, user_id, thread_id, kind, status, actor, input_text, summary, payload)
      VALUES ($1, $2, $3, 'CONTINUE', 'CONFIRMED', $4, $5, $6, $7::jsonb)
      RETURNING *`,
     [eventId, req.user.id, thread.id, generated.usedAi ? 'AI' : 'SYSTEM',
-      text(req.body.request, 1600), value.assistance, JSON.stringify({ ...value, intent })]
+      userRequest, value.assistance, JSON.stringify({ ...value, intent, financialPolicy: financialPolicyMetadata(generated) })]
   );
   return ok(res, {
     event: mapEvent(result.rows[0]),
     usedAi: generated.usedAi,
-    costSummary: generated.usedAi ? await usageSummary(req.user.id, { taskId: eventId }) : null
+    costSummary: generated.calledAi ? await usageSummary(req.user.id, { taskId: eventId }) : null,
+    financialPolicy: financialPolicyMetadata(generated)
   });
 }));
 
@@ -1050,6 +1145,9 @@ router.post('/threads/:id/blocker', asyncRoute(async (req, res) => {
   if (!blocker) return fail(res, 400, '请先用一句话说明现在具体卡在哪里');
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '正在推进的事不存在');
+  if (isFinancialCompound(thread) && containsFinancialSecret(blocker)) {
+    return fail(res, 400, '这里不需要账户、卡号、密码或验证码，请删除后再分析');
+  }
   const context = await contextFor(req.user.id, thread.item_id, thread.id);
   const eventId = crypto.randomUUID();
   const generated = await aiOrFallback({
@@ -1058,6 +1156,13 @@ router.post('/threads/:id/blocker', asyncRoute(async (req, res) => {
     label: '复利系统·处理卡点',
     normalizer: raw => normalizeBlocker(raw, thread.current_step),
     fallback: thread.current_step,
+    policyFallback: {
+      obstacleType: 'DIRECTION_DOUBT',
+      analysis: SAFE_FINANCIAL_ASSISTANCE,
+      adjustedStep: '只核对并记录你自己的目标、期限、费用和已经发生的结果。',
+      neededInput: '',
+      recommendPause: false
+    },
     usageContext: { userId: req.user.id, feature: 'compound_blocker', taskId: eventId }
   });
   const value = generated.value;
@@ -1068,7 +1173,7 @@ router.post('/threads/:id/blocker', asyncRoute(async (req, res) => {
        VALUES ($1, $2, $3, 'BLOCKER', 'CONFIRMED', $4, $5, $6, $7::jsonb)
        RETURNING *`,
       [eventId, req.user.id, thread.id, generated.usedAi ? 'AI' : 'SYSTEM',
-        blocker, value.analysis, JSON.stringify(value)]
+        blocker, value.analysis, JSON.stringify({ ...value, financialPolicy: financialPolicyMetadata(generated) })]
     );
     await client.query(
       `UPDATE compound_threads SET blocker_summary = $3, context_summary = $4,
@@ -1081,7 +1186,8 @@ router.post('/threads/:id/blocker', asyncRoute(async (req, res) => {
   return ok(res, {
     event: mapEvent(result),
     usedAi: generated.usedAi,
-    costSummary: generated.usedAi ? await usageSummary(req.user.id, { taskId: eventId }) : null
+    costSummary: generated.calledAi ? await usageSummary(req.user.id, { taskId: eventId }) : null,
+    financialPolicy: financialPolicyMetadata(generated)
   });
 }));
 
@@ -1101,10 +1207,13 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
   if (!rawInput && !mediaIds.length) return fail(res, 400, '用一句话、语音或附件说明发生了什么');
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '正在推进的事不存在');
+  if (isFinancialCompound(thread) && containsFinancialSecret(rawInput)) {
+    return fail(res, 400, '进展记录不需要账户、卡号、密码或验证码，请删除后再保存');
+  }
   const eventId = crypto.randomUUID();
   const [context, principalOptions] = await Promise.all([
     contextFor(req.user.id, thread.item_id, thread.id),
-    principalOptionsFor(req.user.id, 20)
+    principalOptionsFor(req.user.id, 20, isFinancialCompound(thread) ? thread.id : null)
   ]);
   const generated = await aiOrFallback({
     prompt: RESULT_PROMPT,
@@ -1119,6 +1228,18 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
     label: '复利系统·整理实际结果',
     normalizer: raw => normalizeResultDraft(raw, rawInput, thread.current_step, { progressMode: thread.progress_mode }),
     fallback: thread.current_step,
+    policyFallback: {
+      state: 'UNVERIFIED',
+      accumulationType: 'NECESSARY',
+      accumulationName: '',
+      principalEventId: '',
+      classificationReason: '金融服务边界阻止了 AI 对这条记录作投资判断。',
+      summary: '已保留你的原始记录，AI 未生成投资建议。',
+      actualResult: '',
+      progressSummary: '',
+      nextStep: '由你核对并补充已经发生的客观结果。',
+      uncertainty: '未评价具体投资产品、交易方式或未来收益。'
+    },
     usageContext: { userId: req.user.id, feature: 'compound_result', taskId: eventId }
   });
   const draft = generated.value;
@@ -1134,14 +1255,15 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
        VALUES ($1, $2, $3, 'RESULT', 'DRAFT', $4, $5, $6, $7::jsonb, $8::jsonb)
        RETURNING *`,
       [eventId, req.user.id, thread.id, generated.usedAi ? 'AI' : 'SYSTEM',
-        rawInput, draft.summary, JSON.stringify({ ...draft, rawInput }), JSON.stringify(mediaIds)]
+        rawInput, draft.summary, JSON.stringify({ ...draft, rawInput, financialPolicy: financialPolicyMetadata(generated) }), JSON.stringify(mediaIds)]
     );
   });
   return ok(res, {
     event: mapEvent(result.rows[0]),
     principalOptions,
     usedAi: generated.usedAi,
-    costSummary: generated.usedAi ? await usageSummary(req.user.id, { taskId: eventId }) : null
+    costSummary: generated.calledAi ? await usageSummary(req.user.id, { taskId: eventId }) : null,
+    financialPolicy: financialPolicyMetadata(generated)
   });
 }));
 
@@ -1151,6 +1273,7 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
   const confirmed = await db.transaction(async client => {
     const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
     if (!thread || thread.status !== 'ACTIVE') return { error: 'thread' };
+    if (isFinancialCompound(thread) && containsFinancialSecret(req.body)) return { error: 'financial_secret' };
     const draftResult = await client.query(
       `SELECT * FROM compound_events
         WHERE id = $1 AND user_id = $2 AND thread_id = $3 AND kind = 'RESULT' FOR UPDATE`,
@@ -1188,8 +1311,9 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
       const principal = await client.query(
         `SELECT id FROM compound_events
           WHERE id = $1 AND user_id = $2 AND kind = 'RESULT' AND status = 'CONFIRMED'
-            AND payload->>'accumulationType' = 'PRINCIPAL'`,
-        [principalId, req.user.id]
+            AND payload->>'accumulationType' = 'PRINCIPAL'
+            AND ($3::boolean = false OR thread_id = $4)`,
+        [principalId, req.user.id, isFinancialCompound(thread), thread.id]
       );
       if (!principal.rowCount) return { error: 'principal' };
       value.principalEventId = principalId;
@@ -1209,7 +1333,8 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
          payload = $5::jsonb, updated_at = now()
        WHERE id = $1 AND user_id = $2 AND thread_id = $3 RETURNING *`,
       [eventId, req.user.id, thread.id, value.summary, JSON.stringify({
-        ...value, rawInput: original.rawInput || draft.input_text, closeMode,
+        ...value, rawInput: original.rawInput || draft.input_text,
+        financialPolicy: original.financialPolicy, closeMode,
         spentMinutes, leadingMetricDelta, principalMetricDelta, returnMetricDelta, weekActionId
       })]
     );
@@ -1285,6 +1410,7 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
   if (confirmed.error === 'draft') return fail(res, 400, '这份结果草稿已经处理');
   if (confirmed.error === 'return') return fail(res, 400, '记录回报需要确认已有效果，并写下可观察的实际变化');
   if (confirmed.error === 'principal') return fail(res, 400, '复用或回报必须关联一项属于你的已有积累');
+  if (confirmed.error === 'financial_secret') return fail(res, 400, '请删除账户、卡号、密码或验证码等敏感信息后再确认');
   return ok(res, { event: mapEvent(confirmed.row), threadStatus: confirmed.nextStatus }, '结果已确认，下次可以从新位置接着做');
 }));
 
@@ -1366,6 +1492,14 @@ router.post('/threads/:id/diary-links/:linkId/review', asyncRoute(async (req, re
     label: '复利系统·回看相关日记',
     normalizer: raw => normalizeDiaryReview(raw, link.evidence_excerpt, thread.current_step),
     fallback: thread.current_step,
+    policyFallback: {
+      facts: [link.evidence_excerpt].filter(Boolean),
+      inferences: [],
+      previousMethodUsed: 'UNKNOWN',
+      methodEffect: '未对具体投资产品、交易方式或未来收益作判断。',
+      nextTry: '继续记录来自你自己的目标、费用和已经发生的客观结果。',
+      neededQuestion: ''
+    },
     usageContext: { userId: req.user.id, feature: 'compound_diary_review', diaryId: link.diary_id, taskId: eventId }
   });
   const result = await db.query(
@@ -1374,12 +1508,14 @@ router.post('/threads/:id/diary-links/:linkId/review', asyncRoute(async (req, re
      VALUES ($1, $2, $3, 'DIARY_REVIEW', 'DRAFT', $4, $5, $6::jsonb, $7, $8)
      RETURNING *`,
     [eventId, req.user.id, thread.id, generated.usedAi ? 'AI' : 'SYSTEM',
-      link.summary || link.evidence_excerpt, JSON.stringify(generated.value), link.diary_id, link.id]
+      link.summary || link.evidence_excerpt,
+      JSON.stringify({ ...generated.value, financialPolicy: financialPolicyMetadata(generated) }), link.diary_id, link.id]
   );
   return ok(res, {
     event: mapEvent(result.rows[0]),
     usedAi: generated.usedAi,
-    costSummary: generated.usedAi ? await usageSummary(req.user.id, { taskId: eventId }) : null
+    costSummary: generated.calledAi ? await usageSummary(req.user.id, { taskId: eventId }) : null,
+    financialPolicy: financialPolicyMetadata(generated)
   });
 }));
 
@@ -1389,6 +1525,7 @@ router.post('/threads/:id/diary-reviews/:eventId/confirm', asyncRoute(async (req
   const saved = await db.transaction(async client => {
     const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
     if (!thread || thread.status !== 'ACTIVE') return null;
+    if (isFinancialCompound(thread) && containsFinancialSecret(req.body)) return { error: 'financial_secret' };
     const eventResult = await client.query(
       `SELECT * FROM compound_events WHERE id = $1 AND user_id = $2 AND thread_id = $3
         AND kind = 'DIARY_REVIEW' FOR UPDATE`,
@@ -1409,7 +1546,8 @@ router.post('/threads/:id/diary-reviews/:eventId/confirm', asyncRoute(async (req
       `UPDATE compound_events SET status = 'CONFIRMED', actor = 'USER', payload = $4::jsonb,
          summary = $5, updated_at = now()
        WHERE id = $1 AND user_id = $2 AND thread_id = $3 RETURNING *`,
-      [event.id, req.user.id, thread.id, JSON.stringify(value), value.facts.join('；')]
+      [event.id, req.user.id, thread.id,
+        JSON.stringify({ ...value, financialPolicy: original.financialPolicy }), value.facts.join('；')]
     );
     await client.query(
       `UPDATE compound_threads SET current_step = $3, context_summary = $4,
@@ -1425,6 +1563,7 @@ router.post('/threads/:id/diary-reviews/:eventId/confirm', asyncRoute(async (req
     return updated.rows[0];
   });
   if (!saved) return fail(res, 400, '回看草稿已处理或日记来源已失效');
+  if (saved.error === 'financial_secret') return fail(res, 400, '请删除账户、卡号、密码或验证码等敏感信息后再确认');
   return ok(res, mapEvent(saved), '这次回看已接入当前推进，下次会检查新方法');
 }));
 
@@ -1458,7 +1597,8 @@ router.post('/threads/:id/diary-links/:linkId/dismiss', asyncRoute(async (req, r
 async function reviewSources(userId, scopeStart, scopeEnd) {
   const result = await db.query(
     `SELECT e.id, e.kind, e.summary, e.payload, e.source_diary_id, e.source_valid,
-            e.created_at, i.stable_key, COALESCE(i.name, t.title) AS item_name, t.progress_mode
+            e.created_at, i.stable_key, COALESCE(i.name, t.title) AS item_name,
+            t.progress_mode, t.archetype_key
        FROM compound_events e
        JOIN compound_threads t ON t.id = e.thread_id AND t.user_id = e.user_id
        LEFT JOIN life_os_items i ON i.id = t.item_id
@@ -1475,6 +1615,7 @@ async function reviewSources(userId, scopeStart, scopeEnd) {
     itemKey: row.stable_key,
     itemName: row.item_name,
     progressMode: row.progress_mode,
+    archetypeKey: row.archetype_key,
     kind: row.kind,
     summary: row.summary,
     payload: row.payload,
@@ -1499,13 +1640,15 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
   const sources = await reviewSources(req.user.id, scopeStart, scopeEnd);
   if (!sources.length) return fail(res, 400, '这个阶段还没有已确认的推进或结果');
   const reviewId = crypto.randomUUID();
+  const includesFinancialPlan = sources.some(source => isFinancialCompound(source));
   const generated = await aiOrFallback({
     prompt: STAGE_REVIEW_PROMPT,
     input: { scopeStart, scopeEnd, sources },
     label: '复利系统·阶段回看',
     normalizer: raw => normalizeStageReview(raw, sources),
     fallback: sources,
-    usageContext: { userId: req.user.id, feature: 'compound_review', taskId: reviewId }
+    usageContext: { userId: req.user.id, feature: 'compound_review', taskId: reviewId },
+    financial: includesFinancialPlan
   });
   let value = generated.value;
   if (!generated.usedAi) {
@@ -1516,7 +1659,7 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
       effectiveMethods: [], ineffectiveMethods: [], decision: 'CONTINUE', nextStep: ''
     };
   }
-  const costSummary = generated.usedAi ? await usageSummary(req.user.id, { taskId: reviewId }) : null;
+  const costSummary = generated.calledAi ? await usageSummary(req.user.id, { taskId: reviewId }) : null;
   const inserted = await db.transaction(async client => {
     await client.query(`UPDATE compound_reviews SET status = 'SUPERSEDED', updated_at = now() WHERE user_id = $1 AND status = 'DRAFT'`, [req.user.id]);
     return client.query(
@@ -1525,7 +1668,10 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
        VALUES ($1, $2, $3::date, $4::date, 'DRAFT', $5::jsonb, $6::jsonb, $7, $8::jsonb)
        RETURNING *`,
       [reviewId, req.user.id, scopeStart, scopeEnd, JSON.stringify(value), JSON.stringify(sources),
-        generated.usedAi ? 'compound-progress-v1' : 'evidence-fallback-v1', JSON.stringify(costSummary || {})]
+        generated.usedAi
+          ? (includesFinancialPlan ? `compound-progress-financial-${FINANCIAL_COMPOUND_POLICY_VERSION}` : 'compound-progress-v1')
+          : (generated.policyBlocked ? `financial-policy-blocked-${FINANCIAL_COMPOUND_POLICY_VERSION}` : 'evidence-fallback-v1'),
+        JSON.stringify(costSummary || {})]
     );
   });
   return ok(res, mapReview(inserted.rows[0]), '阶段回看草稿已生成，确认前不会改变推进状态');
