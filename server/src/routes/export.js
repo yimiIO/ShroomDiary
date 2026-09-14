@@ -2,6 +2,7 @@
 
 const express = require('express');
 const db = require('../db');
+const { decryptFinancialPayload } = require('../financial-data-crypto');
 const { asyncRoute, ok, requireUser } = require('../http');
 
 const router = express.Router();
@@ -22,6 +23,13 @@ function redactValue(value, replacements) {
   return value;
 }
 
+function financialRows(rows) {
+  return rows.map(row => {
+    const { private_payload: privatePayload, ...metadata } = row;
+    return { ...metadata, data: decryptFinancialPayload(privatePayload) };
+  });
+}
+
 router.get('/all', asyncRoute(async (req, res) => {
   const redacted = ['1', 'true', 'yes'].includes(String(req.query.redacted || '').toLowerCase());
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
@@ -31,7 +39,10 @@ router.get('/all', asyncRoute(async (req, res) => {
     compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents,
     dataSourceConnections, externalActivities, dailyReviews, dailyReviewPreferences,
     walletAccount, walletLedger, featureEntitlements,
-    campaignRewards, paymentOrders, refundRequests, refundItems, legalAcceptances] = await Promise.all([
+    campaignRewards, paymentOrders, refundRequests, refundItems, legalAcceptances,
+    financialProfiles, financialRecords,
+    financialSnapshots, financialHoldings, financialAliases, financialRules,
+    financialNotes, financialReviews, financialImportDrafts] = await Promise.all([
     db.query('SELECT id, content, mood, tags, images, voice, entry_type, linked_cards, visibility, occurred_at, created_at, updated_at FROM diaries WHERE user_id = $1 ORDER BY occurred_at', [req.user.id]),
     db.query(`SELECT id, content, description, project_id, scheduled_date, deadline, tags, status,
       recurrence_rule_id, occurrence_date, compound_item_id, source_type, source_ref_id,
@@ -124,7 +135,16 @@ router.get('/all', asyncRoute(async (req, res) => {
       status, provider_refund_id, response_note, created_at, updated_at, completed_at
       FROM billing_refund_items WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query(`SELECT id, document_key, document_version, acceptance_source, accepted_at
-      FROM legal_acceptances WHERE user_id = $1 ORDER BY accepted_at`, [req.user.id])
+      FROM legal_acceptances WHERE user_id = $1 ORDER BY accepted_at`, [req.user.id]),
+    db.query('SELECT * FROM financial_plan_profiles WHERE user_id = $1 ORDER BY updated_at', [req.user.id]),
+    db.query('SELECT * FROM financial_records WHERE user_id = $1 ORDER BY occurred_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_snapshots WHERE user_id = $1 ORDER BY valued_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_holdings WHERE user_id = $1 ORDER BY valued_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_aliases WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_rule_versions WHERE user_id = $1 ORDER BY thread_id, version', [req.user.id]),
+    db.query('SELECT * FROM financial_decision_notes WHERE user_id = $1 ORDER BY decided_on, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_reviews WHERE user_id = $1 ORDER BY scope_end, created_at', [req.user.id]),
+    db.query('SELECT * FROM financial_import_drafts WHERE user_id = $1 ORDER BY created_at', [req.user.id])
   ]);
   const replacements = friends.rows.map((item, index) => ({ from: item.name, to: `人物${index + 1}` }))
     .filter(item => item.from).concat([
@@ -183,7 +203,18 @@ router.get('/all', asyncRoute(async (req, res) => {
     billingPaymentOrders: paymentOrders.rows,
     billingRefundRequests: refundRequests.rows,
     billingRefundItems: refundItems.rows,
-    legalAcceptances: legalAcceptances.rows
+    legalAcceptances: legalAcceptances.rows,
+    financialLedger: req.authKind === 'session' && !redacted ? {
+      profiles: financialRows(financialProfiles.rows),
+      records: financialRows(financialRecords.rows),
+      snapshots: financialRows(financialSnapshots.rows),
+      holdings: financialRows(financialHoldings.rows),
+      aliases: financialRows(financialAliases.rows),
+      rules: financialRows(financialRules.rows),
+      notes: financialRows(financialNotes.rows),
+      reviews: financialRows(financialReviews.rows),
+      importDrafts: financialRows(financialImportDrafts.rows)
+    } : { redacted: true, reason: req.authKind === 'session' ? '脱敏导出不包含私人财务金额、持有和规则。' : 'API Token 无权导出私人财务台账。' }
   };
   if (!redacted) return ok(res, payload);
   const clean = redactValue(payload, replacements);

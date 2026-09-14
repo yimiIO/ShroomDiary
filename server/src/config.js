@@ -12,6 +12,10 @@ module.exports = {
   port: Number(process.env.PORT || 3102),
   databaseUrl: process.env.DATABASE_URL,
   tokenSecret: process.env.TOKEN_SECRET,
+  financialDataEncryptionKey: process.env.FINANCIAL_DATA_ENCRYPTION_KEY || '',
+  financialAiProcessorName: String(process.env.FINANCIAL_AI_PROCESSOR_NAME || '').trim(),
+  financialAiImportEnabled: process.env.FINANCIAL_AI_IMPORT_ENABLED === 'true'
+    && Boolean(String(process.env.FINANCIAL_AI_PROCESSOR_NAME || '').trim()),
   publicOrigin: process.env.PUBLIC_ORIGIN || 'https://shroom.surfplus.xyz',
   allowedOrigins: String(process.env.ALLOWED_ORIGINS || '')
     .split(',')

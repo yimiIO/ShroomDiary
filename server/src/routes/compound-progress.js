@@ -541,8 +541,9 @@ router.get('/home', asyncRoute(async (req, res) => {
     )
   ]);
   const plans = activeRows.map((row, index) => mapThread(row, index === 0 ? currentEvents : []));
-  const plannedMinutes = plans.reduce((sum, plan) => sum + plan.week.plannedMinutes, 0);
-  const actualMinutes = plans.reduce((sum, plan) => sum + plan.week.actualMinutes, 0);
+  const weeklyPlans = plans.filter(plan => plan.archetypeKey !== 'financial_capital');
+  const plannedMinutes = weeklyPlans.reduce((sum, plan) => sum + plan.week.plannedMinutes, 0);
+  const actualMinutes = weeklyPlans.reduce((sum, plan) => sum + plan.week.actualMinutes, 0);
   return ok(res, {
     needsOnboarding: !currentRow,
     current: plans[0] || null,
@@ -556,7 +557,7 @@ router.get('/home', asyncRoute(async (req, res) => {
       plannedMinutes,
       actualMinutes,
       utilizationPercent: plannedMinutes > 0 ? Math.round(actualMinutes / plannedMinutes * 100) : 0,
-      unplannedCount: plans.filter(plan => !plan.week.plannedMinutes || !plan.week.actions.length).length
+      unplannedCount: weeklyPlans.filter(plan => !plan.week.plannedMinutes || !plan.week.actions.length).length
     },
     diarySuggestions: pending.rows.map(mapDiarySuggestion),
     recentResults: recentResults.rows.map(row => ({ ...mapEvent(row), itemKey: row.stable_key, itemName: row.item_name })),
@@ -634,7 +635,9 @@ router.post('/threads', asyncRoute(async (req, res) => {
   const desiredOutcome = text(req.body.desiredOutcome, 1200);
   const currentStep = text(req.body.currentStep, 1000);
   if ((!key && !archetype) || !desiredOutcome || !currentStep) {
-    return fail(res, 400, '请选择一种复利原型，并确认 12 周结果和现在的最小一步');
+    return fail(res, 400, isFinancialCompound(archetype)
+      ? '请选择财务本金复利，并确认长期目的和第一项核对行动'
+      : '请选择一种复利原型，并确认 12 周结果和现在的最小一步');
   }
   const title = text(req.body.title, 240);
   const setup = archetype?.setup || {};
@@ -645,10 +648,13 @@ router.post('/threads', asyncRoute(async (req, res) => {
     || text(req.body.outcomeEvidence, 1600);
   const reinvestmentDefinition = text(req.body.reinvestmentDefinition, 1600)
     || text(setup.reinvestmentDefinition, 1600);
-  if (archetype && (!title || !principalDefinition || !returnDefinition || !reinvestmentDefinition)) {
+  const financialPlan = isFinancialCompound(archetype);
+  const effectivePrincipalDefinition = principalDefinition
+    || (financialPlan ? '计划范围将在私人台账中由用户确认' : '');
+  if (archetype && (!title || !effectivePrincipalDefinition || !returnDefinition || !reinvestmentDefinition)) {
     return fail(res, 400, '请填写这项积累的名称，以及你准备持续投入什么');
   }
-  const compoundMechanism = [principalDefinition, returnDefinition, reinvestmentDefinition].filter(Boolean).join('\n');
+  const compoundMechanism = [effectivePrincipalDefinition, returnDefinition, reinvestmentDefinition].filter(Boolean).join('\n');
   const weeklyTimeBudgetMinutes = Math.round(boundedNumber(
     req.body.weeklyTimeBudgetMinutes,
     0,
@@ -683,7 +689,7 @@ router.post('/threads', asyncRoute(async (req, res) => {
   if (isFinancialCompound(archetype) && containsFinancialSecret({
     title,
     desiredOutcome,
-    principalDefinition,
+    principalDefinition: effectivePrincipalDefinition,
     returnDefinition,
     reinvestmentDefinition,
     outcomeEvidence,
@@ -741,7 +747,7 @@ router.post('/threads', asyncRoute(async (req, res) => {
         outcomeEvidence, currentMilestone, JSON.stringify(stopList), desiredOutcome,
         text(req.body.contextReason, 1200), currentStep,
         archetype?.key || 'legacy_direction', archetype?.version || 'legacy-v1', archetype?.kind || 'GROWTH',
-        principalDefinition, returnDefinition, reinvestmentDefinition,
+        effectivePrincipalDefinition, returnDefinition, reinvestmentDefinition,
         principalMetricName, principalMetricTarget, returnMetricName, returnMetricTarget]
     );
     await client.query(
@@ -751,7 +757,7 @@ router.post('/threads', asyncRoute(async (req, res) => {
       [crypto.randomUUID(), req.user.id, id, desiredOutcome, '确认建立复利计划', JSON.stringify({
         title: title || item?.name, desiredOutcome, compoundMechanism, weeklyTimeBudgetMinutes,
         archetypeKey: archetype?.key || 'legacy_direction', investmentKind: archetype?.kind || 'GROWTH',
-        principalDefinition, returnDefinition, reinvestmentDefinition,
+        principalDefinition: effectivePrincipalDefinition, returnDefinition, reinvestmentDefinition,
         principalMetricName, principalMetricTarget, returnMetricName, returnMetricTarget,
         outcomeEvidence, currentMilestone, stopList, currentStep, cycleStart, cycleEnd,
         financialBoundary: isFinancialCompound(archetype) ? {
@@ -780,6 +786,7 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
   const saved = await db.transaction(async client => {
     const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
     if (!thread || thread.status !== 'ACTIVE') return { error: 'missing' };
+    if (isFinancialCompound(thread)) return { error: 'financial_ledger' };
     const title = req.body.title === undefined ? thread.title : text(req.body.title, 240);
     const desiredOutcome = req.body.desiredOutcome === undefined ? thread.desired_outcome : text(req.body.desiredOutcome, 1200);
     const cycleStart = req.body.cycleStart === undefined ? dateOnly(thread.cycle_start) : dateOnly(req.body.cycleStart);
@@ -863,6 +870,7 @@ router.patch('/plans/:id', asyncRoute(async (req, res) => {
     return { row: { ...result.rows[0], stable_key: thread.stable_key, item_name: thread.item_name, section: thread.section } };
   });
   if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
+  if (saved.error === 'financial_ledger') return fail(res, 409, '财务计划已使用独立资金台账，请在那里调整范围、期限和投入规则');
   if (saved.error === 'required') return fail(res, 400, '计划名称、周期目标、本金、回报、再投入和当前一步不能为空');
   if (saved.error === 'dates') return fail(res, 400, '周期结束日期不能早于开始日期');
   if (saved.error === 'financial_secret') return fail(res, 400, '请删除银行或证券账户、卡号、密码、验证码等敏感信息后再保存');
@@ -878,7 +886,7 @@ router.patch('/plans/:id/validation', asyncRoute(async (req, res) => {
   const saved = await db.transaction(async client => {
     const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
     if (!thread || thread.status !== 'ACTIVE') return { error: 'missing' };
-    if (isFinancialCompound(thread) && containsFinancialSecret(note)) return { error: 'financial_secret' };
+    if (isFinancialCompound(thread)) return { error: 'financial_ledger' };
     if (requested === 'PROTECTION' && thread.investment_kind !== 'PROTECTION') return { error: 'kind' };
     if (requested === 'COMPOUNDING') {
       const financialPlan = isFinancialCompound(thread);
@@ -914,6 +922,7 @@ router.patch('/plans/:id/validation', asyncRoute(async (req, res) => {
     return { row: { ...updated.rows[0], stable_key: thread.stable_key, item_name: thread.item_name, section: thread.section } };
   });
   if (saved.error === 'missing') return fail(res, 404, '复利计划不存在');
+  if (saved.error === 'financial_ledger') return fail(res, 409, '财务计划不再使用“线性／复利已出现”判断，请查看计划、记录和资金表现');
   if (saved.error === 'kind') return fail(res, 400, '只有底盘保障原型可以确认为保障项');
   if (saved.error === 'evidence') return fail(res, 400, saved.financialPlan
     ? '还没有经你确认、关联既有本金的实际结果再投入记录，现在不能确认再投入机制已验证'
@@ -925,6 +934,7 @@ router.patch('/plans/:id/validation', asyncRoute(async (req, res) => {
 router.put('/plans/:id/week', asyncRoute(async (req, res) => {
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '复利计划不存在');
+  if (isFinancialCompound(thread)) return fail(res, 409, '财务计划改为按月核对、按季度回看，不再要求每周安排投入');
   const plannedMinutes = Math.round(boundedNumber(req.body.plannedMinutes, 0, 10080, thread.weekly_time_budget_minutes || 0));
   const actions = weekActions(req.body.actions);
   const stopList = textList(req.body.stopList, 8, 300);
@@ -957,6 +967,7 @@ router.put('/plans/:id/week', asyncRoute(async (req, res) => {
 router.patch('/plans/:id/week/actions/:actionId', asyncRoute(async (req, res) => {
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '复利计划不存在');
+  if (isFinancialCompound(thread)) return fail(res, 409, '财务计划不再使用通用每周行动，请在资金台账中核对记录');
   const actionId = text(req.params.actionId, 80);
   const result = await db.transaction(async client => {
     const week = await client.query(
@@ -1207,9 +1218,7 @@ router.post('/threads/:id/results/draft', asyncRoute(async (req, res) => {
   if (!rawInput && !mediaIds.length) return fail(res, 400, '用一句话、语音或附件说明发生了什么');
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '正在推进的事不存在');
-  if (isFinancialCompound(thread) && containsFinancialSecret(rawInput)) {
-    return fail(res, 400, '进展记录不需要账户、卡号、密码或验证码，请删除后再保存');
-  }
+  if (isFinancialCompound(thread)) return fail(res, 409, '财务金额和结果必须进入可核对的资金台账，不能继续使用通用进展次数');
   const eventId = crypto.randomUUID();
   const [context, principalOptions] = await Promise.all([
     contextFor(req.user.id, thread.item_id, thread.id),
@@ -1273,7 +1282,7 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
   const confirmed = await db.transaction(async client => {
     const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
     if (!thread || thread.status !== 'ACTIVE') return { error: 'thread' };
-    if (isFinancialCompound(thread) && containsFinancialSecret(req.body)) return { error: 'financial_secret' };
+    if (isFinancialCompound(thread)) return { error: 'financial_ledger' };
     const draftResult = await client.query(
       `SELECT * FROM compound_events
         WHERE id = $1 AND user_id = $2 AND thread_id = $3 AND kind = 'RESULT' FOR UPDATE`,
@@ -1407,6 +1416,7 @@ router.post('/threads/:id/results/:eventId/confirm', asyncRoute(async (req, res)
     return { row: updated.rows[0], nextStatus };
   });
   if (confirmed.error === 'thread') return fail(res, 404, '正在推进的事不存在');
+  if (confirmed.error === 'financial_ledger') return fail(res, 409, '财务金额和结果必须进入可核对的资金台账');
   if (confirmed.error === 'draft') return fail(res, 400, '这份结果草稿已经处理');
   if (confirmed.error === 'return') return fail(res, 400, '记录回报需要确认已有效果，并写下可观察的实际变化');
   if (confirmed.error === 'principal') return fail(res, 400, '复用或回报必须关联一项属于你的已有积累');
