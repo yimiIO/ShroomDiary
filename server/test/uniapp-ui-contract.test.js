@@ -34,12 +34,20 @@ test('todo creation stays page-local, title-first and exposes visible success st
 test('Codex is a user-level Shroom data source with explicit provenance and controls', () => {
   const settings = source('src/pages/shroom/data-sources.vue');
   const me = source('src/pages/shroom/me.vue');
+  const preferences = source('src/pages/shroom/settings.vue');
   const diary = source('src/pages/diary/index.vue');
   const analysis = source('src/pages/shroom/ai-analysis.vue');
   const route = source('server/src/routes/data-sources.js');
   const migration = source('server/sql/031_data_sources.sql');
 
-  assert.match(me, /数据与连接/);
+  assert.match(me, /data-testid="me-settings"[^>]+@tap="openSettings"/);
+  assert.match(me, /\/pages\/shroom\/settings/);
+  assert.doesNotMatch(me, /数据与连接|带走我的数据|退出当前账号/);
+  assert.match(preferences, /数据与连接/);
+  assert.match(preferences, /带走我的数据/);
+  assert.match(preferences, /退出当前账号/);
+  assert.match(preferences, /\/pages\/shroom\/data-sources/);
+  assert.match(preferences, /\/pages\/shroom\/export/);
   assert.match(settings, /不属于 AI 复利/);
   assert.match(settings, /菇日记 · Codex 数据源/);
   assert.match(settings, /显示在日记时间线/);

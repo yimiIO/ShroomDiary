@@ -8,9 +8,12 @@
 					<text class="header-title">我的</text>
 					<text class="header-subtitle">你的记录、理解与关系，都从这里回到自己。</text>
 				</view>
-				<view class="space-status">
-					<view class="status-dot"></view>
-					<text>私密空间</text>
+				<view class="header-actions">
+					<view class="space-status">
+						<view class="status-dot"></view>
+						<text>私密空间</text>
+					</view>
+					<view class="settings-entry" data-testid="me-settings" @tap="openSettings"><text>⚙</text><text>设置</text></view>
 				</view>
 			</view>
 
@@ -134,26 +137,8 @@
 					</view>
 				</view>
 
-				<view class="menu-section">
-					<text class="section-label">空间与隐私</text>
-					<view class="privacy-card">
-						<text class="privacy-title">你始终决定谁能看见</text>
-						<text class="privacy-copy">日记默认属于你。只有当你主动把菇卡设为公开，它才会出现在发现广场。</text>
-						<view class="privacy-badges">
-							<text>私密</text>
-							<text>匿名公开</text>
-							<text>实名公开</text>
-						</view>
-					</view>
-					<view class="export-row" @tap="openDataSources"><view><text>数据与连接</text><text>管理 Codex 等菇日记数据源</text></view><text>›</text></view>
-					<view class="export-row" @tap="openExport"><view><text>带走我的数据</text><text>完整备份或生成脱敏副本</text></view><text>›</text></view>
-				</view>
 			</view>
 
-			<view class="account-row" v-if="hasLogin" @tap="logout">
-				<text>退出当前账号</text>
-				<text>›</text>
-			</view>
 			<text class="version">SHROOM · 日记，理解，连接</text>
 		</view>
 	</view>
@@ -306,22 +291,8 @@ export default {
 		openReminders() {
 			uni.navigateTo({ url: '/pages/shroom/reminders' });
 		},
-		openExport() {
-			uni.navigateTo({ url: '/pages/shroom/export' });
-		},
-		openDataSources() {
-			uni.navigateTo({ url: '/pages/shroom/data-sources' });
-		},
-		logout() {
-			uni.showModal({
-				title: '退出登录',
-				content: '本机未同步的内容请先确认已保存。',
-				confirmText: '退出',
-				confirmColor: '#b14b43',
-				success: res => {
-					if (res.confirm) this.$mStore.commit('logout');
-				}
-			});
+		openSettings() {
+			uni.navigateTo({ url: '/pages/shroom/settings' });
 		}
 	}
 };
@@ -360,6 +331,11 @@ export default {
 .header-copy,
 .profile-grid {
 	display: block;
+}
+
+.header-copy {
+	min-width: 0;
+	flex: 1;
 }
 
 .header-kicker,
@@ -401,6 +377,31 @@ export default {
 	font-size: 18rpx;
 	font-weight: 650;
 	color: #536357;
+}
+
+.header-actions {
+	display: flex;
+	align-items: flex-end;
+	flex: 0 0 auto;
+	flex-direction: column;
+	gap: 10rpx;
+}
+
+.settings-entry {
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
+	padding: 11rpx 16rpx;
+	border: 1rpx solid rgba(23, 32, 25, .08);
+	border-radius: 999rpx;
+	background: #172019;
+	font-size: 18rpx;
+	font-weight: 680;
+	color: #eef4e8;
+}
+
+.settings-entry text:first-child {
+	font-size: 20rpx;
 }
 
 .status-dot {
@@ -645,8 +646,7 @@ export default {
 }
 
 .menu-section,
-.menu-card,
-.privacy-card {
+.menu-card {
 	display: block;
 }
 
@@ -678,8 +678,7 @@ export default {
 	color: #5f7063;
 }
 
-.menu-card,
-.privacy-card {
+.menu-card {
 	border: 1rpx solid rgba(23, 32, 25, .06);
 	border-radius: 28rpx;
 	background: #fff;
@@ -740,89 +739,6 @@ export default {
 	font-size: 39rpx;
 	font-weight: 300;
 	color: #9ba49d;
-}
-
-.privacy-card {
-	padding: 34rpx;
-	background: #f6f3e6;
-}
-
-.privacy-title,
-.privacy-copy {
-	display: block;
-}
-
-.privacy-title {
-	font-size: 28rpx;
-	font-weight: 690;
-}
-
-.privacy-copy {
-	margin-top: 16rpx;
-	font-size: 23rpx;
-	line-height: 1.75;
-	color: #6d6a59;
-}
-
-.privacy-badges {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10rpx;
-	margin-top: 27rpx;
-}
-
-.privacy-badges text {
-	padding: 9rpx 14rpx;
-	border-radius: 999rpx;
-	background: rgba(255, 255, 255, .68);
-	font-size: 19rpx;
-	color: #706b52;
-}
-
-.export-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 20rpx;
-	margin-top: 14rpx;
-	padding: 25rpx 29rpx;
-	border: 1rpx solid rgba(23, 32, 25, .06);
-	border-radius: 24rpx;
-	background: rgba(255, 255, 255, .72);
-}
-
-.export-row > view {
-	display: flex;
-	flex-direction: column;
-	gap: 6rpx;
-}
-
-.export-row > view text:first-child {
-	font-size: 23rpx;
-	font-weight: 670;
-}
-
-.export-row > view text:last-child {
-	font-size: 19rpx;
-	color: #7b877e;
-}
-
-.export-row > text {
-	font-size: 35rpx;
-	color: #929d94;
-}
-
-.account-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-top: 34rpx;
-	padding: 25rpx 27rpx;
-	border: 1rpx solid rgba(23, 32, 25, .07);
-	border-radius: 24rpx;
-	background: rgba(255, 255, 255, .55);
-	font-size: 23rpx;
-	color: #7a5d57;
 }
 
 .version {

@@ -92,6 +92,14 @@
 			}
 		},
 		{
+			"path": "pages/shroom/settings",
+			"style": {
+				"navigationBarTitleText": "设置",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/data-sources",
 			"style": {
 				"navigationBarTitleText": "数据与连接",
