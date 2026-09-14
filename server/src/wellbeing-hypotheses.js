@@ -144,10 +144,28 @@ function hydrateNamedPossibilities(value, domain) {
   return result;
 }
 
-function preservesObservingStatus(item, observingPrimaryConceptIds = new Set()) {
-  return (Array.isArray(item?.namedPossibilities) ? item.namedPossibilities : [])
-    .some(possibility => possibility?.role !== 'RULE_OUT'
-      && observingPrimaryConceptIds.has(possibility?.conceptId));
+function evidenceRecordIdSet(value) {
+  return new Set((Array.isArray(value) ? value : [])
+    .map(item => String(item?.recordId || item?.record_id || '')).filter(Boolean));
+}
+
+function preservesObservingStatus(item, observingPatterns = []) {
+  const possibilities = Array.isArray(item?.namedPossibilities) ? item.namedPossibilities : [];
+  const primaryConceptIds = new Set(possibilities
+    .filter(value => value?.role === 'PRIMARY_DIRECTION').map(value => value.conceptId));
+  const relatedConceptIds = new Set(possibilities
+    .filter(value => value?.role !== 'RULE_OUT').map(value => value.conceptId));
+  if (observingPatterns instanceof Set) {
+    return [...relatedConceptIds].some(conceptId => observingPatterns.has(conceptId));
+  }
+  const evidenceRecordIds = evidenceRecordIdSet(item?.supportingEvidence);
+  return observingPatterns.some(pattern => {
+    if (pattern.hypothesisKey && pattern.hypothesisKey === item?.hypothesisKey) return true;
+    if (pattern.primaryConceptIds.some(conceptId => primaryConceptIds.has(conceptId))) return true;
+    const retainedAsRelated = pattern.primaryConceptIds.some(conceptId => relatedConceptIds.has(conceptId));
+    const sharedEvidence = [...pattern.evidenceRecordIds].some(recordId => evidenceRecordIds.has(recordId));
+    return retainedAsRelated && sharedEvidence;
+  });
 }
 
 function normalizeWellbeingHypotheses(value, records = []) {
@@ -321,15 +339,18 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
   const db = require('./db');
   return db.transaction(async client => {
     const previous = await client.query(
-      `SELECT hypothesis_key, status, domain, named_possibilities FROM wellbeing_hypotheses
+      `SELECT hypothesis_key, status, domain, named_possibilities, supporting_evidence FROM wellbeing_hypotheses
         WHERE user_id = $1 AND status IN ('DISMISSED', 'OBSERVING')`,
       [userId]
     );
     const dismissedKeys = new Set(previous.rows
       .filter(row => row.status === 'DISMISSED').map(row => row.hypothesis_key));
-    const observingPrimaryConceptIds = new Set(previous.rows.filter(row => row.status === 'OBSERVING')
-      .flatMap(row => hydrateNamedPossibilities(row.named_possibilities, row.domain)
-        .filter(item => item.role === 'PRIMARY_DIRECTION').map(item => item.conceptId)));
+    const observingPatterns = previous.rows.filter(row => row.status === 'OBSERVING').map(row => ({
+      hypothesisKey: row.hypothesis_key,
+      primaryConceptIds: hydrateNamedPossibilities(row.named_possibilities, row.domain)
+        .filter(item => item.role === 'PRIMARY_DIRECTION').map(item => item.conceptId),
+      evidenceRecordIds: evidenceRecordIdSet(row.supporting_evidence)
+    }));
     await client.query(
       `UPDATE wellbeing_hypotheses SET status = 'ARCHIVED', updated_at = now()
         WHERE user_id = $1 AND status IN ('PENDING', 'OBSERVING') AND domain = ANY($2::text[])`,
@@ -338,7 +359,7 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
     let stored = 0;
     for (const item of hypotheses) {
       if (dismissedKeys.has(item.hypothesisKey)) continue;
-      const status = preservesObservingStatus(item, observingPrimaryConceptIds) ? 'OBSERVING' : 'PENDING';
+      const status = preservesObservingStatus(item, observingPatterns) ? 'OBSERVING' : 'PENDING';
       const result = await client.query(
         `INSERT INTO wellbeing_hypotheses
           (id, user_id, hypothesis_key, domain, kind, name, named_possibilities, possibility_statement, why_possible,

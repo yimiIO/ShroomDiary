@@ -129,6 +129,30 @@ test('observing status follows the prior primary concept, never a shared rule-ou
   ] }, observed), false);
 });
 
+test('an alternative only inherits observing status when it retains the same evidence thread', () => {
+  const observingPatterns = [{
+    hypothesisKey: 'psychological:concept:psych.loneliness',
+    primaryConceptIds: ['psych.loneliness'],
+    evidenceRecordIds: new Set(['loneliness-record'])
+  }];
+  assert.equal(preservesObservingStatus({
+    hypothesisKey: 'psychological:concept:psych.avoidance-coping',
+    namedPossibilities: [
+      { conceptId: 'psych.avoidance-coping', role: 'PRIMARY_DIRECTION' },
+      { conceptId: 'psych.loneliness', role: 'ALTERNATIVE' }
+    ],
+    supportingEvidence: [{ recordId: 'legal-stress-record' }]
+  }, observingPatterns), false);
+  assert.equal(preservesObservingStatus({
+    hypothesisKey: 'psychological:concept:psych.anger-rumination',
+    namedPossibilities: [
+      { conceptId: 'psych.anger-rumination', role: 'PRIMARY_DIRECTION' },
+      { conceptId: 'psych.loneliness', role: 'ALTERNATIVE' }
+    ],
+    supportingEvidence: [{ recordId: 'loneliness-record' }]
+  }, observingPatterns), true);
+});
+
 test('stored concepts are hydrated with an explanation, boundary and source', () => {
   const result = hydrateNamedPossibilities([
     { conceptId: 'psych.anger-rumination', role: 'PRIMARY_DIRECTION', why: '冲突后多次反复回想' }
