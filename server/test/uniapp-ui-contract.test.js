@@ -261,8 +261,8 @@ test('compound system starts from a shared archetype catalog and verifies privat
 	assert.match(compound, /先运行，再判断/);
 	assert.match(compound, /复利已出现/);
 	assert.match(compound, /目前线性/);
-	assert.match(compound, /新增本金/);
-	assert.match(compound, /新增复用 \/ 回报/);
+	assert.match(compound, /selectedPlan\.principalMetric\.name/);
+	assert.match(compound, /selectedPlan\.returnMetric\.name/);
 	assert.match(compound, /当前里程碑/);
 	assert.match(compound, /为了保护它/);
 	assert.match(compound, /本周真实分给它多少分钟/);
