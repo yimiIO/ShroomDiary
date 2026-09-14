@@ -22,6 +22,8 @@ function endpoint() {
 
 async function callJson(system, input, label, options = {}) {
   if (!isAiConfigured()) throw Object.assign(new Error('AI 分析尚未配置'), { code: 'SHROOM_AI_UNAVAILABLE' });
+  const model = String(options.model || config.aiModel || '').trim();
+  if (!model) throw Object.assign(new Error('AI 分析模型尚未配置'), { code: 'SHROOM_AI_UNAVAILABLE' });
   let lastError;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const controller = new AbortController();
@@ -31,7 +33,7 @@ async function callJson(system, input, label, options = {}) {
         method: 'POST',
         headers: { authorization: `Bearer ${config.aiApiKey}`, 'content-type': 'application/json' },
         body: JSON.stringify({
-          model: config.aiModel,
+          model,
           temperature: Number.isFinite(options.temperature) ? options.temperature : 0.35,
           max_tokens: Math.max(500, Math.min(8000, Number(options.maxTokens || 3000))),
           response_format: { type: 'json_object' },

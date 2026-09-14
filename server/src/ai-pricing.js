@@ -1,10 +1,14 @@
 'use strict';
 
-const DEEPSEEK_FLASH_PRICE_VERSION = 'deepseek-v4.1-flash-2026-09-10';
+const DEEPSEEK_PRICE_VERSION = 'deepseek-v4-2026-09-14';
 const DEEPSEEK_FLASH_MODELS = new Set([
   'deepseek-flash',
   'deepseek-v4-flash',
   'deepseek-v4-flash-vision-exp'
+]);
+const DEEPSEEK_PRO_MODELS = new Set([
+  'deepseek-pro',
+  'deepseek-v4-pro'
 ]);
 const MILLION = 1000000;
 
@@ -42,13 +46,24 @@ function estimateAiCost({ provider, model, usage, at = new Date(), usdCnyRate = 
   const tokens = normalizeUsage(usage);
   const normalizedProvider = String(provider || '').toLowerCase();
   const normalizedModel = String(model || '').toLowerCase();
-  if (normalizedProvider !== 'deepseek' || !DEEPSEEK_FLASH_MODELS.has(normalizedModel)) {
+  const tier = DEEPSEEK_FLASH_MODELS.has(normalizedModel)
+    ? 'flash'
+    : (DEEPSEEK_PRO_MODELS.has(normalizedModel) ? 'pro' : '');
+  if (normalizedProvider !== 'deepseek' || !tier) {
     return { ...tokens, priced: false, costUsd: null, costCny: null, priceSnapshot: {} };
   }
   const peak = isDeepSeekPeak(at);
-  const rates = peak
-    ? { cacheHitInputCnyPerMillion: 0.04, cacheMissInputCnyPerMillion: 2, outputCnyPerMillion: 8 }
-    : { cacheHitInputCnyPerMillion: 0.02, cacheMissInputCnyPerMillion: 1, outputCnyPerMillion: 4 };
+  const prices = {
+    flash: {
+      peak: { cacheHitInputCnyPerMillion: 0.10, cacheMissInputCnyPerMillion: 3, outputCnyPerMillion: 9 },
+      offPeak: { cacheHitInputCnyPerMillion: 0.05, cacheMissInputCnyPerMillion: 1.5, outputCnyPerMillion: 4.5 }
+    },
+    pro: {
+      peak: { cacheHitInputCnyPerMillion: 0.30, cacheMissInputCnyPerMillion: 9, outputCnyPerMillion: 27 },
+      offPeak: { cacheHitInputCnyPerMillion: 0.15, cacheMissInputCnyPerMillion: 4.5, outputCnyPerMillion: 13.5 }
+    }
+  };
+  const rates = prices[tier][peak ? 'peak' : 'offPeak'];
   const costCny = (
     tokens.cacheHitTokens * rates.cacheHitInputCnyPerMillion +
     tokens.cacheMissTokens * rates.cacheMissInputCnyPerMillion +
@@ -61,7 +76,8 @@ function estimateAiCost({ provider, model, usage, at = new Date(), usdCnyRate = 
     costUsd: costCny / exchangeRate,
     costCny,
     priceSnapshot: {
-      version: DEEPSEEK_FLASH_PRICE_VERSION,
+      version: DEEPSEEK_PRICE_VERSION,
+      tier,
       currency: 'CNY',
       priceBand: peak ? 'peak' : 'off_peak',
       timezone: 'Asia/Shanghai',
@@ -71,4 +87,11 @@ function estimateAiCost({ provider, model, usage, at = new Date(), usdCnyRate = 
   };
 }
 
-module.exports = { DEEPSEEK_FLASH_PRICE_VERSION, DEEPSEEK_FLASH_MODELS, estimateAiCost, isDeepSeekPeak, normalizeUsage };
+module.exports = {
+  DEEPSEEK_FLASH_MODELS,
+  DEEPSEEK_PRICE_VERSION,
+  DEEPSEEK_PRO_MODELS,
+  estimateAiCost,
+  isDeepSeekPeak,
+  normalizeUsage
+};

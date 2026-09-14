@@ -14,6 +14,7 @@
     "seed:editorial-cards": "node migrate/editorial_cards.js",
     "backfill:memory": "node migrate/backfill_memory.js",
     "backfill:inquiries": "node migrate/backfill_inquiry_candidates.js",
+    "compare:wellbeing-models": "node migrate/compare_wellbeing_models.js",
     "migrate:cos-images": "node migrate/cos_images.js",
     "repair:oversized-images": "node migrate/repair_oversized_cos_images.js"
   },

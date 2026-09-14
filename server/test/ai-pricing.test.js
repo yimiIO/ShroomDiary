@@ -18,8 +18,8 @@ test('DeepSeek Flash cost uses the current CNY peak price at the request timesta
   const result = estimateAiCost({ provider: 'deepseek', model: 'deepseek-v4-flash', usage, at, usdCnyRate: 7.2 });
   assert.equal(result.priced, true);
   assert.equal(result.priceSnapshot.priceBand, 'peak');
-  assert.ok(Math.abs(result.costCny - 0.005608) < 1e-12);
-  assert.ok(Math.abs(result.costUsd - (0.005608 / 7.2)) < 1e-12);
+  assert.ok(Math.abs(result.costCny - 0.00692) < 1e-12);
+  assert.ok(Math.abs(result.costUsd - (0.00692 / 7.2)) < 1e-12);
 });
 
 test('DeepSeek canonical Flash model prices the 14,256-token memory review in CNY', () => {
@@ -38,7 +38,7 @@ test('DeepSeek canonical Flash model prices the 14,256-token memory review in CN
   });
   assert.equal(result.priced, true);
   assert.equal(result.priceSnapshot.priceBand, 'off_peak');
-  assert.ok(Math.abs(result.costCny - 0.021129) < 1e-12);
+  assert.ok(Math.abs(result.costCny - 0.028257) < 1e-12);
 });
 
 test('DeepSeek Flash legacy alias uses the current CNY off-peak price', () => {
@@ -46,8 +46,17 @@ test('DeepSeek Flash legacy alias uses the current CNY off-peak price', () => {
   assert.equal(isDeepSeekPeak(at), false);
   const result = estimateAiCost({ provider: 'deepseek', model: 'deepseek-v4-flash', usage, at });
   assert.equal(result.priceSnapshot.priceBand, 'off_peak');
-  assert.ok(Math.abs(result.costCny - 0.002804) < 1e-12);
-  assert.ok(Math.abs(result.costUsd - (0.002804 / 7.2)) < 1e-12);
+  assert.ok(Math.abs(result.costCny - 0.00346) < 1e-12);
+  assert.ok(Math.abs(result.costUsd - (0.00346 / 7.2)) < 1e-12);
+});
+
+test('DeepSeek Pro uses the published three-times-Flash rate', () => {
+  const at = new Date('2026-09-07T02:00:00Z');
+  const flash = estimateAiCost({ provider: 'deepseek', model: 'deepseek-v4-flash', usage, at });
+  const pro = estimateAiCost({ provider: 'deepseek', model: 'deepseek-v4-pro', usage, at });
+  assert.equal(pro.priced, true);
+  assert.equal(pro.priceSnapshot.tier, 'pro');
+  assert.ok(Math.abs(pro.costCny - flash.costCny * 3) < 1e-12);
 });
 
 test('usage without cache breakdown is conservatively counted as cache miss input', () => {

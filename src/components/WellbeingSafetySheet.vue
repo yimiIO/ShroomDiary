@@ -3,8 +3,8 @@
 		<view class="safety-sheet" role="dialog" aria-modal="true" @tap.stop>
 			<view class="safety-handle"></view>
 			<text class="safety-kicker">AI WELLBEING REVIEW</text>
-			<text class="safety-title">开始前，请先了解这些边界</text>
-			<text class="safety-intro">AI 会读取当前账户中允许参与分析的身心记录摘要，用于整理“可能需要留意的问题”。</text>
+			<text class="safety-title">结合历史再判断</text>
+			<text class="safety-intro">这是一次由你主动发起的第二次分析。AI 会综合当前账户中允许参与分析的身心记录摘要，不会重新读取全部日记。</text>
 
 			<view class="safety-list">
 				<view class="safety-row"><text>01</text><view><text>AI 生成·仅供参考</text><text>结果可能不完整、不准确或误解原文，仅供自我观察和就医沟通参考。</text></view></view>

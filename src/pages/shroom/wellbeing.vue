@@ -29,7 +29,7 @@
 				<view class="possibility-section">
 					<view class="possibility-heading">
 						<view><text>POSSIBLE DIRECTIONS</text><text>可能需要留意的问题</text></view>
-						<button :disabled="refreshing || !hypothesisState.sourceCount" @tap="refreshHypotheses">{{ refreshing ? '正在重新核对…' : (hypothesisState.reviewDue ? '有新记录 · 重新识别' : '重新识别') }}</button>
+						<button :disabled="refreshing || !hypothesisState.sourceCount" @tap="refreshHypotheses">{{ refreshing ? '正在结合历史判断…' : (hypothesisState.reviewDue ? '有新记录 · 结合历史判断' : '结合历史再判断') }}</button>
 					</view>
 					<text class="possibility-intro">这里会明确说出可能涉及的心理概念、症状模式或医学排查方向。它来自你的私密记录，是待验证线索，不是患病结论。</text>
 					<view v-if="hypotheses.length" class="possibility-list">
@@ -63,7 +63,7 @@
 						</view>
 					</view>
 					<view v-else-if="!hypothesesLoading" class="possibility-empty"><text>尚未形成可靠的问题可能性</text><text>{{ hypothesisState.sourceCount ? '可以让 AI 综合现有记录重新识别；证据不够时不会硬凑疾病名称。' : '先从日记积累真实的身心变化，系统再寻找跨时间模式。' }}</text></view>
-					<text class="consent-copy">点击“重新识别”即允许当前 AI 服务读取这里的私密身心记录摘要；结果仅保存在你的账户中。</text>
+					<text class="consent-copy">这是可选的第二次分析。点击后，AI 会综合这里已沉淀的私密身心记录，而不是重新读取全部日记；结果仅保存在你的账户中。</text>
 				</view>
 
 				<view class="create-panel" :class="{ open: creating }">

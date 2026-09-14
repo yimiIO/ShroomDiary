@@ -399,13 +399,19 @@ function compactHypothesisDraft(item) {
   };
 }
 
-async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
+async function reviewDomainScope(callJson, scope, userId, dismissedFeedback, aiOptions = {}) {
   const professionalConcepts = conceptCatalogForModel(scope.domain);
+  const featurePrefix = bounded(aiOptions.usageFeaturePrefix || 'wellbeing_hypothesis', 40);
   const request = (input, label, maxTokens) => callJson(
     WELLBEING_HYPOTHESIS_PROMPT,
     input,
     label,
-    { maxTokens, temperature: 0.1, usageContext: { userId, feature: `wellbeing_hypothesis_${scope.domain.toLowerCase()}` } }
+    {
+      maxTokens,
+      temperature: 0.1,
+      model: aiOptions.model,
+      usageContext: { userId, feature: `${featurePrefix}_${scope.domain.toLowerCase()}` }
+    }
   );
   if (scope.records.length <= 14) {
     return request(
@@ -442,13 +448,13 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback) {
       candidateHypotheses: drafts.map(compactHypothesisDraft),
       records: evidenceIndex,
       dismissedFeedback
-    }, `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题全局合并`, 4200);
+    }, `${scope.domain === 'PSYCHOLOGICAL' ? '心理' : '身体'}问题全局合并`, 6500);
   } catch (error) {
     return { hypotheses: drafts };
   }
 }
 
-async function refreshWellbeingHypotheses(userId, modelVersion = '') {
+async function refreshWellbeingHypotheses(userId, modelVersion = '', options = {}) {
   const db = require('./db');
   const { callJson, isAiConfigured } = require('./ai-engine');
   if (!isAiConfigured()) throw Object.assign(new Error('身心问题识别 AI 尚未配置'), { code: 'SHROOM_AI_UNAVAILABLE' });
@@ -471,7 +477,7 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
     }
   ].filter(scope => scope.records.length);
   const settled = await Promise.allSettled(scopes.map(scope => reviewDomainScope(
-    callJson, scope, userId, feedbackResult.rows
+    callJson, scope, userId, feedbackResult.rows, options.aiOptions
   )));
   const reviewedDomains = [];
   const rawHypotheses = [];
@@ -494,7 +500,9 @@ async function refreshWellbeingHypotheses(userId, modelVersion = '') {
     const value = new Date(row.updated_at || 0);
     return value > latest ? value : latest;
   }, new Date(0));
-  const stored = await storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion, reviewedDomains);
+  const stored = options.persist === false
+    ? 0
+    : await storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion, reviewedDomains);
   return { hypotheses, stored, sourceCount: records.length, reviewedDomains };
 }
 
