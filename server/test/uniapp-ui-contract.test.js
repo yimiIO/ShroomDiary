@@ -78,6 +78,7 @@ test('Codex pairing copy works on H5 and always gives visible feedback', () => {
   assert.match(settings, /复制给 Codex/);
   assert.doesNotMatch(settings, /pairing\.pairingCode/);
   assert.doesNotMatch(settings, /copiedTarget === 'code'/);
+  assert.equal((settings.match(/@tap="copy\(/g) || []).length, 1);
   assert.match(settings, /-webkit-user-select:\s*text/);
 });
 
@@ -332,12 +333,13 @@ test('diary analysis proposes unresolved questions without requiring a mood or t
   assert.match(route, /syncDiaryCandidates/);
 });
 
-test('memory review exposes tokens and a plain-language CNY estimate', () => {
+test('memory review exposes truthful tokens and the actual Shroom charge', () => {
   const memory = source('src/pages/shroom/memory.vue');
   assert.match(memory, /visibleCost/);
   assert.match(memory, /本次回看用量/);
 	assert.match(memory, /约 ¥/);
-	assert.match(memory, /最终以 DeepSeek 账单为准/);
+	assert.match(memory, /chargedPoints/);
+	assert.match(memory, /已扣/);
 	assert.doesNotMatch(memory, /暂无价格|公开单价估算/);
 	assert.match(memory, /message\.result\.presentation === 'evidence_list'/);
 	assert.match(memory, /item\.reason/);
@@ -367,9 +369,80 @@ test('unresolved questions form a user-confirmed evidence and review loop', () =
   assert.match(detail, /costSummary/);
   assert.match(me, /未解之问/);
   assert.match(pages, /pages\/shroom\/inquir(?:y|ies)/);
-  assert.match(route, /usageContext: \{ userId: req\.user\.id, inquiryId/);
+  assert.match(route, /usageContext: \{ userId: req\.user\.id, billable: true, inquiryId/);
   assert.match(route, /d\.ai_allowed/);
   assert.doesNotMatch(route, /req\.body\.userId/);
+});
+
+test('Shroom billing keeps diary writing free, rewards seven days without requiring sharing, and gates paid features', () => {
+  const wallet = source('src/pages/shroom/wallet.vue');
+  const share = source('src/pages/shroom/seven-day-share.vue');
+  const login = source('src/pages/public/login.vue');
+  const request = source('src/utils/request/index.js');
+  const billingRoute = source('server/src/routes/billing.js');
+  const billingStore = source('server/src/billing-store.js');
+  const billingPolicy = source('server/src/billing-policy.js');
+  const legacyCompoundRoute = source('server/src/routes/compound.js');
+  const wechatPay = source('server/src/wechat-pay.js');
+  const billingRefunds = source('server/src/billing-refunds.js');
+  const migration = source('server/sql/036_billing.sql');
+  const paymentOperationsMigration = source('server/sql/037_payment_operations.sql');
+  const exportRoute = source('server/src/routes/export.js');
+  const environmentTemplate = source('server/.env.example');
+  const pages = source('src/pages.json');
+
+  assert.match(wallet, /连续记录 7 天/);
+  assert.match(wallet, /1 菇点/);
+  assert.match(wallet, /10/);
+  assert.match(wallet, /20/);
+  assert.match(wallet, /50/);
+  assert.match(wallet, /100/);
+  assert.match(wallet, /自定义/);
+  assert.match(wallet, /data-testid="billing-consent"/);
+  assert.match(wallet, /确认并保存/);
+  assert.match(wallet, /实际 Token 用量对应的供应商成本 × 2\.5/);
+  assert.match(wallet, /data-testid="commercial-rollout"/);
+  assert.match(wallet, /免费测试期全部开放/);
+  assert.match(wallet, /当前免费测试，不充值、不扣费/);
+  assert.match(wallet, /测试期开放/);
+  assert.match(billingPolicy, /复利系统/);
+  assert.match(billingPolicy, /未解之问/);
+  assert.match(billingPolicy, /身心问题/);
+  assert.match(share, /分享完全自愿，不影响菇点奖励/);
+  assert.doesNotMatch(share, /diary\.content|diaryContent|loadDiary/);
+  assert.match(login, /acceptedTerms/);
+  assert.match(request, /case 402:[\s\S]{0,80}handleBillingRequired/);
+  assert.match(billingRoute, /merchantLegalName/);
+  assert.match(billingRoute, /paymentConfiguration\(\)\.legalReady/);
+  assert.match(billingRoute, /WALLET_BILLING/);
+  assert.match(environmentTemplate, /BILLING_MERCHANT_LEGAL_NAME="海口澎湃体育文化有限公司"/);
+  assert.match(environmentTemplate, /BILLING_INVOICE_LEGAL_NAME="海口澎湃体育文化有限公司"/);
+  assert.match(environmentTemplate, /BILLING_MERCHANT_TAX_ID=91460000MAKMYQ5J7G/);
+  assert.match(wallet, /小程序内暂不提供充值/);
+  assert.doesNotMatch(wallet, /uni\.requestPayment/);
+  assert.match(wechatPay, /WECHAT_VIRTUAL_PAYMENT_REQUIRED/);
+  assert.match(wechatPay, /queryPayment/);
+  assert.match(billingRefunds, /requestRefund/);
+  assert.match(billingRefunds, /refundPaidBalance/);
+  assert.match(billingStore, /SEVEN_DAY_REWARD_POINT_CENTS/);
+  assert.match(billingStore, /requireFeature/);
+  assert.match(billingStore, /BILLING_AGREEMENT_REQUIRED/);
+  assert.match(billingStore, /ON CONFLICT \(user_id, document_key, document_version, acceptance_source\) DO NOTHING/);
+  assert.match(legacyCompoundRoute, /requireFeature\('compound'\)/);
+  assert.doesNotMatch(legacyCompoundRoute, /ownerUserIds/);
+  assert.doesNotMatch(billingStore, /allowDebt:\s*true/);
+  assert.doesNotMatch(billingStore, /debt_cents|debtDelta/);
+  assert.doesNotMatch(wallet, /debtPoints|待补足/);
+  assert.match(billingStore, /charge_status = 'ABSORBED'/);
+  assert.match(migration, /wallet_ledger/);
+  assert.match(migration, /billing_feature_entitlements/);
+  assert.match(migration, /billing_refund_items/);
+  assert.match(paymentOperationsMigration, /billing_refund_items/);
+  assert.match(migration, /provider_transaction_id/);
+  assert.match(exportRoute, /billingPaymentOrders/);
+  assert.match(exportRoute, /legalAcceptances/);
+  assert.match(pages, /pages\/shroom\/wallet/);
+  assert.match(pages, /pages\/shroom\/seven-day-share/);
 });
 
 test('wellbeing records and inquiries independently interpret the same diary', () => {

@@ -11,6 +11,7 @@ const { normalizedScope } = require('../memory-retrieval');
 const { bumpCorpusRevision } = require('../memory-store');
 const { themeCatalog, themePreset } = require('../theme-presets');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
+const { ensureAiFunds } = require('../billing-store');
 
 const router = express.Router();
 router.use(requireUser);
@@ -215,6 +216,7 @@ router.post('/themes/:key/open', asyncRoute(async (req, res) => {
 
 router.post('/conversations', asyncRoute(async (req, res) => {
   if (!isAiConfigured()) return fail(res, 503, '日记回看 AI 尚未配置；不会把日记发送给未配置的服务');
+  await ensureAiFunds(req.user.id);
   const seedDiaryId = text(req.body.seedDiaryId, 64) || null;
   const scope = normalizedScope(req.body.scope);
   const question = text(req.body.question, 1000) ||
@@ -286,6 +288,7 @@ router.get('/conversations/:id', asyncRoute(async (req, res) => {
 
 router.post('/conversations/:id/messages', asyncRoute(async (req, res) => {
   if (!isAiConfigured()) return fail(res, 503, '日记回看 AI 尚未配置');
+  await ensureAiFunds(req.user.id);
   const content = text(req.body.content, 1000);
   if (!content) return fail(res, 400, '写下你想继续讨论的内容');
   const created = await db.transaction(async client => {
@@ -443,6 +446,7 @@ router.post('/conversations/:id/cancel', asyncRoute(async (req, res) => {
 }));
 
 router.post('/conversations/:id/retry', asyncRoute(async (req, res) => {
+  await ensureAiFunds(req.user.id);
   const result = await db.transaction(async client => {
     const task = await client.query(
       `SELECT t.id FROM reflection_tasks t

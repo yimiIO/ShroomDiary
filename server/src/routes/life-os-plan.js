@@ -421,7 +421,7 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
   }, '复利方向旧版每周回看', {
     temperature: 0.15,
     maxTokens: 5000,
-    usageContext: { userId: req.user.id, feature: 'life_os_weekly_review', taskId: reviewId }
+    usageContext: { userId: req.user.id, billable: true, feature: 'life_os_weekly_review', taskId: reviewId }
   });
   const result = normalizeWeeklyReview(raw, sources, items);
   if (!result.actualProgress.length && !result.accumulations.length && !result.observations.length) {

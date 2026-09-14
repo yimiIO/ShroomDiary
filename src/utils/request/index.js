@@ -39,6 +39,47 @@ http.interceptor.request(
 );
 
 let expiryPromptVisible = false;
+let billingPromptVisible = false;
+
+function handleBillingRequired(response) {
+	const data = response.data.data || {};
+	uni.setStorageSync('shroomBillingRequired', data);
+	const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+	const currentRoute = pages.length ? `/${pages[pages.length - 1].route}` : '';
+	if (currentRoute === '/pages/shroom/wallet') {
+		mHelper.toast(response.data.message || '菇点不足');
+		return Promise.reject(response.data.message);
+	}
+	if (!billingPromptVisible) {
+		billingPromptVisible = true;
+		const required = Number(data.requiredPoints || 0);
+		const available = Number(data.availablePoints || 0);
+		let balanceChoices = '可以充值，或完成连续 7 天日记活动获得 1 菇点。';
+		// #ifdef MP-WEIXIN
+		balanceChoices = '可以完成连续 7 天日记活动获得 1 菇点；小程序充值在微信虚拟支付完成接入前不开放。';
+		// #endif
+		const agreementRequired = data.reason === 'BILLING_AGREEMENT_REQUIRED';
+		const content = data.reason === 'FEATURE_LOCKED'
+			? `${data.featureName || '高级功能'}需要 ${required || 10} 菇点一次解锁，AI 使用费另行结算。`
+			: agreementRequired
+				? '使用收费 AI 前，请阅读并明确同意菇点计费与退款规则。未同意不会发起调用或扣费。'
+				: `为避免产生欠额，本次调用前需有 ${required || 0.01} 菇点可用；成功后只扣实际用量。当前可用 ${available} 菇点。${balanceChoices}`;
+		uni.showModal({
+			title: data.reason === 'FEATURE_LOCKED' ? '高级功能尚未解锁' : agreementRequired ? '先确认计费规则' : '菇点余额不足',
+			content,
+			cancelText: '暂不',
+			confirmText: '查看选择',
+			confirmColor: '#42634a',
+			success: result => {
+				if (!result.confirm) return;
+				const feature = data.featureKey ? `?feature=${encodeURIComponent(data.featureKey)}` : '';
+				uni.navigateTo({ url: `/pages/shroom/wallet${feature}` });
+			},
+			complete: () => { billingPromptVisible = false; }
+		});
+	}
+	return Promise.reject(response.data.message || '菇点不足');
+}
 
 function expireSession(message) {
 	store.commit('logout');
@@ -102,6 +143,8 @@ http.interceptor.response(
 						sessionRetried: true
 					}
 				});
+			case 402:
+				return handleBillingRequired(response);
 			case 405:
 				mHelper.toast('当前操作不被允许');
 				return Promise.reject(response.data.message);

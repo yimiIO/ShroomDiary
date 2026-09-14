@@ -86,6 +86,14 @@ async function invalidateDiaryDerivatives(client, userId, diaryId, reason) {
      WHERE user_id = $1 AND source_diary_id = $2 AND source_valid`,
     [userId, diaryId]
   );
+  await client.query(
+    `UPDATE daily_reviews SET status = 'FAILED', result = '{}'::jsonb, source_refs = '[]'::jsonb,
+       source_fingerprint = '', error_message = $2,
+       email_status = CASE WHEN email_status IN ('PENDING', 'PROCESSING', 'FAILED') THEN 'SKIPPED' ELSE email_status END,
+       email_claimed_at = NULL, email_next_attempt_at = NULL, updated_at = now()
+     WHERE user_id = $1 AND source_refs @> $3::jsonb`,
+    [userId, `日记来源已变化：${reason}`, JSON.stringify([{ type: 'DIARY', id: diaryId }])]
+  );
 }
 
 async function adoptUnconfiguredTasks(client) {

@@ -37,6 +37,19 @@
 
 ---
 
+## 菇每日总结
+
+- `GET /api/daily-reviews/v1/{YYYY-MM-DD}`：读取已有总结状态，不标记已查看。
+- `POST /api/daily-reviews/v1/{YYYY-MM-DD}/open`：主动打开；当来源变化时重新生成，并记录已查看。生成结果包含数据截止时间和最小来源引用。
+- `GET /api/daily-reviews/v1/preferences`：读取 22:00 邮件状态。
+- `POST /api/daily-reviews/v1/preferences/email/request`：向新邮箱发送 6 位验证码。
+- `POST /api/daily-reviews/v1/preferences/email/verify`：验证邮箱并显式开启 22:00 邮件。
+- `PATCH /api/daily-reviews/v1/preferences`：用 `{ "emailEnabled": false }` 暂停或重新开启邮件。
+
+邮件只会在上海时间 22:00 后、当天总结从未打开、邮箱已验证且用户已开启时发送。总结是派生草稿，不写入日记正文，也不修改人生 OS、复利状态或待办。
+
+---
+
 ## 日记相关接口
 
 ### 1. 获取日记列表

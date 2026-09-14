@@ -33,8 +33,18 @@
 			</view>
 
 			<view class="section account-section">
-				<text class="section-label">账号</text>
+				<text class="section-label">账号与服务</text>
 				<view class="settings-card">
+					<view class="setting-row" data-testid="settings-wallet" @tap="openWallet">
+						<view class="setting-icon wallet">菇</view>
+						<view class="setting-copy"><text>菇点与账单</text><text>充值、功能解锁、活动奖励与扣费流水</text></view>
+						<text class="arrow">›</text>
+					</view>
+					<view class="setting-row" data-testid="settings-legal" @tap="openLegal">
+						<view class="setting-icon legal">§</view>
+						<view class="setting-copy"><text>协议与退款</text><text>用户协议、隐私、充值与退款规则</text></view>
+						<text class="arrow">›</text>
+					</view>
 					<view class="setting-row danger" data-testid="settings-logout" @tap="logout">
 						<view class="setting-icon account">○</view>
 						<view class="setting-copy"><text>退出当前账号</text><text>不会删除已经保存的日记与记录</text></view>
@@ -58,6 +68,8 @@ export default {
 	methods: {
 		openDataSources() { uni.navigateTo({ url: '/pages/shroom/data-sources' }); },
 		openExport() { uni.navigateTo({ url: '/pages/shroom/export' }); },
+		openWallet() { uni.navigateTo({ url: '/pages/shroom/wallet' }); },
+		openLegal() { uni.navigateTo({ url: '/pages/shroom/legal?type=terms' }); },
 		logout() {
 			uni.showModal({
 				title: '退出登录',
@@ -98,6 +110,8 @@ export default {
 .setting-icon { display: flex; width: 62rpx; height: 62rpx; flex: 0 0 62rpx; align-items: center; justify-content: center; border-radius: 20rpx; font-family: Georgia, serif; font-size: 25rpx; font-weight: 700; }
 .setting-icon.codex { background: #172019; color: #eef4e8; }
 .setting-icon.export { background: #e4ebd2; color: #526755; }
+.setting-icon.wallet { background: #f5e7bf; color: #755e30; }
+.setting-icon.legal { background: #e7ece4; color: #56665a; }
 .setting-icon.account { background: #f0e1dc; color: #8a5149; }
 .setting-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }
 .setting-copy text:first-child { font-size: 24rpx; font-weight: 680; }

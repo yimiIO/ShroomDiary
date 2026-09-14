@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -9,6 +9,68 @@ const readline = require('node:readline');
 
 const configPath = process.env.SHROOM_CODEX_CONFIG ||
   path.join(os.homedir(), '.config', 'shroom', 'codex-source.json');
+const launchAgentLabel = 'com.shroom.codex-sync';
+
+function xml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function launchAgentSource(options = {}) {
+  const nodePath = options.nodePath || process.execPath;
+  const scriptPath = options.scriptPath || __filename;
+  const logDir = options.logDir || path.join(os.homedir(), 'Library', 'Logs', 'Shroom');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${launchAgentLabel}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xml(nodePath)}</string>
+    <string>${xml(scriptPath)}</string>
+    <string>sync</string>
+    <string>--force</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>${xml(path.join(logDir, 'codex-sync.log'))}</string>
+  <key>StandardErrorPath</key><string>${xml(path.join(logDir, 'codex-sync-error.log'))}</string>
+</dict>
+</plist>
+`;
+}
+
+function installLaunchAgent() {
+  if (process.platform !== 'darwin') {
+    process.stdout.write('菇日记 · 当前系统不是 macOS，请自行每天 19:00 运行 shroom-codex sync --force。\n');
+    return { installed: false, reason: 'unsupported_platform' };
+  }
+  const userId = typeof process.getuid === 'function' ? process.getuid() : null;
+  if (!Number.isInteger(userId)) throw new Error('无法确定当前 macOS 用户');
+  const agentDir = path.join(os.homedir(), 'Library', 'LaunchAgents');
+  const logDir = path.join(os.homedir(), 'Library', 'Logs', 'Shroom');
+  const plistPath = path.join(agentDir, `${launchAgentLabel}.plist`);
+  fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(plistPath, launchAgentSource({ logDir }), { mode: 0o600 });
+  fs.chmodSync(plistPath, 0o600);
+
+  const domain = `gui/${userId}`;
+  spawnSync('launchctl', ['bootout', domain, plistPath], { stdio: 'ignore' });
+  const loaded = spawnSync('launchctl', ['bootstrap', domain, plistPath], { encoding: 'utf8' });
+  if (loaded.status !== 0) {
+    throw new Error(`19:00 后台同步安装失败：${String(loaded.stderr || loaded.stdout || 'launchctl bootstrap failed').trim()}`);
+  }
+  process.stdout.write('菇日记 · 已设置每天 19:00 同步；关机或休眠错过后，会在本机当天恢复运行时补拉。\n');
+  return { installed: true, plistPath };
+}
 
 function parseArgs(argv) {
   const result = { command: argv[2] || 'sync' };
@@ -223,16 +285,20 @@ async function connect(options) {
   writeConfig({ server, token: paired.token, connectionId: paired.connectionId, lastThreadUpdatedAt: 0 });
   process.stdout.write('菇日记已连接 Codex，开始首次同步。\n');
   await sync(options);
+  installLaunchAgent();
 }
 
 async function main() {
   const options = parseArgs(process.argv);
   if (options.command === 'connect') return connect(options);
   if (options.command === 'sync') return sync(options);
-  throw new Error('用法：shroom-codex connect --server <菇日记地址> --code <配对码> [--days 90]\n      shroom-codex sync');
+  if (options.command === 'schedule') return installLaunchAgent();
+  throw new Error('用法：shroom-codex connect --server <菇日记地址> --code <配对码> [--days 90]\n      shroom-codex sync [--force]\n      shroom-codex schedule');
 }
 
 main().catch(error => {
   process.stderr.write(`菇日记 · Codex 数据源同步失败：${error.message}\n`);
   process.exitCode = 1;
 });
+
+module.exports = { installLaunchAgent, launchAgentSource };

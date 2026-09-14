@@ -13,13 +13,14 @@
 				<text class="state-index">{{ enabledObserverCount }} SEATS READY</text><text class="state-title">把经历放到不同的观察席</text><text class="state-copy">默认五席与自己的自定义席位都可以自由切换。分析是参考，不是结论。</text>
 				<view class="observer-preview" v-if="enabledObservers.length"><text v-for="item in enabledObservers" :key="item.id">{{ item.shortName || item.name }}</text></view>
 				<view class="primary-button" @tap="startAnalysis">开始日记观察</view>
+				<text class="charge-note">成功交付后按实际 Token 成本 × 2.5 扣菇点；失败不扣费。首次使用会先请你确认收费与退款规则。</text>
 				<view class="manage-link" @tap="openObservers">管理我的观察席　›</view>
 			</view>
 			<view class="running-state" v-else-if="analysis.status === 'pending' || analysis.status === 'running'">
 				<view class="orbit"><view></view></view><text class="state-title">正在听取 {{ taskObserverCount }} 个观察席</text><text class="state-copy">各席位独立观察，完成后会一起保存。你可以离开页面，稍后回来查看。</text><text class="running-label">{{ analysis.status === 'pending' ? '等待开始' : '分析进行中' }}</text>
 			</view>
 			<view class="unavailable" v-else-if="analysis.status === 'failed'">
-				<text class="state-index">NEEDS RETRY</text><text class="state-title">这次分析没有完整完成</text><text class="state-copy">{{ analysis.error || '模型服务暂时不可用，日记原文仍然安全保存。' }}</text><view class="primary-button" @tap="startAnalysis">重新分析</view>
+				<text class="state-index">NEEDS RETRY</text><text class="state-title">这次分析没有完整完成</text><text class="state-copy">{{ analysis.error || '模型服务暂时不可用，日记原文仍然安全保存。' }}</text><view class="primary-button" @tap="startAnalysis">重新分析</view><text class="charge-note retry-note">失败不扣费；重新分析成功后按新的实际 Token 用量计费。</text>
 			</view>
 
 			<view v-else-if="analysis.status === 'done'">
@@ -70,7 +71,7 @@
 
 				<view class="cost-card" v-if="analysis.costSummary && analysis.costSummary.calls">
 					<view><text>本次 AI 用量</text><text>{{ analysis.costSummary.calls }} 次调用 · {{ formatTokens(analysis.costSummary.totalTokens) }} tokens</text></view>
-					<view><text>{{ formatCost(analysis.costSummary) }}</text><text>预计花费 · 最终以 DeepSeek 账单为准</text></view>
+					<view><text>{{ formatBilling(analysis.costSummary) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
 				</view>
 
 				<view class="wellbeing-section" v-if="wellbeingRecord">
@@ -233,6 +234,10 @@ export default {
 			const cost = Number(summary.costCny);
 			return '约 ¥' + cost.toFixed(cost >= 0.01 ? 2 : 4);
 		},
+		formatBilling(summary) {
+			if (summary && Number(summary.chargedPoints || 0) > 0) return `已扣 ${Number(summary.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`;
+			return this.formatCost(summary);
+		},
 		sourceActivityMeta(item) {
 			const parts = [];
 			if (item.projectName) parts.push(item.projectName);
@@ -350,7 +355,7 @@ export default {
 		openLifeOsItem(link) { if (link && link.itemKey) uni.navigateTo({ url: `/pages/shroom/life-os-item?key=${link.itemKey}` }); },
 		openCompound() { uni.navigateTo({ url: '/pages/shroom/compound' }); },
 		viewCreatedCard() { if (this.cardSuggestion && this.cardSuggestion.createdCardId) uni.navigateTo({ url: `/pages/common/cards/detail?id=${this.cardSuggestion.createdCardId}` }); },
-		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果，并产生新的 AI 用量。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
+		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果。成功后按本次实际 Token 成本 × 2.5 扣菇点；失败不扣费。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
 		openObservers() { uni.navigateTo({ url: '/pages/shroom/observers' }); },
 		openLifeOs() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
 		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/diary/index' }) }); else uni.switchTab({ url: '/pages/diary/index' }); }
@@ -386,6 +391,8 @@ button::after { border: 0; }
 .state-copy { margin-top: 15rpx; font-size: 21rpx; line-height: 1.7; color: #b7c3b7; }
 .unavailable .state-copy { color: #6d6959; }
 .primary-button { margin-top: 29rpx; padding: 25rpx; border-radius: 999rpx; background: #e5efd9; text-align: center; font-size: 22rpx; font-weight: 700; color: #172019; }
+.charge-note { display: block; margin-top: 16rpx; text-align: center; font-size: 16rpx; line-height: 1.55; color: #9eada0; }
+.retry-note { color: #77725f; }
 .observer-preview { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 24rpx; }
 .observer-preview text { padding: 8rpx 13rpx; border: 1rpx solid rgba(255,255,255,.15); border-radius: 999rpx; font-size: 17rpx; color: #c4d0c3; }
 .manage-link { margin-top: 20rpx; text-align: center; font-size: 19rpx; color: #abbbaa; }

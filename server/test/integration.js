@@ -52,11 +52,11 @@ async function run() {
   try {
     expectCode(await api('/api/auth/v1/register', {
       method: 'POST',
-      body: { mobile: mobileA, password, nickname: 'Integration A' }
+      body: { mobile: mobileA, password, nickname: 'Integration A', acceptedTerms: true }
     }));
     expectCode(await api('/api/auth/v1/register', {
       method: 'POST',
-      body: { mobile: mobileB, password, nickname: 'Integration B' }
+      body: { mobile: mobileB, password, nickname: 'Integration B', acceptedTerms: true }
     }));
 
     const sessionA = expectCode(await api('/api/auth/v1/login', {

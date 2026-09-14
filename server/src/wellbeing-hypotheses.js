@@ -431,7 +431,11 @@ async function reviewDomainScope(callJson, scope, userId, dismissedFeedback, aiO
       maxTokens,
       temperature: 0.1,
       model: aiOptions.model,
-      usageContext: { userId, feature: `${featurePrefix}_${scope.domain.toLowerCase()}` }
+      usageContext: {
+        userId,
+        billable: aiOptions.billable === true,
+        feature: `${featurePrefix}_${scope.domain.toLowerCase()}`
+      }
     }
   );
   if (scope.records.length <= 14) {

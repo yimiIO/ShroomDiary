@@ -398,7 +398,7 @@ router.post('/review/draft', asyncRoute(async (req, res) => {
   }, '人生 OS 整理', {
     temperature: 0.15,
     maxTokens: 8000,
-    usageContext: { userId: req.user.id, feature: 'life_os_review' }
+    usageContext: { userId: req.user.id, billable: true, feature: 'life_os_review' }
   });
   const plan = normalizeReviewPlan(raw, context.sources, clauseInputs);
   if (!plan.principles.length) return fail(res, 503, '这次没有形成可审核的整理建议，请稍后重试');
@@ -729,7 +729,7 @@ router.post('/draft', asyncRoute(async (req, res) => {
   }, '人生 OS 提炼', {
     temperature: 0.2,
     maxTokens: 5000,
-    usageContext: { userId: req.user.id, feature: 'life_os_draft' }
+    usageContext: { userId: req.user.id, billable: true, feature: 'life_os_draft' }
   });
   const draft = normalizeLifeOsDraft(raw, context.sources);
   if (!draft.principles.length) {

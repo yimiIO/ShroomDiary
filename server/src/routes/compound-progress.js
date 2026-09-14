@@ -10,6 +10,7 @@ const { SECTIONS } = require('../life-os-long-term');
 const { CATALOG_VERSION, archetypeByKey, listArchetypes } = require('../compound-archetypes');
 const { normalizeYogaSelection, presentYogaPractice, shanghaiDate } = require('../compound-system');
 const { signPrivateObjectUrl } = require('../media-storage');
+const { requireFeature } = require('../billing-store');
 const {
   ACCUMULATION_TYPES,
   BLOCKER_PROMPT,
@@ -30,6 +31,7 @@ const {
 
 const router = express.Router();
 router.use(requireUser);
+router.use(requireFeature('compound'));
 
 function uuid(value) {
   const id = String(value || '');
@@ -339,9 +341,15 @@ async function principalOptionsFor(userId, limit = 20) {
 async function aiOrFallback({ prompt, input, label, normalizer, fallback, usageContext }) {
   if (!isAiConfigured()) return { value: normalizer({}, fallback), usedAi: false };
   try {
-    const raw = await callJson(prompt, input, label, { temperature: 0.2, maxTokens: 2200, usageContext });
+    const raw = await callJson(prompt, input, label, {
+      temperature: 0.2,
+      maxTokens: 2200,
+      usageContext: { ...(usageContext || {}), billable: true }
+    });
     return { value: normalizer(raw, fallback), usedAi: true };
   } catch (error) {
+    if (String(error.code || '').startsWith('SHROOM_BILLING_')
+      || ['SHROOM_BALANCE_INSUFFICIENT', 'SHROOM_AI_PRICING_UNAVAILABLE'].includes(error.code)) throw error;
     console.error('compound progress AI fallback', { label, code: error.code, message: error.message });
     return { value: normalizer({}, fallback), usedAi: false };
   }

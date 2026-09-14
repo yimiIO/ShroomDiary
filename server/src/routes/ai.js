@@ -22,6 +22,7 @@ const { findDiaryWellbeingRecord, syncDiaryWellbeingRecord } = require('../wellb
 const { hasDiaryHealthExtraction, legacyHealthObservation, normalizeDiaryHealthExtraction } = require('../diary-health');
 const { WELLBEING_REVIEW_VERSION, reviewDiaryWellbeing } = require('../wellbeing-review');
 const { listDiarySourceActivities } = require('../data-sources');
+const { ensureAiFunds } = require('../billing-store');
 
 const router = express.Router();
 router.use(requireUser);
@@ -206,6 +207,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
         {
           usageContext: {
             userId,
+            billable: true,
             feature: 'diary_observer',
             diaryId,
             analysisId,
@@ -230,7 +232,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
       existingInquiries,
       compoundDirections: lifeOsItemsResult.rows
     }, '行动与菇卡整理', {
-      usageContext: { userId, feature: 'diary_observation_followup', diaryId, analysisId }
+      usageContext: { userId, billable: true, feature: 'diary_observation_followup', diaryId, analysisId }
     });
     const rawCandidates = followup.todoCandidates || followup.candidates;
     const candidates = Array.isArray(rawCandidates) ? rawCandidates.slice(0, 30) : [];
@@ -262,7 +264,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
         diary,
         firstCandidate: firstWellbeingCandidate,
         userFeedback: feedback.rows,
-        usageContext: { userId, feature: 'diary_wellbeing_review', diaryId, analysisId }
+        usageContext: { userId, billable: true, feature: 'diary_wellbeing_review', diaryId, analysisId }
       });
       wellbeingReviewCompleted = true;
     } catch (error) {
@@ -319,6 +321,7 @@ async function executeAnalysis(userId, analysisId, diaryId) {
 
 async function startAnalysis(req, res) {
   if (!isAiConfigured()) return fail(res, 503, '观察席 AI 尚未配置；日记不会发送给第三方模型');
+  await ensureAiFunds(req.user.id);
   const diaryId = text(req.body.diaryId, 64);
   const diary = await ownedDiary(req.user.id, diaryId);
   if (!diary) return fail(res, 404, '日记不存在');
@@ -599,7 +602,7 @@ router.post('/extract', asyncRoute(async (req, res) => {
   const content = diary?.content || text(req.body.content, 5000);
   if (!content) return fail(res, 400, '日记内容不能为空');
   const result = await callJson(ENTITY_PROMPT, { diary: { content } }, '实体提取', {
-    usageContext: { userId: req.user.id, feature: 'entity_extract', diaryId: diary?.id || null }
+    usageContext: { userId: req.user.id, billable: true, feature: 'entity_extract', diaryId: diary?.id || null }
   });
   return ok(res, result);
 }));
@@ -615,7 +618,7 @@ router.post('/views/:viewId', asyncRoute(async (req, res) => {
   if (viewId === 4 && !os) return ok(res, { view: 4, name: '人生OS对照', disabled: true, message: '未配置人生OS' });
   const observer = { renderType: ['first_principles', 'entropy', 'compound', 'life_os', 'biological'][viewId - 1] };
   const result = await callJson(VIEW_PROMPTS[viewId], viewInput({ ...diary, content }, os, observer), `视角 ${viewId}`, {
-    usageContext: { userId: req.user.id, feature: 'legacy_diary_view', diaryId: diary?.id || null }
+    usageContext: { userId: req.user.id, billable: true, feature: 'legacy_diary_view', diaryId: diary?.id || null }
   });
   return ok(res, { ...result, view: viewId });
 }));

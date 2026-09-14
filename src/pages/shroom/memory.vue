@@ -65,7 +65,7 @@
 					</view>
 					<view class="usage-strip" v-if="visibleCost && visibleCost.calls">
 						<view><text>本次回看用量</text><text>{{ visibleCost.calls }} 次调用 · {{ formatTokens(visibleCost.totalTokens) }} tokens</text></view>
-						<view><text>{{ formatCost(visibleCost) }}</text><text>预计花费 · 最终以 DeepSeek 账单为准</text></view>
+						<view><text>{{ formatBilling(visibleCost) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
 					</view>
 
 					<view class="processing-panel" v-if="isProcessing">
@@ -344,7 +344,11 @@ export default {
 			const cost = Number(summary.costCny);
 			return '约 ¥' + cost.toFixed(cost >= 0.01 ? 2 : 4);
 		},
-			modeForQuestion(question) {
+		formatBilling(summary) {
+			if (summary && Number(summary.chargedPoints || 0) > 0) return `已扣 ${Number(summary.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`;
+			return this.formatCost(summary);
+		},
+		modeForQuestion(question) {
 				if (this.seedDiaryId) return 'related';
 				return this.selectedMode;
 		},

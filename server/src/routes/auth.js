@@ -15,6 +15,7 @@ const {
 } = require('../security');
 const { asyncRoute, fail, ok, text } = require('../http');
 const { ensureDefaultObservers } = require('../observer-store');
+const { setupNewUser } = require('../billing-store');
 
 const router = express.Router();
 const MOBILE_PATTERN = /^1[3-9]\d{9}$/;
@@ -51,6 +52,7 @@ router.post('/register', asyncRoute(async (req, res) => {
   const nickname = text(req.body.nickname, 80) || `Shroom ${mobile.slice(-4)}`;
   if (!MOBILE_PATTERN.test(mobile)) return fail(res, 400, '手机号格式不正确');
   if (password.length < 6 || password.length > 72) return fail(res, 400, '密码需要 6–72 位');
+  if (req.body.acceptedTerms !== true) return fail(res, 400, '请先阅读并同意用户服务协议与隐私政策');
 
   const existing = await db.query('SELECT id FROM users WHERE mobile = $1', [mobile]);
   if (existing.rowCount) return fail(res, 400, '这个手机号已经注册');
@@ -63,6 +65,7 @@ router.post('/register', asyncRoute(async (req, res) => {
       [crypto.randomUUID(), mobile, nickname, hashPassword(password)]
     );
     await ensureDefaultObservers(result.rows[0].id, client);
+    await setupNewUser(client, result.rows[0].id);
     return result.rows[0];
   });
   return ok(res, member(user), '账号已创建');
