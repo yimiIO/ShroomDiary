@@ -1,6 +1,6 @@
 'use strict';
 
-const WELLBEING_CONCEPT_CATALOG_VERSION = 'wellbeing-concepts-2026-09-14-v1';
+const WELLBEING_CONCEPT_CATALOG_VERSION = 'wellbeing-concepts-2026-09-14-v2';
 
 const WHO_MENTAL_HEALTH_SOURCE = {
   organization: '世界卫生组织（WHO）',
@@ -68,6 +68,15 @@ const CONCEPTS = [
     matchGuidance: '同类压力情境中反复逃避、拖延或压抑体验，短期缓解但长期问题持续或功能受损。',
     source: { organization: 'Carver、Scheier 与 Weintraub', title: 'Assessing coping strategies: a theoretically based approach', url: 'https://pubmed.ncbi.nlm.nih.gov/2926629/' },
     aliases: ['回避应对', '逃避型应对']
+  },
+  {
+    id: 'psych.loneliness', domain: 'PSYCHOLOGICAL',
+    name: '孤独感（主观社会隔离）', englishName: 'Loneliness / perceived social isolation', type: 'PSYCHOSOCIAL_HEALTH_FACTOR', typeLabel: '心理社会健康因素',
+    definition: '个体主观感到自己需要的社会连接与实际获得的连接之间存在差距；它与客观独处或朋友数量并不相同。',
+    boundary: '孤独感不是精神障碍诊断，也不等于喜欢独处。需要结合持续时间、本人痛苦、支持网络和生活功能理解。',
+    matchGuidance: '跨时间明确记录孤独、无人分享、与亲友断开或想连接却长期无法建立连接，并带来痛苦或生活影响。',
+    source: { organization: 'Holt-Lunstad', title: 'Social Connection as a Public Health Issue', url: 'https://pubmed.ncbi.nlm.nih.gov/35021021/' },
+    aliases: ['孤独感', '主观社会隔离', '感知社会隔离', '社交回避与自我封闭']
   },
   {
     id: 'psych.depressive-symptom-cluster', domain: 'PSYCHOLOGICAL',
@@ -167,6 +176,33 @@ const CONCEPTS = [
     matchGuidance: '怕热、多汗、心悸、震颤或非预期体重下降等多项持续共现，或已有检查异常。',
     source: MEDLINEPLUS('Hyperthyroidism', 'hyperthyroidism'),
     aliases: ['甲亢', '甲状腺功能亢进']
+  },
+  {
+    id: 'physical.gout', domain: 'PHYSICAL',
+    name: '痛风评估方向', englishName: 'Gout', type: 'MEDICAL_CONDITION', typeLabel: '医学评估方向',
+    definition: '尿酸盐结晶在关节等组织中沉积并引发炎症的一类关节炎，发作时常出现突发的明显关节疼痛、肿胀、发红或发热。',
+    boundary: '血尿酸偏高并不等于痛风，很多高尿酸者不会发作；单次足部肿痛也可能来自外伤、感染或其他关节问题，需要医生结合检查判断。',
+    matchGuidance: '突发单关节明显疼痛和肿胀，尤其累及足趾、足或踝，并有血尿酸升高、既往类似发作或关节液/影像依据。',
+    source: { organization: '美国国立关节炎、肌肉骨骼与皮肤病研究所（NIAMS）', title: 'Gout', url: 'https://www.niams.nih.gov/health-topics/gout' },
+    aliases: ['痛风', '痛风方向', '痛风/高尿酸相关关节炎', '高尿酸相关关节炎']
+  },
+  {
+    id: 'physical.altitude-illness', domain: 'PHYSICAL',
+    name: '高原病评估方向', englishName: 'Altitude illness', type: 'MEDICAL_CONDITION', typeLabel: '旅行医学评估方向',
+    definition: '快速到达高海拔后，低氧环境可能引发急性高原反应；常见形式包括急性高山病，严重时可出现高原肺水肿或脑水肿。',
+    boundary: '仅有“高反”自我描述或活动后气喘不能确定高原病。需要核对上升速度、海拔、头痛及恶心、眩晕、疲乏等伴随表现；静息气促、意识或行走异常属于紧急信号。',
+    matchGuidance: '近期快速上升至高海拔后数小时至数日出现头痛并伴疲乏、眩晕、恶心或睡眠变化，或出现异常气促；需要与疲劳、脱水、感染及烟雾刺激区分。',
+    source: { organization: '美国疾病控制与预防中心（CDC）', title: 'High-Altitude Travel and Altitude Illness', url: 'https://www.cdc.gov/yellow-book/hcp/environmental-hazards-risks/high-altitude-travel-and-altitude-illness.html' },
+    aliases: ['高原病', '急性高山病', '急性高原反应', '高反']
+  },
+  {
+    id: 'physical.insufficient-sleep', domain: 'PHYSICAL',
+    name: '睡眠不足', englishName: 'Insufficient sleep', type: 'BEHAVIORAL_HEALTH_PATTERN', typeLabel: '睡眠健康模式',
+    definition: '实际睡眠时长或睡眠机会长期或反复低于个体恢复所需，从而可能影响白天精力、情绪、注意和身体状态。',
+    boundary: '睡眠不足描述的是睡得不够，不等于失眠障碍；主动熬夜、工作挤占睡眠和有机会但睡不着需要分别记录。',
+    matchGuidance: '多个日期明确记录熬夜、整夜未睡或睡眠机会不足，并伴白天困倦、疲乏、注意或情绪变化。',
+    source: { organization: '美国疾病控制与预防中心（CDC）', title: 'About Sleep and Your Heart Health', url: 'https://www.cdc.gov/heart-disease/about/sleep-and-heart-health.html' },
+    aliases: ['睡眠不足相关疲劳', '睡眠不足模式', '睡眠剥夺']
   },
   {
     id: 'physical.obstructive-sleep-apnea', domain: 'PHYSICAL',

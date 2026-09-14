@@ -10,7 +10,7 @@ const {
   publicConcept
 } = require('./wellbeing-concepts');
 
-const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-14-v7';
+const WELLBEING_HYPOTHESIS_REVIEW_VERSION = 'wellbeing-hypothesis-2026-09-14-v8';
 const WELLBEING_HYPOTHESIS_DOMAINS = ['PSYCHOLOGICAL', 'PHYSICAL'];
 const WELLBEING_HYPOTHESIS_KINDS = [
   'PSYCHOLOGICAL_CONCEPT',
@@ -33,7 +33,7 @@ const WELLBEING_HYPOTHESIS_PROMPT = `你是 Shroom 的“身心问题可能性�
 7. whyPossible 必须解释“哪些模式让这个方向值得留意”；possibilityStatement 必须使用“可能、相关、需要评估/排查”等不确定措辞。禁止“你患有、已经确诊、就是、一定是”等确定诊断。
 8. missingInformation 写清楚距离判断还缺什么；nextObservations 只建议记录最有区分度的信息。不得给药名、剂量或治疗处方。
 9. redFlags 只能来自原记录中已经出现的紧急信号。careGuidance 可以建议何时联系医生/心理专业人员；不得保证“无需就医”或“可以放心”。
-10. 不按数量凑结果，也不为了控制比例删掉真实且有用的方向。没有达到 professionalConcepts 中某项 matchGuidance 的关键条件就返回空数组。每个 domainScope 最多 8 项，重复问题合并。不能把“体重增加与活动下降”“冲突回避与告别困难”“情绪状态依赖的判断波动”等事实描述冒充专业概念；它们只能出现在 name 或证据解释中。
+10. 不按数量凑结果，也不为了控制比例删掉真实且有用的方向。没有达到 professionalConcepts 中某项 matchGuidance 的关键条件就返回空数组。每项必须至少有一个 PRIMARY_DIRECTION；不能只列 RULE_OUT 来满足结构。每个 domainScope 最多 8 项，重复问题合并。不能把“体重增加与活动下降”“冲突回避与告别困难”“情绪状态依赖的判断波动”等事实描述冒充专业概念；它们只能出现在 name 或证据解释中。
 11. 在 FINAL/SYNTHESIS 阶段先做覆盖和优先级检查：优先保留紧急风险、跨时间重复/持续、功能影响、客观异常和能改变下一步观察或专业评估的方向。一次性、影响较小的反应不能因为“更容易命名”而挤掉长期重要模式。同一个核心问题的不同表现合并为一项。
 12. 心理领域在不输出中间思考的前提下，完整核对情绪/兴趣/精力与功能、焦虑与回避、重大生活事件与应激、睡眠、物质/药物、情绪调节及社交模式；身体领域核对症状部位与时程、客观测量/检查、生活与环境因素以及常见鉴别方向。这是防漏检清单，不是输出清单；没有证据的方向不得输出。
 13. dismissedFeedback 是用户以前认为不符合自己的候选，仅用于避免重复误判。
@@ -58,7 +58,9 @@ function unsafeDiagnosticWording(value) {
   return /(?:你|用户)(?:已经|就是|确定|肯定)?(?:患有|得了|确诊为)|(?:已经|可以|能够)确诊|一定是/u.test(source);
 }
 
-function stableHypothesisKey(item, domain, name) {
+function stableHypothesisKey(item, domain, name, namedPossibilities = []) {
+  const primaryConcept = namedPossibilities.find(possibility => possibility.role === 'PRIMARY_DIRECTION');
+  if (primaryConcept?.conceptId) return `${domain.toLowerCase()}:concept:${primaryConcept.conceptId}`;
   const supplied = String(item.stableKey || item.stable_key || '').trim().toLowerCase();
   const safe = supplied.replace(/[^a-z0-9:_-]+/gu, '-').replace(/^-+|-+$/gu, '').slice(0, 96);
   if (safe.length >= 3) return `${domain.toLowerCase()}:${safe}`;
@@ -142,6 +144,12 @@ function hydrateNamedPossibilities(value, domain) {
   return result;
 }
 
+function preservesObservingStatus(item, observingPrimaryConceptIds = new Set()) {
+  return (Array.isArray(item?.namedPossibilities) ? item.namedPossibilities : [])
+    .some(possibility => possibility?.role !== 'RULE_OUT'
+      && observingPrimaryConceptIds.has(possibility?.conceptId));
+}
+
 function normalizeWellbeingHypotheses(value, records = []) {
   const recordMap = new Map(records.map(record => [String(record.id), record]));
   const hypotheses = Array.isArray(value) ? value : [];
@@ -159,6 +167,7 @@ function normalizeWellbeingHypotheses(value, records = []) {
     const supportingEvidence = normalizeEvidence(item.supportingEvidence || item.supporting_evidence, recordMap);
     const namedPossibilities = normalizeNamedPossibilities(item.namedPossibilities || item.named_possibilities, domain);
     if (!domain || !kind || !name || !possibilityStatement || !whyPossible || !supportingEvidence.length || !namedPossibilities.length) continue;
+    if (!namedPossibilities.some(possibility => possibility.role === 'PRIMARY_DIRECTION')) continue;
     if (unsafeDiagnosticWording(`${name} ${possibilityStatement} ${whyPossible}`)) continue;
     if (!/(?:可能|相关|倾向|风险|待评估|需评估|需要评估|待排查|需排查|需要排查|方向|症状|模式)/u.test(`${name}${possibilityStatement}`)) continue;
     const checks = item.thresholdChecks || item.threshold_checks || {};
@@ -175,7 +184,7 @@ function normalizeWellbeingHypotheses(value, records = []) {
     if (kind === 'CLINICAL_CONDITION' && domain === 'PHYSICAL'
       && !(thresholdChecks.repeatedOrPersistent || thresholdChecks.objectiveFinding)) continue;
     if (kind === 'PSYCHOLOGICAL_CONCEPT' && domain !== 'PSYCHOLOGICAL') continue;
-    const hypothesisKey = stableHypothesisKey(item, domain, name);
+    const hypothesisKey = stableHypothesisKey(item, domain, name, namedPossibilities);
     if (seen.has(hypothesisKey)) continue;
     result.push({
       hypothesisKey,
@@ -311,20 +320,25 @@ async function sourceRecords(userId) {
 async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion = '', reviewedDomains = WELLBEING_HYPOTHESIS_DOMAINS) {
   const db = require('./db');
   return db.transaction(async client => {
-    const dismissed = await client.query(
-      `SELECT hypothesis_key FROM wellbeing_hypotheses
-        WHERE user_id = $1 AND status = 'DISMISSED'`,
+    const previous = await client.query(
+      `SELECT hypothesis_key, status, domain, named_possibilities FROM wellbeing_hypotheses
+        WHERE user_id = $1 AND status IN ('DISMISSED', 'OBSERVING')`,
       [userId]
     );
-    const dismissedKeys = new Set(dismissed.rows.map(row => row.hypothesis_key));
+    const dismissedKeys = new Set(previous.rows
+      .filter(row => row.status === 'DISMISSED').map(row => row.hypothesis_key));
+    const observingPrimaryConceptIds = new Set(previous.rows.filter(row => row.status === 'OBSERVING')
+      .flatMap(row => hydrateNamedPossibilities(row.named_possibilities, row.domain)
+        .filter(item => item.role === 'PRIMARY_DIRECTION').map(item => item.conceptId)));
     await client.query(
       `UPDATE wellbeing_hypotheses SET status = 'ARCHIVED', updated_at = now()
-        WHERE user_id = $1 AND status = 'PENDING' AND domain = ANY($2::text[])`,
+        WHERE user_id = $1 AND status IN ('PENDING', 'OBSERVING') AND domain = ANY($2::text[])`,
       [userId, reviewedDomains]
     );
     let stored = 0;
     for (const item of hypotheses) {
       if (dismissedKeys.has(item.hypothesisKey)) continue;
+      const status = preservesObservingStatus(item, observingPrimaryConceptIds) ? 'OBSERVING' : 'PENDING';
       const result = await client.query(
         `INSERT INTO wellbeing_hypotheses
           (id, user_id, hypothesis_key, domain, kind, name, named_possibilities, possibility_statement, why_possible,
@@ -332,7 +346,7 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
            alternatives, missing_information, next_observations, care_guidance, red_flags,
            status, review_version, model_version, source_updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb,
-           $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb, 'PENDING', $19, $20, $21)
+           $14::jsonb, $15::jsonb, $16::jsonb, $17, $18::jsonb, $19, $20, $21, $22)
          ON CONFLICT (user_id, hypothesis_key) DO UPDATE SET
            domain = EXCLUDED.domain, kind = EXCLUDED.kind, name = EXCLUDED.name,
            named_possibilities = EXCLUDED.named_possibilities,
@@ -342,7 +356,7 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
            alternatives = EXCLUDED.alternatives, missing_information = EXCLUDED.missing_information,
            next_observations = EXCLUDED.next_observations, care_guidance = EXCLUDED.care_guidance,
            red_flags = EXCLUDED.red_flags,
-           status = CASE WHEN wellbeing_hypotheses.status = 'OBSERVING' THEN 'OBSERVING' ELSE 'PENDING' END,
+           status = EXCLUDED.status,
            review_version = EXCLUDED.review_version, model_version = EXCLUDED.model_version,
            source_updated_at = EXCLUDED.source_updated_at, updated_at = now()
          WHERE wellbeing_hypotheses.status <> 'DISMISSED'
@@ -352,7 +366,7 @@ async function storeHypotheses(userId, hypotheses, sourceUpdatedAt, modelVersion
           JSON.stringify(item.thresholdChecks), JSON.stringify(item.supportingEvidence),
           JSON.stringify(item.challengingEvidence), JSON.stringify(item.alternatives),
           JSON.stringify(item.missingInformation), JSON.stringify(item.nextObservations),
-          item.careGuidance, JSON.stringify(item.redFlags), item.reviewVersion,
+          item.careGuidance, JSON.stringify(item.redFlags), status, item.reviewVersion,
           bounded(modelVersion, 120), sourceUpdatedAt]
       );
       if (result.rowCount) stored += 1;
@@ -495,6 +509,8 @@ module.exports = {
   mapHypothesis,
   hydrateNamedPossibilities,
   normalizeWellbeingHypotheses,
+  preservesObservingStatus,
+  recordForModel,
   refreshWellbeingHypotheses,
   stableHypothesisKey,
   storeHypotheses,

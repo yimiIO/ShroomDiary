@@ -7,6 +7,7 @@ const {
   WELLBEING_HYPOTHESIS_PROMPT,
   hydrateNamedPossibilities,
   normalizeWellbeingHypotheses,
+  preservesObservingStatus,
   unsafeDiagnosticWording
 } = require('../src/wellbeing-hypotheses');
 
@@ -101,6 +102,31 @@ test('free-form professional-sounding labels are rejected by the controlled cata
   assert.equal(normalizeWellbeingHypotheses([valid({
     namedPossibilities: [{ conceptId: 'psych.not-a-real-concept', role: 'PRIMARY_DIRECTION', why: '不存在的 ID' }]
   })], records).length, 0);
+});
+
+test('a hypothesis must have a supported primary professional direction', () => {
+  assert.equal(normalizeWellbeingHypotheses([valid({
+    namedPossibilities: [{ conceptId: 'psych.social-anxiety-disorder', role: 'RULE_OUT', why: '没有足够证据，只是列来排除' }]
+  })], records).length, 0);
+});
+
+test('the primary concept provides a deterministic hypothesis key across model wording changes', () => {
+  const first = normalizeWellbeingHypotheses([valid({ stableKey: 'model-a', name: '第一种事实描述' })], records)[0];
+  const second = normalizeWellbeingHypotheses([valid({ stableKey: 'model-b', name: '另一种事实描述' })], records)[0];
+  assert.equal(first.hypothesisKey, 'psychological:concept:psych.depressive-symptom-cluster');
+  assert.equal(second.hypothesisKey, first.hypothesisKey);
+});
+
+test('observing status follows the prior primary concept, never a shared rule-out', () => {
+  const observed = new Set(['psych.anger-rumination', 'psych.social-anxiety-disorder']);
+  assert.equal(preservesObservingStatus({ namedPossibilities: [
+    { conceptId: 'psych.emotion-regulation-difficulty', role: 'PRIMARY_DIRECTION' },
+    { conceptId: 'psych.anger-rumination', role: 'ALTERNATIVE' }
+  ] }, observed), true);
+  assert.equal(preservesObservingStatus({ namedPossibilities: [
+    { conceptId: 'psych.fear-negative-evaluation', role: 'PRIMARY_DIRECTION' },
+    { conceptId: 'psych.social-anxiety-disorder', role: 'RULE_OUT' }
+  ] }, observed), false);
 });
 
 test('stored concepts are hydrated with an explanation, boundary and source', () => {

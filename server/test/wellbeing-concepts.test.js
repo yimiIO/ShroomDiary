@@ -20,7 +20,10 @@ test('controlled wellbeing catalog has stable unique ids in both domains', () =>
 });
 
 test('public concept explanations include professional source and diagnostic boundary', () => {
-  for (const conceptId of ['psych.rejection-sensitivity', 'psych.anger-rumination', 'physical.hyperhidrosis']) {
+  for (const conceptId of [
+    'psych.rejection-sensitivity', 'psych.anger-rumination', 'psych.loneliness',
+    'physical.hyperhidrosis', 'physical.gout', 'physical.altitude-illness', 'physical.insufficient-sleep'
+  ]) {
     const concept = publicConcept(findWellbeingConcept(conceptId));
     assert.ok(concept.definition.length > 20);
     assert.ok(concept.boundary.length > 20);
@@ -30,5 +33,6 @@ test('public concept explanations include professional source and diagnostic bou
 
 test('legacy aliases resolve only to curated concepts', () => {
   assert.equal(findLegacyWellbeingConcept('愤怒反刍与冲突后持续投入').id, 'psych.anger-rumination');
+  assert.equal(findLegacyWellbeingConcept('痛风/高尿酸相关关节炎').id, 'physical.gout');
   assert.equal(findLegacyWellbeingConcept('冲突回避与告别困难'), null);
 });
