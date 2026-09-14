@@ -8,13 +8,7 @@
 					<text class="header-title">我的</text>
 					<text class="header-subtitle">你的记录、理解与关系，都从这里回到自己。</text>
 				</view>
-				<view class="header-actions">
-					<view class="space-status">
-						<view class="status-dot"></view>
-						<text>私密空间</text>
-					</view>
-					<view class="settings-entry" data-testid="me-settings" @tap="openSettings"><text>⚙</text><text>设置</text></view>
-				</view>
+				<view class="settings-entry" data-testid="me-settings" @tap="openSettings"><text>⚙</text><text>设置</text></view>
 			</view>
 
 			<view class="profile-grid">
@@ -365,31 +359,10 @@ export default {
 	color: #728075;
 }
 
-.space-status {
-	display: flex;
-	align-items: center;
-	gap: 9rpx;
-	padding: 12rpx 16rpx;
-	flex: 0 0 auto;
-	border: 1rpx solid rgba(23, 32, 25, .08);
-	border-radius: 999rpx;
-	background: rgba(255, 255, 255, .72);
-	font-size: 18rpx;
-	font-weight: 650;
-	color: #536357;
-}
-
-.header-actions {
-	display: flex;
-	align-items: flex-end;
-	flex: 0 0 auto;
-	flex-direction: column;
-	gap: 10rpx;
-}
-
 .settings-entry {
 	display: flex;
 	align-items: center;
+	flex: 0 0 auto;
 	gap: 8rpx;
 	padding: 11rpx 16rpx;
 	border: 1rpx solid rgba(23, 32, 25, .08);
@@ -402,13 +375,6 @@ export default {
 
 .settings-entry text:first-child {
 	font-size: 20rpx;
-}
-
-.status-dot {
-	width: 8rpx;
-	height: 8rpx;
-	border-radius: 50%;
-	background: #59725e;
 }
 
 .profile-grid {

@@ -32,7 +32,9 @@ test('todo creation stays page-local, title-first and exposes visible success st
 });
 
 test('Codex is a user-level Shroom data source with explicit provenance and controls', () => {
-  const settings = source('src/pages/shroom/data-sources.vue');
+  const connections = source('src/pages/shroom/data-sources.vue');
+  const codex = source('src/pages/shroom/data-sources/codex.vue');
+  const pages = source('src/pages.json');
   const me = source('src/pages/shroom/me.vue');
   const preferences = source('src/pages/shroom/settings.vue');
   const diary = source('src/pages/diary/index.vue');
@@ -41,6 +43,7 @@ test('Codex is a user-level Shroom data source with explicit provenance and cont
   const migration = source('server/sql/031_data_sources.sql');
 
   assert.match(me, /data-testid="me-settings"[^>]+@tap="openSettings"/);
+  assert.doesNotMatch(me, /私密空间|space-status/);
   assert.match(me, /\/pages\/shroom\/settings/);
   assert.doesNotMatch(me, /数据与连接|带走我的数据|退出当前账号/);
   assert.match(preferences, /数据与连接/);
@@ -48,11 +51,15 @@ test('Codex is a user-level Shroom data source with explicit provenance and cont
   assert.match(preferences, /退出当前账号/);
   assert.match(preferences, /\/pages\/shroom\/data-sources/);
   assert.match(preferences, /\/pages\/shroom\/export/);
-  assert.match(settings, /不属于 AI 复利/);
-  assert.match(settings, /菇日记 · Codex 数据源/);
-  assert.match(settings, /显示在日记时间线/);
-  assert.match(settings, /允许用于 AI 日记分析/);
-  assert.match(settings, /断开并删除已同步记录/);
+  assert.match(connections, /连接/);
+  assert.match(connections, /@tap="openCodex"/);
+  assert.match(connections, /\/pages\/shroom\/data-sources\/codex/);
+  assert.match(pages, /pages\/shroom\/data-sources\/codex/);
+  assert.match(codex, /不属于 AI 复利/);
+  assert.match(codex, /菇日记 · Codex 数据源/);
+  assert.match(codex, /显示在日记时间线/);
+  assert.match(codex, /允许用于 AI 日记分析/);
+  assert.match(codex, /断开并删除已同步记录/);
   assert.match(diary, /来自已连接的数据源/);
   assert.match(analysis, /外部观测，不是你亲笔写下的日记/);
   assert.match(route, /x-shroom-source-token/);
@@ -62,14 +69,15 @@ test('Codex is a user-level Shroom data source with explicit provenance and cont
 });
 
 test('Codex pairing copy works on H5 and always gives visible feedback', () => {
-  const settings = source('src/pages/shroom/data-sources.vue');
+  const settings = source('src/pages/shroom/data-sources/codex.vue');
 
   assert.match(settings, /window\.navigator\.clipboard/);
   assert.match(settings, /clipboard\.writeText/);
   assert.match(settings, /document\.execCommand\('copy'\)/);
   assert.match(settings, /复制失败/);
-  assert.match(settings, /copiedTarget === 'code'/);
-  assert.match(settings, /copiedTarget === 'command'/);
+  assert.match(settings, /复制给 Codex/);
+  assert.doesNotMatch(settings, /pairing\.pairingCode/);
+  assert.doesNotMatch(settings, /copiedTarget === 'code'/);
   assert.match(settings, /-webkit-user-select:\s*text/);
 });
 
