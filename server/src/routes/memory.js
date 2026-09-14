@@ -88,7 +88,7 @@ async function createTask(client, userId, conversationId, messageId) {
 }
 
 router.get('/status', asyncRoute(async (req, res) => {
-  const [counts, jobs] = await Promise.all([
+  const [counts, jobs, sources] = await Promise.all([
     db.query(
       `SELECT count(*) FILTER (WHERE deleted_at IS NULL)::int AS total,
               count(*) FILTER (WHERE deleted_at IS NULL AND ai_allowed)::int AS allowed
@@ -101,9 +101,18 @@ router.get('/status', asyncRoute(async (req, res) => {
               count(*) FILTER (WHERE status = 'failed')::int AS failed
          FROM diary_index_tasks WHERE user_id = $1`,
       [req.user.id]
+    ),
+    db.query(
+      `SELECT count(DISTINCT (e.connection_id::text || ':' || regexp_replace(e.external_id, ':[^:]+$', '')))::int AS codex_tasks
+         FROM external_activity_events e
+         JOIN data_source_connections c ON c.id = e.connection_id AND c.user_id = e.user_id
+        WHERE e.user_id = $1 AND c.ai_allowed`,
+      [req.user.id]
     )
   ]);
   const profile = embeddingProfile();
+  const diaryCorpus = counts.rows[0];
+  const codexTasks = Number(sources.rows[0]?.codex_tasks || 0);
   return ok(res, {
     enabled: isAiConfigured(),
     model: isAiConfigured() ? config.aiModel : null,
@@ -115,8 +124,12 @@ router.get('/status', asyncRoute(async (req, res) => {
       pending: jobs.rows[0].pending,
       failed: jobs.rows[0].failed
     },
-    corpus: counts.rows[0],
-    privacy: '只有当前登录账号主动发起回看时，授权范围内的日记片段才会发送给已配置的分析模型。'
+    corpus: {
+      ...diaryCorpus,
+      codexTasks,
+      totalRecords: Number(diaryCorpus.allowed || 0) + codexTasks
+    },
+    privacy: '只有当前登录账号主动发起回看时，授权范围内的日记片段与数据源任务摘要才会发送给已配置的分析模型。'
   });
 }));
 

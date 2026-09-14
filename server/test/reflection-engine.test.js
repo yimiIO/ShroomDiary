@@ -47,3 +47,32 @@ test('a reusable card draft needs both an insight and concrete usage', () => {
   }, retrieval, 'related');
   assert.equal(result.cardDraft, null);
 });
+
+test('Codex evidence remains explicitly typed and is not presented as a diary', () => {
+  const externalRetrieval = {
+    scope: { dateFrom: null, dateTo: null, diaryIds: [] },
+    coverage: { totalAvailable: 1, processedRecords: 1, complete: true },
+    sources: [{
+      sourceRef: 'S1',
+      source_type: 'CODEX_TASK',
+      source_name: '菇日记 · Codex 数据源',
+      connection_id: '11111111-1111-4111-8111-111111111111',
+      external_task_id: 'thread-1',
+      source_fingerprint: 'a'.repeat(64),
+      sourceStart: 0,
+      sourceEnd: 8,
+      excerpt: 'Codex 任务',
+      occurred_at: '2026-09-13T02:00:00Z',
+      role: 'memory',
+      retrievalReasons: ['codex_keyword']
+    }]
+  };
+  const result = normalizeReflection({
+    observations: [{ text: '来自任务记录的观察', evidence: ['S1'] }],
+    cardDraft: { seedSentence: '把任务变成规律', usageItems: ['下次照做'] }
+  }, externalRetrieval, 'related');
+  assert.equal(result.sources[0].sourceType, 'CODEX_TASK');
+  assert.equal(result.sources[0].diaryId, undefined);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.cardDraft, null);
+});

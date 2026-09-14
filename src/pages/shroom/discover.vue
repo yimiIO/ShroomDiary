@@ -15,7 +15,7 @@
 				<view class="memory-entry-copy" @tap="openMemory()">
 					<text class="memory-kicker">PRIVATE MEMORY</text>
 					<text class="memory-title">问问过去的自己</text>
-					<text class="memory-description">从自己的日记里找证据、看变化。每个结论都能回到原文。</text>
+					<text class="memory-description">从日记与已授权的数据源中找证据、看变化。每个结论都保留可核对的来源。</text>
 				</view>
 				<view class="memory-search-row">
 					<input

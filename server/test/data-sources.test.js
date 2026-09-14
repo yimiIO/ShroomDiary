@@ -55,6 +55,9 @@ test('diary source activity queries stay user scoped and honor AI permission', a
   await listDiarySourceActivities(queryable, 'user-1', '2026-09-13', { aiOnly: true });
   assert.match(captured.sql, /e\.user_id = \$1/);
   assert.match(captured.sql, /c\.ai_allowed/);
+  assert.match(captured.sql, /regexp_replace\(e\.external_id, ':[^']+'/u);
+  assert.match(captured.sql, /GROUP BY/u);
+  assert.match(captured.sql, /NULL::integer AS task_runtime_seconds/u);
   assert.doesNotMatch(captured.sql, /c\.include_in_diary/);
   assert.deepEqual(captured.values, ['user-1', '2026-09-13']);
 

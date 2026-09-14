@@ -75,6 +75,7 @@ function normalizeCodexActivity(value) {
 }
 
 function mapActivity(row) {
+  const metadata = row.metadata || {};
   return {
     id: row.id,
     connectionId: row.connection_id,
@@ -91,7 +92,11 @@ function mapActivity(row) {
     activeMinutesEstimate: row.active_seconds_estimate === null || row.active_seconds_estimate === undefined
       ? null : Math.round((Number(row.active_seconds_estimate) / 60) * 10) / 10,
     outcomeStatus: row.outcome_status,
-    metadata: row.metadata || {}
+    turnCount: Number(row.turn_count || metadata.turnCount || 1),
+    completedTurns: Number(row.completed_turns || metadata.completedTurns || 0),
+    interruptedTurns: Number(row.interrupted_turns || metadata.interruptedTurns || 0),
+    failedTurns: Number(row.failed_turns || metadata.failedTurns || 0),
+    metadata
   };
 }
 
@@ -99,15 +104,36 @@ async function listDiarySourceActivities(queryable, userId, date, options = {}) 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
   const usageClause = options.aiOnly ? 'AND c.ai_allowed' : 'AND c.include_in_diary';
   const result = await queryable.query(
-    `SELECT e.id, e.connection_id, e.provider, e.activity_type, e.title, e.project_label,
-            e.source_kind, e.started_at, e.completed_at, e.task_runtime_seconds,
-            e.active_seconds_estimate, e.outcome_status, e.metadata, c.display_name
+    `SELECT min(e.id::text) AS id, e.connection_id, e.provider, e.activity_type,
+            regexp_replace((array_agg(e.title ORDER BY e.completed_at))[1], ' · 后续 [0-9]+$', '') AS title,
+            COALESCE((array_agg(NULLIF(e.project_label, '') ORDER BY e.completed_at DESC)
+              FILTER (WHERE e.project_label <> ''))[1], '') AS project_label,
+            COALESCE((array_agg(NULLIF(e.source_kind, '') ORDER BY e.completed_at DESC)
+              FILTER (WHERE e.source_kind <> ''))[1], '') AS source_kind,
+            NULL::timestamptz AS started_at,
+            max(e.completed_at) AS completed_at,
+            NULL::integer AS task_runtime_seconds, NULL::integer AS active_seconds_estimate,
+            (array_agg(e.outcome_status ORDER BY e.completed_at DESC))[1] AS outcome_status,
+            count(*)::int AS turn_count,
+            count(*) FILTER (WHERE e.outcome_status = 'COMPLETED')::int AS completed_turns,
+            count(*) FILTER (WHERE e.outcome_status = 'INTERRUPTED')::int AS interrupted_turns,
+            count(*) FILTER (WHERE e.outcome_status = 'FAILED')::int AS failed_turns,
+            jsonb_build_object(
+              'category', 'codex_task',
+              'turnCount', count(*)::int,
+              'completedTurns', count(*) FILTER (WHERE e.outcome_status = 'COMPLETED')::int,
+              'interruptedTurns', count(*) FILTER (WHERE e.outcome_status = 'INTERRUPTED')::int,
+              'failedTurns', count(*) FILTER (WHERE e.outcome_status = 'FAILED')::int
+            ) AS metadata,
+            c.display_name
        FROM external_activity_events e
        JOIN data_source_connections c
          ON c.id = e.connection_id AND c.user_id = e.user_id
       WHERE e.user_id = $1 ${usageClause}
         AND (e.completed_at AT TIME ZONE 'Asia/Shanghai')::date = $2::date
-      ORDER BY e.completed_at DESC
+      GROUP BY e.connection_id, e.provider, e.activity_type,
+               regexp_replace(e.external_id, ':[^:]+$', ''), c.display_name
+      ORDER BY max(e.completed_at) DESC
       LIMIT 50`,
     [userId, date]
   );

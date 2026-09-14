@@ -111,7 +111,7 @@
 				<view><text>{{ record.title }}</text><text>{{ activityMeta(record) }}</text></view>
 				<text>CODEX</text>
 			</view>
-			<text class="source-caveat">Codex 任务运行时间不等于你的人工专注时间。</text>
+			<text class="source-caveat">Codex 轮次结束不代表现实结果；任务运行时间也不等于你的人工专注时间。</text>
 		</view>
 
 		<view class="wellbeing-glimpse" v-if="wellbeingOverview && wellbeingOverview.records && wellbeingOverview.records.length" @tap="openWellbeing">
@@ -248,11 +248,18 @@ export default {
 			return weekdays[date.day()];
 		},
 		diaryDates() {
-			return this.calendarDateCounts.map(item => ({
-				date: item.date,
-				info: item.count > 1 ? `${item.count} 篇` : '有日记',
-				data: { hasDiary: true, count: item.count }
-			}));
+			return this.calendarDateCounts.map(item => {
+				const diaryCount = Number(item.count || 0);
+				const sourceCount = Number(item.source_count || item.sourceCount || 0);
+				const labels = [];
+				if (diaryCount) labels.push(diaryCount > 1 ? `${diaryCount} 篇` : '有日记');
+				if (sourceCount) labels.push(`${sourceCount} 个 Codex 任务`);
+				return {
+					date: item.date,
+					info: labels.join(' · '),
+					data: { hasDiary: diaryCount > 0, hasSource: sourceCount > 0, count: diaryCount, sourceCount }
+				};
+			});
 		},
 		customBarHeightRpx() {
 			// 将 px 转换为 rpx (1px ≈ 2rpx，基于 750rpx 设计稿)
@@ -492,8 +499,8 @@ export default {
 		activityMeta(record) {
 			const parts = [];
 			if (record.projectName) parts.push(record.projectName);
-			if (record.taskRuntimeMinutes !== null && record.taskRuntimeMinutes !== undefined) parts.push(`任务运行 ${record.taskRuntimeMinutes} 分钟`);
-			parts.push({ COMPLETED: '已完成', INTERRUPTED: '已中断', FAILED: '未完成' }[record.outcomeStatus] || '已记录');
+			if (record.turnCount) parts.push(`${record.turnCount} 个对话轮次`);
+			parts.push({ COMPLETED: '最近轮次已结束', INTERRUPTED: '最近轮次被中断', FAILED: '最近轮次失败' }[record.outcomeStatus] || '已记录');
 			return parts.join(' · ');
 		},
 

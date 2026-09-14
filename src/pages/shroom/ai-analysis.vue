@@ -236,7 +236,7 @@ export default {
 		sourceActivityMeta(item) {
 			const parts = [];
 			if (item.projectName) parts.push(item.projectName);
-			if (item.taskRuntimeMinutes !== null && item.taskRuntimeMinutes !== undefined) parts.push(`任务运行 ${item.taskRuntimeMinutes} 分钟`);
+			if (item.turnCount) parts.push(`${item.turnCount} 个对话轮次`);
 			return parts.join(' · ');
 		},
 		toggleCandidate(item) { if (!item.createdTodoId) item.selected = !item.selected; },

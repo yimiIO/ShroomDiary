@@ -143,13 +143,33 @@ router.get('/calendar', asyncRoute(async (req, res) => {
     return fail(res, 400, '月份格式不正确');
   }
   const result = await db.query(
-    `SELECT to_char((occurred_at AT TIME ZONE 'Asia/Shanghai')::date, 'YYYY-MM-DD') AS date,
-      count(*)::int AS count
-     FROM diaries
-     WHERE user_id = $1 AND deleted_at IS NULL
-       AND occurred_at >= (($2 || '-01')::timestamp AT TIME ZONE 'Asia/Shanghai')
-       AND occurred_at < ((($2 || '-01')::timestamp + interval '1 month') AT TIME ZONE 'Asia/Shanghai')
-     GROUP BY 1 ORDER BY 1`,
+    `WITH diary_days AS (
+       SELECT (occurred_at AT TIME ZONE 'Asia/Shanghai')::date AS local_date,
+              count(*)::int AS diary_count
+         FROM diaries
+        WHERE user_id = $1 AND deleted_at IS NULL
+          AND occurred_at >= (($2 || '-01')::timestamp AT TIME ZONE 'Asia/Shanghai')
+          AND occurred_at < ((($2 || '-01')::timestamp + interval '1 month') AT TIME ZONE 'Asia/Shanghai')
+        GROUP BY 1
+     ), source_days AS (
+       SELECT (e.completed_at AT TIME ZONE 'Asia/Shanghai')::date AS local_date,
+              count(DISTINCT (e.connection_id::text || ':' || regexp_replace(e.external_id, ':[^:]+$', '')))::int AS source_count
+         FROM external_activity_events e
+         JOIN data_source_connections c ON c.id = e.connection_id AND c.user_id = e.user_id
+        WHERE e.user_id = $1 AND c.include_in_diary
+          AND e.completed_at >= (($2 || '-01')::timestamp AT TIME ZONE 'Asia/Shanghai')
+          AND e.completed_at < ((($2 || '-01')::timestamp + interval '1 month') AT TIME ZONE 'Asia/Shanghai')
+        GROUP BY 1
+     ), available_days AS (
+       SELECT local_date FROM diary_days UNION SELECT local_date FROM source_days
+     )
+     SELECT to_char(a.local_date, 'YYYY-MM-DD') AS date,
+            COALESCE(d.diary_count, 0)::int AS count,
+            COALESCE(s.source_count, 0)::int AS source_count
+       FROM available_days a
+       LEFT JOIN diary_days d ON d.local_date = a.local_date
+       LEFT JOIN source_days s ON s.local_date = a.local_date
+      ORDER BY a.local_date`,
     [req.user.id, month]
   );
   return ok(res, { list: result.rows });
@@ -157,8 +177,15 @@ router.get('/calendar', asyncRoute(async (req, res) => {
 
 router.get('/dates', asyncRoute(async (req, res) => {
   const result = await db.query(
-    `SELECT DISTINCT to_char(occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS date
-       FROM diaries WHERE user_id = $1 AND deleted_at IS NULL ORDER BY date DESC`,
+    `SELECT to_char(local_date, 'YYYY-MM-DD') AS date FROM (
+       SELECT (occurred_at AT TIME ZONE 'Asia/Shanghai')::date AS local_date
+         FROM diaries WHERE user_id = $1 AND deleted_at IS NULL
+       UNION
+       SELECT (e.completed_at AT TIME ZONE 'Asia/Shanghai')::date AS local_date
+         FROM external_activity_events e
+         JOIN data_source_connections c ON c.id = e.connection_id AND c.user_id = e.user_id
+        WHERE e.user_id = $1 AND c.include_in_diary
+     ) available_dates ORDER BY local_date DESC`,
     [req.user.id]
   );
   return ok(res, result.rows.map(item => item.date));

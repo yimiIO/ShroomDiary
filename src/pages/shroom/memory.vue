@@ -17,7 +17,7 @@
 					<text class="opening-kicker">{{ seedDiaryId ? 'FROM THIS ENTRY' : 'ASK YOUR PAST SELF' }}</text>
 					<text class="opening-title">{{ seedDiaryId ? '这一次，曾经发生过吗？' : '在时间里，重新理解自己' }}</text>
 					<text class="opening-copy">
-						{{ seedDiaryId ? '我会以这篇日记为起点，寻找相似经历、后续、不同做法与反例。' : '只读取你允许的日记范围；每条关于个人历史的判断，都可以点回原文核对。' }}
+						{{ seedDiaryId ? '我会以这篇日记为起点，在已授权的日记与数据源中寻找相似经历、后续、不同做法与反例。' : '读取你允许的日记与数据源；每条关于个人历史的判断，都保留可核对的来源。' }}
 					</text>
 
 					<view class="mode-row" v-if="!seedDiaryId">
@@ -46,10 +46,10 @@
 							:show-confirm-bar="false"
 						/>
 						<button class="start-button" :disabled="starting || (!seedDiaryId && !draftQuestion.trim())" @tap="startReflection">
-							{{ starting ? '正在建立回看…' : (seedDiaryId ? '开始看看关联' : '从日记中寻找') }}
+							{{ starting ? '正在建立回看…' : (seedDiaryId ? '开始看看关联' : '从记录中寻找') }}
 						</button>
 					</view>
-					<text class="privacy-note">保存日记不会自动开始分析。只有你点击这里后，本次授权范围内的片段才会交给分析模型。</text>
+					<text class="privacy-note">保存记录不会自动开始分析。只有你点击这里后，本次授权范围内的日记片段与数据源摘要才会交给分析模型。</text>
 				</view>
 
 				<view v-else>
@@ -161,7 +161,7 @@
 											<text class="timeline-date">{{ item.date || '时间不确定' }}</text>
 											<text class="timeline-text">{{ item.text }}</text>
 											<button class="timeline-source" @tap="openSource(sourceFor(message.result, item.evidenceRefs[0]))">
-												查看原文 ↗
+												查看来源 ↗
 											</button>
 										</view>
 									</view>
@@ -173,8 +173,8 @@
 										<view class="source-list">
 											<button class="source-card" v-for="source in message.result.sources" :key="source.sourceRef" @tap="openSource(source)">
 												<text class="source-date">{{ sourceDate(source) }}</text>
-												<text class="source-excerpt">“{{ source.excerpt }}”</text>
-												<text class="source-link">打开这篇日记 ↗</text>
+											<text class="source-excerpt">{{ source.sourceType === 'CODEX_TASK' ? source.excerpt : '“' + source.excerpt + '”' }}</text>
+											<text class="source-link">{{ sourceLinkLabel(source) }}</text>
 											</button>
 										</view>
 									</scroll-view>
@@ -302,9 +302,13 @@ export default {
 		},
 			coverageSummary() {
 				const coverage = (this.conversation && this.conversation.coverage) || {};
-				if (!coverage.totalAvailable) return '只读取当前账号已授权的日记';
+				if (!coverage.totalAvailable) return '只读取当前账号已授权的记录';
 				if (coverage.semanticMethod === 'full_range_content_classification') {
 					return '完整读取 ' + coverage.processedDiaries + ' 篇 · 聚合 ' + (coverage.totalUnits || 0) + ' 个记录单位';
+				}
+				const breakdown = coverage.sourceBreakdown || {};
+				if (breakdown.codexTasks) {
+					return '可用 ' + (breakdown.diaries || 0) + ' 篇日记 + ' + breakdown.codexTasks + ' 个 Codex 任务 · 本次读取 ' + (coverage.processedRecords || 0) + ' 条';
 				}
 				return '可用 ' + coverage.totalAvailable + ' 篇 · 实际读取 ' + (coverage.processedDiaries || 0) + ' 篇';
 		}
@@ -442,10 +446,27 @@ export default {
 			return source && source.occurredAt ? moment(source.occurredAt).format('YYYY年M月D日') : '日期未知';
 		},
 		sourceLabel(source) {
-			return source ? this.sourceDate(source) + ' · 原文' : '来源已失效';
+			if (!source) return '来源已失效';
+			return this.sourceDate(source) + (source.sourceType === 'CODEX_TASK' ? ' · Codex 任务' : ' · 日记原文');
+		},
+		sourceLinkLabel(source) {
+			return source && source.sourceType === 'CODEX_TASK' ? '查看 Codex 任务事实' : '打开这篇日记 ↗';
 		},
 		openSource(source) {
-			if (!source || !source.diaryId) {
+			if (!source) {
+				uni.showToast({ title: '来源已经失效', icon: 'none' });
+				return;
+			}
+			if (source.sourceType === 'CODEX_TASK') {
+				uni.showModal({
+					title: '来自 Codex 的任务记录',
+					content: (source.excerpt || '任务摘要不可用') + '\n\n这是任务元数据，不是日记原文；轮次结束不代表现实结果，运行时长不代表专注时长。',
+					showCancel: false,
+					confirmText: '知道了'
+				});
+				return;
+			}
+			if (!source.diaryId) {
 				uni.showToast({ title: '来源已经失效', icon: 'none' });
 				return;
 			}
@@ -460,7 +481,7 @@ export default {
 		},
 		resultCoverage(coverage) {
 			if (!coverage) return '';
-			return '读取 ' + (coverage.processedDiaries || 0) + ' / ' + (coverage.totalAvailable || 0) + ' 篇';
+			return '读取 ' + (coverage.processedRecords || coverage.processedDiaries || 0) + ' / ' + (coverage.totalAvailable || 0) + ' 条';
 		},
 		async sendFeedback(message, kind) {
 			if (!this.conversation) return;

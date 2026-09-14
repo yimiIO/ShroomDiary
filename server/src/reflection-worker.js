@@ -25,6 +25,22 @@ function cacheKey(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+function sourceDependency(source) {
+  if (source.sourceType === 'CODEX_TASK') {
+    return {
+      sourceType: 'CODEX_TASK',
+      connectionId: source.connectionId,
+      externalTaskId: source.externalTaskId,
+      sourceFingerprint: source.sourceFingerprint
+    };
+  }
+  return {
+    sourceType: 'DIARY',
+    diaryId: source.diaryId,
+    sourceVersion: source.sourceVersion
+  };
+}
+
 async function claimTask() {
   return db.transaction(async client => {
     const result = await client.query(
@@ -136,14 +152,23 @@ async function finishTask(task, context, result, key, sourceManifest = null) {
       ]
     );
     const dependencies = Array.isArray(sourceManifest) ? sourceManifest : result.sources.map(item => ({
-      diaryId: item.diaryId, sourceVersion: item.sourceVersion
+      ...sourceDependency(item)
     }));
     for (const source of dependencies) {
-      await client.query(
-        `INSERT INTO reflection_message_sources (message_id, diary_id, source_version)
-         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [messageId, source.diaryId, source.sourceVersion]
-      );
+      if (source.sourceType === 'CODEX_TASK') {
+        await client.query(
+          `INSERT INTO reflection_message_external_sources
+            (message_id, user_id, connection_id, external_task_id, source_fingerprint)
+           VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+          [messageId, context.user_id, source.connectionId, source.externalTaskId, source.sourceFingerprint]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO reflection_message_sources (message_id, diary_id, source_version)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [messageId, source.diaryId, source.sourceVersion]
+        );
+      }
     }
     await client.query(
       `UPDATE reflection_conversations SET title = $3, status = $4, coverage = $5::jsonb,
@@ -300,7 +325,7 @@ async function processOne() {
           diaryId: context.seed_diary_id
         }
       });
-      sourceManifest = result.sources.map(item => ({ diaryId: item.diaryId, sourceVersion: item.sourceVersion }));
+      sourceManifest = result.sources.map(sourceDependency);
     }
     await progress(task.id, 88);
     await finishTask(task, context, result, key, sourceManifest);
@@ -341,6 +366,7 @@ module.exports = {
   cacheKey,
   claimTask,
   processOne,
+  sourceDependency,
   startReflectionWorker,
   stopReflectionWorker
 };

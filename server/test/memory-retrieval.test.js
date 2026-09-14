@@ -35,3 +35,13 @@ test('reciprocal rank fusion deduplicates diaries and excludes the seed', () => 
   assert.deepEqual(merged.map(item => item.row.diary_id), ['b', 'a', 'c']);
   assert.deepEqual(merged[0].reasons, ['semantic', 'keyword']);
 });
+
+test('reciprocal rank fusion keeps Codex tasks distinct from diaries', () => {
+  const merged = rrfMerge([
+    { name: 'keyword', rows: [{ diary_id: 'diary-1' }] },
+    { name: 'codex_keyword', rows: [{ memory_key: 'codex:connection:task-1' }] },
+    { name: 'codex_time_sample', rows: [{ memory_key: 'codex:connection:task-1' }] }
+  ], null, 10);
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged[0].reasons, ['codex_keyword', 'codex_time_sample']);
+});

@@ -2,6 +2,11 @@
 
 const db = require('./db');
 const { embedTexts, embeddingProfile, isEmbeddingConfigured, toPgVector } = require('./embedding-provider');
+const {
+  codexCorpusCounts,
+  codexKeywordChannel,
+  codexTemporalChannel
+} = require('./external-memory');
 
 function normalizedScope(value = {}) {
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -77,11 +82,13 @@ function rrfMerge(channels, seedDiaryId, limit) {
   for (const channel of channels) {
     channel.rows.forEach((row, index) => {
       if (String(row.diary_id) === String(seedDiaryId || '')) return;
-      const current = merged.get(row.diary_id) || { row, score: 0, reasons: [] };
+      const key = row.memory_key || row.diary_id;
+      if (!key) return;
+      const current = merged.get(key) || { row, score: 0, reasons: [] };
       current.score += 1 / (60 + index + 1);
       current.reasons.push(channel.name);
       if (channel.name === 'semantic') current.row = row;
-      merged.set(row.diary_id, current);
+      merged.set(key, current);
     });
   }
   return [...merged.values()].sort((a, b) => b.score - a.score).slice(0, limit);
@@ -193,13 +200,20 @@ async function retrieveMemories({ userId, question, mode, scope: rawScope, seedD
   const terms = keywordTerms(question);
   const retrievalQuery = [question, seed ? seed.content.slice(0, 1800) : ''].filter(Boolean).join('\n\n');
   const longRange = mode === 'timeline' || mode === 'change';
-  const [counts, semantic, keyword, temporal] = await Promise.all([
+  const [counts, codexCounts, semantic, keyword, temporal, codexKeyword, codexTemporal] = await Promise.all([
     corpusCounts(userId, scope, profile),
+    codexCorpusCounts(db, userId, scope),
     semanticChannel(userId, retrievalQuery, scope, profile),
     keywordChannel(userId, terms, scope),
-    temporalChannel(userId, scope, longRange ? 30 : 12)
+    temporalChannel(userId, scope, longRange ? 30 : 12),
+    codexKeywordChannel(db, userId, terms, scope),
+    codexTemporalChannel(db, userId, scope, longRange ? 24 : 10)
   ]);
-  const merged = rrfMerge([semantic, keyword, temporal], seedDiaryId, longRange ? 36 : 18);
+  const merged = rrfMerge(
+    [semantic, keyword, codexKeyword, temporal, codexTemporal],
+    seedDiaryId,
+    longRange ? 42 : 22
+  );
   const sources = [];
   if (seed) {
     const range = excerptAround(seed.content, terms, 0, Math.min(seed.content.length, 1200));
@@ -207,31 +221,47 @@ async function retrieveMemories({ userId, question, mode, scope: rawScope, seedD
   }
   for (const item of merged) {
     const row = item.row;
-    const range = excerptAround(row.content, terms,
-      Number.isInteger(row.source_start) ? row.source_start : null,
-      Number.isInteger(row.source_end) ? row.source_end : null);
+    const external = row.source_type === 'CODEX_TASK';
+    const range = external
+      ? { sourceStart: 0, sourceEnd: row.content.length, excerpt: row.content }
+      : excerptAround(row.content, terms,
+        Number.isInteger(row.source_start) ? row.source_start : null,
+        Number.isInteger(row.source_end) ? row.source_end : null);
     sources.push({ ...row, ...range, role: 'memory', retrievalReasons: item.reasons });
   }
   sources.forEach((source, index) => {
     source.sourceRef = 'S' + (index + 1);
   });
-  const processedIds = [...new Set(sources.map(item => item.diary_id))];
-  const complete = counts.total <= processedIds.length;
+  const processedDiaryIds = [...new Set(sources.map(item => item.diary_id).filter(Boolean))];
+  const processedExternalIds = [...new Set(sources.map(item => item.memory_key).filter(Boolean))];
+  const totalAvailable = counts.total + codexCounts.total;
+  const processedRecords = processedDiaryIds.length + processedExternalIds.length;
+  const complete = totalAvailable <= processedRecords;
+  const availableDates = [counts.firstAt, counts.lastAt, codexCounts.firstAt, codexCounts.lastAt]
+    .filter(Boolean).sort((left, right) => new Date(left).getTime() - new Date(right).getTime());
+  const firstAt = availableDates[0] || null;
+  const lastAt = availableDates[availableDates.length - 1] || null;
   return {
     scope,
     sources,
     coverage: {
-      totalAvailable: counts.total,
-      processedDiaries: processedIds.length,
+      totalAvailable,
+      processedRecords,
+      processedDiaries: processedDiaryIds.length,
+      processedExternalActivities: processedExternalIds.length,
       indexedDiaries: counts.indexed,
       unindexedDiaries: Math.max(0, counts.total - counts.indexed),
-      firstRecordAt: counts.firstAt,
-      lastRecordAt: counts.lastAt,
+      firstRecordAt: firstAt,
+      lastRecordAt: lastAt,
+      sourceBreakdown: {
+        diaries: counts.total,
+        codexTasks: codexCounts.total
+      },
       semanticIndexEnabled: Boolean(profile),
       complete,
       note: complete
-        ? '本次授权范围内的可用日记均已读取。'
-        : '本次读取了检索命中与分层时间样本；未处理的记录不会被算作已覆盖。'
+        ? '本次授权范围内的日记与 Codex 任务记录均已读取。'
+        : '本次读取了检索命中与分层时间样本；日记与 Codex 任务保持来源区分，未处理的记录不会被算作已覆盖。'
     }
   };
 }
