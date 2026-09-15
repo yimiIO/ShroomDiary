@@ -43,7 +43,13 @@ test('financial capital supplies a tailored, non-advisory setup instead of askin
   assert.match(route, /isFinancialCompound\(thread\) \? thread\.id : null/);
   assert.match(route, /financial-policy-blocked/);
   assert.match(page, /financialBoundaryAccepted/);
-  assert.match(page, /计划范围将在私人台账中由用户确认/);
+  assert.match(page, /计划做多少年/);
+  assert.match(page, /每期计划投入金额/);
+  assert.match(page, /计划执行周期/);
+  assert.match(page, /计划跟踪什么标的或方向/);
+  assert.match(page, /计划标的 ≠ 已持有/);
+  assert.match(page, /financialSensitiveConsent/);
   assert.match(page, /按月核对 · 按季度回看/);
+  assert.doesNotMatch(page.match(/financialContributionOptions:[^\n]+/)[0], /FLEXIBLE/);
   assert.doesNotMatch(page, /新增本金<\/text>/);
 });
