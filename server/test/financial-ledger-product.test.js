@@ -64,6 +64,9 @@ test('financial product exposes four tabs without adding a bottom navigation ite
   assert.match(page, /计划执行周期/);
   assert.match(page, /计划标的不是持有记录/);
   assert.match(page, /targetLabelsText/);
+	assert.match(page, /具体产品（可选）/);
+	assert.match(page, /在哪个平台（可选）/);
+	assert.match(page, /recordContext\(item\)/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
   assert.equal(pages.tabBar.list.length, 4);
 });
