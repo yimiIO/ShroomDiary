@@ -646,7 +646,7 @@ router.post('/threads', asyncRoute(async (req, res) => {
     || text(setup.reinvestmentDefinition, 1600);
   const financialPlan = isFinancialCompound(archetype);
   const effectivePrincipalDefinition = principalDefinition
-    || (financialPlan ? '计划范围将在私人台账中由用户确认' : '');
+    || (financialPlan ? '计划范围稍后由用户在投资计划中确认' : '');
   if (archetype && (!title || !effectivePrincipalDefinition || !returnDefinition || !reinvestmentDefinition)) {
     return fail(res, 400, '请填写这项积累的名称，以及你准备持续投入什么');
   }

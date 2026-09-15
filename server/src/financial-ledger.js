@@ -180,8 +180,8 @@ function calculateCurrencyOverview({ currency, records = [], snapshots = [], pen
     }
   }
   const missing = [];
-  if (!opening) missing.push('缺少期初资产快照');
-  if (!latest || latest === opening) missing.push('缺少新的资产快照');
+	if (!opening) missing.push('还没有记录开始时的总金额');
+	if (!latest || latest === opening) missing.push('还需要记录另一天的总金额');
   if (pendingCount) missing.push(`有 ${pendingCount} 项待核对记录`);
   return {
     currency,

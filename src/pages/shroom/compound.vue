@@ -13,102 +13,112 @@
 
 			<template v-else>
 				<view class="portfolio-hero" :class="{ empty: !home.plans.length }">
-					<text class="eyebrow">{{ weekRange }}</text>
-					<text v-if="home.plans.length" class="portfolio-title">控制少数真正的积累</text>
-					<text v-else class="portfolio-title">从真正会积累的东西里，<br>找到适合你的</text>
-					<text class="portfolio-copy">{{ home.plans.length ? '这里管理时间、本金、复用回报与再投入；日记只记录真实发生。' : '你不需要先懂复利。先理解完整的复利原型，再选择它如何对应到你的生活。' }}</text>
-					<view v-if="home.plans.length" class="week-ledger">
-						<view><text>本周计划</text><text>{{ formatMinutes(home.portfolio.plannedMinutes) }}</text></view>
-						<view><text>真实投入</text><text>{{ formatMinutes(home.portfolio.actualMinutes) }}</text></view>
-						<view><text>活动项</text><text>{{ home.portfolio.activeCount }} / {{ home.portfolio.capacity }}</text></view>
-					</view>
-				<view v-if="home.portfolio.plannedMinutes" class="portfolio-progress"><view><view :style="{ width: home.portfolio.utilizationWidth }"></view></view><text>{{ home.portfolio.utilizationPercent }}%</text></view>
-					<button v-if="!home.plans.length" class="hero-action" @tap="openCatalog">从复利机会地图开始</button>
+					<text class="eyebrow">{{ home.plans.length ? weekRange : '找到适合自己的长期积累' }}</text>
+					<text v-if="home.plans.length" class="portfolio-title">今天，只推进最重要的一步</text>
+					<text v-else class="portfolio-title">选择一件值得长期积累的事</text>
+					<text class="portfolio-copy">{{ home.plans.length ? '先看现在该做什么；完整计划和进度需要时再展开。' : '不必先懂术语。选一个方向，菇会带你一步步建立自己的计划。' }}</text>
+					<view v-if="home.plans.length" class="hero-status"><text>{{ home.portfolio.activeCount }} 项进行中</text><text v-if="home.portfolio.plannedMinutes">本周已投入 {{ formatMinutes(home.portfolio.actualMinutes) }}</text></view>
+					<button v-else class="hero-action" @tap="openCatalog">选择长期积累方向</button>
 				</view>
 
-				<view v-if="showCatalog || !home.plans.length" class="catalog-panel">
+				<view v-if="showCatalog || (!home.plans.length && !showPlanEditor)" class="catalog-panel">
 					<view class="panel-heading catalog-heading">
-						<view><text class="eyebrow">COMPOUND OPPORTUNITY MAP</text><text>选择一种积累机制</text></view>
+						<view><text class="eyebrow">长期积累方向</text><text>你想先积累什么？</text></view>
 						<button v-if="home.plans.length" @tap="showCatalog = false">×</button>
 					</view>
-					<text class="catalog-intro">这些是所有用户共享的复利原型，不是你的默认任务。选中后，才由你定义在现实中要积累什么。</text>
+					<text class="catalog-intro">先选择类型，再决定它在你的生活中具体是什么。一次最多进行 3 项。</text>
 					<view class="catalog-tabs">
-						<button :class="{ active: catalogMode === 'GROWTH' }" @tap="catalogMode = 'GROWTH'; selectedArchetype = null">直接产生积累 <text>{{ catalog.growth.length }}</text></button>
-						<button :class="{ active: catalogMode === 'PROTECTION' }" @tap="catalogMode = 'PROTECTION'; selectedArchetype = null">保护长期底盘 <text>{{ catalog.protection.length }}</text></button>
+						<button :class="{ active: catalogMode === 'GROWTH' }" @tap="changeCatalogMode('GROWTH')">让成果继续增值 <text>{{ catalog.growth.length }}</text></button>
+						<button :class="{ active: catalogMode === 'PROTECTION' }" @tap="changeCatalogMode('PROTECTION')">保护长期基础 <text>{{ catalog.protection.length }}</text></button>
 					</view>
-					<view v-if="catalogMode === 'PROTECTION'" class="protection-note">保障项不伪装成无限增长；它用基线、恢复力和风险下降保护其他积累。</view>
+					<view v-if="catalogMode === 'PROTECTION'" class="protection-note">健康、关系和安全不一定无限增长，但会保护其他长期积累。</view>
 					<view class="archetype-grid">
-						<view v-for="(item, index) in catalogItems" :key="item.key" class="archetype-card" :class="{ selected: selectedArchetype && selectedArchetype.key === item.key }" @tap="selectArchetype(item)">
+						<view v-for="(item, index) in visibleCatalogItems" :key="item.key" class="archetype-card" :class="{ selected: selectedArchetype && selectedArchetype.key === item.key }" @tap="selectArchetype(item)">
 							<view class="archetype-number">{{ padNumber(index + 1) }}</view>
-							<view class="archetype-copy"><text>{{ item.name }}</text><text>{{ item.summary }}</text></view>
+							<view class="archetype-copy"><text>{{ item.name }}</text><text v-if="selectedArchetype && selectedArchetype.key === item.key">{{ item.summary }}</text></view>
 							<text class="archetype-arrow">›</text>
 						</view>
 					</view>
+					<button v-if="catalogItems.length > 6" class="catalog-more" @tap="showAllArchetypes = !showAllArchetypes">{{ showAllArchetypes ? '收起其他方向' : '查看全部 ' + catalogItems.length + ' 个方向' }}</button>
 					<view v-if="selectedArchetype" class="archetype-detail">
 						<view class="detail-head"><view><text>{{ selectedArchetype.category }}</text><text>{{ selectedArchetype.name }}</text></view><text>{{ selectedArchetype.kind === 'PROTECTION' ? '保障原型' : '增长原型' }}</text></view>
-						<view class="loop-statement"><text>为什么可能复利</text><text>{{ selectedArchetype.mechanism }}</text></view>
-						<view class="fit-grid"><view><text>适合</text><text>{{ selectedArchetype.fits }}</text></view><view><text>这不算</text><text>{{ selectedArchetype.notThis }}</text></view></view>
-						<view class="default-measures"><view><text>可积累的本金</text><text>{{ selectedArchetype.defaultPrincipalMetric }}</text></view><view><text>要寻找的回报</text><text>{{ selectedArchetype.defaultReturnMetric }}</text></view></view>
-						<view class="example-list"><text>可能的现实形态</text><text v-for="(example, exampleIndex) in selectedArchetype.examples" :key="exampleIndex">— {{ example }}</text></view>
-						<view v-if="selectedArchetype.key === 'financial_capital'" class="finance-boundary dark"><text>使用边界</text><text>{{ selectedArchetype.setup.riskDisclosure }}</text></view>
-						<button class="primary-action" :disabled="home.portfolio.activeCount >= 3" @tap="startFromArchetype">看看它如何属于我</button>
+						<view class="loop-statement"><text>它为什么会越做越有价值</text><text>{{ selectedArchetype.mechanism }}</text></view>
+						<view class="fit-grid"><view><text>适合什么情况</text><text>{{ selectedArchetype.fits }}</text></view></view>
+						<button class="detail-toggle dark" @tap="showArchetypeDetails = !showArchetypeDetails">{{ showArchetypeDetails ? '收起详细说明' : '我想进一步了解' }} <text>{{ showArchetypeDetails ? '−' : '+' }}</text></button>
+						<view v-if="showArchetypeDetails" class="detail-more">
+							<view class="fit-grid"><view><text>哪些情况不算</text><text>{{ selectedArchetype.notThis }}</text></view></view>
+							<view class="default-measures"><view><text>持续积累什么</text><text>{{ selectedArchetype.defaultPrincipalMetric }}</text></view><view><text>观察什么结果</text><text>{{ selectedArchetype.defaultReturnMetric }}</text></view></view>
+							<view class="example-list"><text>生活中的例子</text><text v-for="(example, exampleIndex) in selectedArchetype.examples" :key="exampleIndex">— {{ example }}</text></view>
+							<view v-if="selectedArchetype.key === 'financial_capital'" class="finance-boundary dark"><text>使用边界</text><text>{{ selectedArchetype.setup.riskDisclosure }}</text></view>
+						</view>
+						<button class="primary-action" :disabled="home.portfolio.activeCount >= 3" @tap="startFromArchetype">用它建立我的计划</button>
 					</view>
 				</view>
 
 				<view v-if="showPlanEditor" class="editor-panel plan-editor">
 					<view class="panel-heading"><view><text class="eyebrow">{{ editingPlanId ? 'REVISE THE PLAN' : 'MAKE IT YOURS' }}</text><text>{{ editingPlanId ? '调整这项长期计划' : '让它成为我的计划' }}</text></view><button @tap="closeEditors">×</button></view>
 					<view class="chosen-archetype"><text>{{ currentArchetypeKindLabel }}</text><view><text>{{ currentArchetypeName }}</text><text>{{ currentArchetypeSummary }}</text></view></view>
-					<view v-if="isFinancialPlanDraft" class="finance-boundary"><text>这是资金计划与事实记录工具</text><text>{{ planSetup.riskDisclosure }}</text></view>
-					<view class="editor-intro"><text>{{ isFinancialPlanDraft ? '先把长期计划定清楚，再开始记账' : '只需要回答 4 件事' }}</text><text>{{ isFinancialPlanDraft ? '期限、投入周期、计划金额和自选标的是创建资金复利的基础；这里填的是你的计划，不代表已经买入。' : '复利原理、回报方式和基础衡量由系统根据你选的类型设置，不需要你重复解释。' }}</text></view>
-					<label class="editor-field"><text>{{ planSetup.titleLabel }}</text><input v-model="planDraft.title" maxlength="240" :placeholder="planSetup.titlePlaceholder" /></label>
-					<label v-if="!isFinancialPlanDraft" class="editor-field"><text>{{ planSetup.commitmentLabel }}</text><textarea v-model="planDraft.principalDefinition" maxlength="1600" auto-height :placeholder="planSetup.commitmentPlaceholder" /></label>
-					<label class="editor-field"><text>{{ planSetup.outcomeLabel }}</text><textarea v-model="planDraft.desiredOutcome" maxlength="1200" auto-height :placeholder="planSetup.outcomePlaceholder" /></label>
 					<view v-if="isFinancialPlanDraft" class="finance-plan-fields">
-						<view class="finance-step"><text>01</text><view><strong>计划做多少年</strong><small>长期期限用于判断计划，不是收益承诺</small></view></view>
-						<view class="finance-choice"><button v-for="years in [3,5,10,20]" :key="years" :class="{ active: Number(planDraft.financialTargetYears) === years }" @tap="planDraft.financialTargetYears = years">{{ years }} 年</button></view>
-						<label class="editor-field compact"><text>自定义年数</text><input v-model="planDraft.financialTargetYears" type="number" placeholder="1—60 年" /></label>
-						<view class="finance-choice review"><text>计划范围</text><button :class="{ active: planDraft.financialScopeType === 'PARTIAL' }" @tap="planDraft.financialScopeType = 'PARTIAL'">一部分长期资金</button><button :class="{ active: planDraft.financialScopeType === 'ALL_LONG_TERM' }" @tap="planDraft.financialScopeType = 'ALL_LONG_TERM'">全部长期投资</button></view>
-						<label class="editor-field compact"><text>主要记账币种</text><input v-model="planDraft.financialBaseCurrency" maxlength="3" placeholder="CNY" /></label>
-						<view class="finance-step"><text>02</text><view><strong>准备怎样持续投入</strong><small>周期和金额是计划值，实际发生后仍要单独确认</small></view></view>
-						<view class="finance-choice"><button v-for="option in financialContributionOptions" :key="option.value" :class="{ active: planDraft.financialContributionMethod === option.value }" @tap="planDraft.financialContributionMethod = option.value">{{ option.label }}</button></view>
-						<template v-if="planDraft.financialContributionMethod === 'FIXED'">
-							<label class="editor-field compact"><text>每期计划投入金额（{{ planDraft.financialBaseCurrency }}）</text><input v-model="planDraft.financialFixedAmount" type="digit" placeholder="例如 3000" /></label>
+						<view class="finance-boundary"><text>这里只帮你做计划和记清结果</text><text>不会推荐买什么，也不会承诺收益。下面一次只填写一步。</text></view>
+						<view class="finance-step-progress"><view v-for="step in 4" :key="step" :class="{ active: financialPlanStep === step, done: financialPlanStep > step }"><text>{{ financialPlanStep > step ? '✓' : step }}</text><small>{{ financialStepLabel(step) }}</small></view></view>
+
+						<template v-if="financialPlanStep === 1">
+							<view class="finance-step-title"><text>1 / 4</text><strong>这笔长期资金为了什么？</strong><small>先确定目的和时间，不填写账户信息。</small></view>
+							<label class="editor-field"><text>给计划起个名字</text><input v-model="planDraft.title" maxlength="240" placeholder="例如：十年长期投资" /></label>
+							<label class="editor-field"><text>你希望它最终帮助你什么？</text><textarea v-model="planDraft.desiredOutcome" maxlength="1200" auto-height placeholder="例如：积累未来的选择权，不影响日常生活资金" /></label>
+							<view class="finance-choice review"><text>准备坚持多少年</text><button v-for="years in [3,5,10,20]" :key="years" :class="{ active: Number(planDraft.financialTargetYears) === years }" @tap="planDraft.financialTargetYears = years">{{ years }} 年</button></view>
+							<label class="editor-field compact"><text>其他年数</text><input v-model="planDraft.financialTargetYears" type="number" placeholder="1—60 年" /></label>
 						</template>
-						<label v-else-if="planDraft.financialContributionMethod === 'SURPLUS_RATIO'" class="editor-field compact"><text>每期可投资结余比例</text><input v-model="planDraft.financialSurplusRatio" type="digit" placeholder="例如 30%" /></label>
-						<label v-else-if="planDraft.financialContributionMethod === 'BATCHED_LUMP_SUM'" class="editor-field compact"><text>计划分批投入总金额（{{ planDraft.financialBaseCurrency }}）</text><input v-model="planDraft.financialTotalBudget" type="digit" placeholder="例如 100000" /></label>
-						<view class="finance-choice review"><text>计划执行周期</text><button v-for="option in financialFrequencyOptions" :key="option.value" :class="{ active: planDraft.financialFrequency === option.value }" @tap="planDraft.financialFrequency = option.value">{{ option.label }}</button></view>
-						<view class="finance-step"><text>03</text><view><strong>计划跟踪什么标的或方向</strong><small>只能填写你自己选择的内容；系统不推荐、不评级</small></view></view>
-						<label class="editor-field compact"><textarea v-model="planDraft.financialTargetLabelsText" maxlength="1000" auto-height placeholder="一行一个，例如：\n全球股票指数基金\n现金管理\n我已经选择的某只基金" /></label>
-						<view class="planned-not-held">计划标的 ≠ 已持有。创建后，实际持有金额要在“持有”页另行确认。</view>
-						<view class="finance-step"><text>04</text><view><strong>从什么时候开始核对</strong><small>不会把今天的市值倒推成历史本金</small></view></view>
-						<view class="finance-choice"><button :class="{ active: planDraft.financialTrackingMode === 'FROM_NOW' }" @tap="planDraft.financialTrackingMode = 'FROM_NOW'">从现在开始</button><button :class="{ active: planDraft.financialTrackingMode === 'HISTORY' }" @tap="planDraft.financialTrackingMode = 'HISTORY'">补录历史</button><button :class="{ active: planDraft.financialTrackingMode === 'PLAN_ONLY' }" @tap="planDraft.financialTrackingMode = 'PLAN_ONLY'">先执行计划</button></view>
-						<view class="finance-choice review"><text>核对频率</text><button :class="{ active: planDraft.financialReviewFrequency === 'MONTHLY' }" @tap="planDraft.financialReviewFrequency = 'MONTHLY'">每月</button><button :class="{ active: planDraft.financialReviewFrequency === 'QUARTERLY' }" @tap="planDraft.financialReviewFrequency = 'QUARTERLY'">每季度</button></view>
-						<view v-if="financialPlanSummary" class="finance-plan-summary"><text>你的第一版计划</text><strong>{{ financialPlanSummary }}</strong><small>只计算计划投入本金，不包含任何收益假设。</small></view>
+
+						<template v-else-if="financialPlanStep === 2">
+							<view class="finance-step-title"><text>2 / 4</text><strong>你准备怎样投入？</strong><small>这里填计划值，之后只按真实发生记录。</small></view>
+							<view class="finance-choice"><button v-for="option in financialContributionOptions" :key="option.value" :class="{ active: planDraft.financialContributionMethod === option.value }" @tap="planDraft.financialContributionMethod = option.value">{{ option.label }}</button></view>
+							<label v-if="planDraft.financialContributionMethod === 'FIXED'" class="editor-field compact"><text>每次计划投入多少（{{ planDraft.financialBaseCurrency }}）</text><input v-model="planDraft.financialFixedAmount" type="digit" placeholder="例如 3000" /></label>
+							<label v-else-if="planDraft.financialContributionMethod === 'SURPLUS_RATIO'" class="editor-field compact"><text>每次投入可投资结余的百分比</text><input v-model="planDraft.financialSurplusRatio" type="digit" placeholder="例如 30" /></label>
+							<label v-else-if="planDraft.financialContributionMethod === 'BATCHED_LUMP_SUM'" class="editor-field compact"><text>计划分批投入的总金额（{{ planDraft.financialBaseCurrency }}）</text><input v-model="planDraft.financialTotalBudget" type="digit" placeholder="例如 100000" /></label>
+							<view class="finance-choice review"><text>多久投入一次</text><button v-for="option in financialFrequencyOptions" :key="option.value" :class="{ active: planDraft.financialFrequency === option.value }" @tap="planDraft.financialFrequency = option.value">{{ option.label }}</button></view>
+						</template>
+
+						<template v-else-if="financialPlanStep === 3">
+							<view class="finance-step-title"><text>3 / 4</text><strong>你自己选择了哪些投资方向？</strong><small>Shroom 只记录，不推荐、不评级。</small></view>
+							<label class="editor-field compact"><text>计划投资方向，一行一个</text><textarea v-model="planDraft.financialTargetLabelsText" maxlength="1000" auto-height placeholder="例如：\n全球股票指数基金\n现金管理" /></label>
+							<view class="planned-not-held">写进计划，不代表已经买入。真实持有和金额以后单独记录。</view>
+							<view class="finance-choice review"><text>从哪里开始记录</text><button :class="{ active: planDraft.financialTrackingMode === 'FROM_NOW' }" @tap="planDraft.financialTrackingMode = 'FROM_NOW'">从现在开始</button><button :class="{ active: planDraft.financialTrackingMode === 'HISTORY' }" @tap="planDraft.financialTrackingMode = 'HISTORY'">补录过去</button><button :class="{ active: planDraft.financialTrackingMode === 'PLAN_ONLY' }" @tap="planDraft.financialTrackingMode = 'PLAN_ONLY'">先只做计划</button></view>
+						</template>
+
+						<template v-else>
+							<view class="finance-step-title"><text>4 / 4</text><strong>最后确认一次</strong><small>以后可以修改计划；所有金额仅当前账号可见。</small></view>
+							<view class="finance-plan-summary"><text>你的计划</text><strong>{{ financialPlanSummary }}</strong><small>{{ planDraft.financialTargetLabelsText ? '投资方向：' + financialTargets.join(' · ') : '还没有填写投资方向' }}</small></view>
+							<view class="finance-choice review"><text>这份计划覆盖</text><button :class="{ active: planDraft.financialScopeType === 'PARTIAL' }" @tap="planDraft.financialScopeType = 'PARTIAL'">一部分长期资金</button><button :class="{ active: planDraft.financialScopeType === 'ALL_LONG_TERM' }" @tap="planDraft.financialScopeType = 'ALL_LONG_TERM'">全部长期投资</button></view>
+							<label class="editor-field compact"><text>记录金额使用的币种</text><input v-model="planDraft.financialBaseCurrency" maxlength="3" placeholder="CNY" /></label>
+							<view class="finance-choice review"><text>多久检查一次是否按计划</text><button :class="{ active: planDraft.financialReviewFrequency === 'MONTHLY' }" @tap="planDraft.financialReviewFrequency = 'MONTHLY'">每月</button><button :class="{ active: planDraft.financialReviewFrequency === 'QUARTERLY' }" @tap="planDraft.financialReviewFrequency = 'QUARTERLY'">每季度</button></view>
+							<checkbox-group v-if="!editingPlanId" class="boundary-consent" @change="changeFinancialBoundaryConsent"><label><checkbox value="accepted" :checked="planDraft.financialBoundaryAccepted" color="#172019" /><text>我知道 Shroom 不提供投资建议、收益保证或自动交易。</text></label></checkbox-group>
+							<checkbox-group v-if="!editingPlanId" class="boundary-consent separate" @change="changeFinancialSensitiveConsent"><label><checkbox value="accepted" :checked="planDraft.financialSensitiveConsent" color="#172019" /><text>我同意仅在自己的账号中加密保存计划金额和投资方向。</text></label></checkbox-group>
+							<button class="primary-action" :disabled="saving || !canSavePlan" @tap="savePlan">{{ saving ? '正在保存…' : '确认并创建计划' }}</button>
+						</template>
+						<view class="finance-step-nav"><button v-if="financialPlanStep > 1" @tap="financialPlanStep -= 1">上一步</button><button v-if="financialPlanStep < 4" class="next" :disabled="!canContinueFinancialStep" @tap="financialPlanStep += 1">下一步</button></view>
 					</view>
-					<label v-else class="editor-field"><text>{{ planSetup.nextStepLabel }}</text><textarea v-model="planDraft.currentStep" maxlength="1000" auto-height :placeholder="planSetup.nextStepPlaceholder" /></label>
-					<view v-if="!isFinancialPlanDraft" class="system-setup">
-						<text>系统已经替你设定</text>
-						<view><text>持续观察</text><text>{{ planDraft.principalMetricName || '真实投入' }}</text></view>
-						<view><text>复利信号</text><text>{{ planDraft.returnMetricName || '旧积累产生真实回报' }}</text></view>
-						<view><text>再投入规则</text><text>{{ planSetup.reinvestmentSummary }}</text></view>
-					</view>
-					<button v-if="!isFinancialPlanDraft" class="advanced-toggle" @tap="showAdvancedPlan = !showAdvancedPlan">{{ showAdvancedPlan ? '收起可选设置' : '可选：调整衡量方式与不做清单' }} <text>{{ showAdvancedPlan ? '−' : '+' }}</text></button>
-					<view v-if="showAdvancedPlan && !isFinancialPlanDraft" class="advanced-panel">
-						<view class="metric-editor">
-							<view><text>持续投入按什么计数</text><input v-model="planDraft.principalMetricName" maxlength="240" placeholder="指标名称" /><input v-model="planDraft.principalMetricTarget" type="digit" placeholder="12 周次数" /></view>
-							<view><text>复利信号按什么计数</text><input v-model="planDraft.returnMetricName" maxlength="240" placeholder="指标名称" /><input v-model="planDraft.returnMetricTarget" type="digit" placeholder="12 周次数" /></view>
+					<template v-else>
+						<view class="editor-intro"><text>只需要回答 4 件事</text><text>系统会根据你选的方向设置基础衡量，不需要你解释复利术语。</text></view>
+						<label class="editor-field"><text>{{ planSetup.titleLabel }}</text><input v-model="planDraft.title" maxlength="240" :placeholder="planSetup.titlePlaceholder" /></label>
+						<label class="editor-field"><text>{{ planSetup.commitmentLabel }}</text><textarea v-model="planDraft.principalDefinition" maxlength="1600" auto-height :placeholder="planSetup.commitmentPlaceholder" /></label>
+						<label class="editor-field"><text>{{ planSetup.outcomeLabel }}</text><textarea v-model="planDraft.desiredOutcome" maxlength="1200" auto-height :placeholder="planSetup.outcomePlaceholder" /></label>
+						<label class="editor-field"><text>{{ planSetup.nextStepLabel }}</text><textarea v-model="planDraft.currentStep" maxlength="1000" auto-height :placeholder="planSetup.nextStepPlaceholder" /></label>
+						<view class="system-setup">
+							<text>系统已经替你设定</text>
+							<view><text>持续观察</text><text>{{ planDraft.principalMetricName || '真实投入' }}</text></view>
+							<view><text>复利信号</text><text>{{ planDraft.returnMetricName || '旧积累产生真实回报' }}</text></view>
+							<view><text>再投入规则</text><text>{{ planSetup.reinvestmentSummary }}</text></view>
 						</view>
-						<label class="editor-field"><text>每周愿意投入多少分钟</text><input v-model="planDraft.weeklyTimeBudgetMinutes" type="number" placeholder="120" /></label>
-						<label class="editor-field"><text>为了保护它，这段时间明确不做（可选）</text><textarea v-model="planDraft.stopListText" maxlength="1800" auto-height placeholder="一行一项" /></label>
-					</view>
-					<checkbox-group v-if="isFinancialPlanDraft && !editingPlanId" class="boundary-consent" @change="changeFinancialBoundaryConsent">
-						<label><checkbox value="accepted" :checked="planDraft.financialBoundaryAccepted" color="#172019" /><text>我已理解：Shroom 不提供具体投资建议、收益保证或自动交易，投资决定由我自己作出。</text></label>
-					</checkbox-group>
-					<checkbox-group v-if="isFinancialPlanDraft && !editingPlanId" class="boundary-consent separate" @change="changeFinancialSensitiveConsent">
-						<label><checkbox value="accepted" :checked="planDraft.financialSensitiveConsent" color="#172019" /><text>我单独同意 Shroom 加密保存我主动填写的计划金额和自选标的；这些数据仅当前账号可访问。</text></label>
-					</checkbox-group>
-					<view class="validation-notice"><text>{{ isFinancialPlanDraft ? '先记清，再计算' : '先运行，再判断' }}</text><text>{{ isFinancialPlanDraft ? '创建后进入私人台账。没有期初、资金流和最新市值时，系统会明确显示“暂不能计算”。' : '创建后只是“验证中”。系统不会因为你填完表单，就宣布复利已经成立。' }}</text></view>
-					<button class="primary-action" :disabled="saving || !canSavePlan" @tap="savePlan">{{ saving ? '正在保存…' : (editingPlanId ? '保存调整' : '开始这项长期计划') }}</button>
+						<button class="advanced-toggle" @tap="showAdvancedPlan = !showAdvancedPlan">{{ showAdvancedPlan ? '收起可选设置' : '可选：调整衡量方式与不做清单' }} <text>{{ showAdvancedPlan ? '−' : '+' }}</text></button>
+						<view v-if="showAdvancedPlan" class="advanced-panel">
+							<view class="metric-editor"><view><text>持续投入按什么计数</text><input v-model="planDraft.principalMetricName" maxlength="240" placeholder="指标名称" /><input v-model="planDraft.principalMetricTarget" type="digit" placeholder="12 周次数" /></view><view><text>复利信号按什么计数</text><input v-model="planDraft.returnMetricName" maxlength="240" placeholder="指标名称" /><input v-model="planDraft.returnMetricTarget" type="digit" placeholder="12 周次数" /></view></view>
+							<label class="editor-field"><text>每周愿意投入多少分钟</text><input v-model="planDraft.weeklyTimeBudgetMinutes" type="number" placeholder="120" /></label>
+							<label class="editor-field"><text>为了保护它，这段时间明确不做（可选）</text><textarea v-model="planDraft.stopListText" maxlength="1800" auto-height placeholder="一行一项" /></label>
+						</view>
+						<view class="validation-notice"><text>先运行，再判断</text><text>创建后只是“验证中”。系统不会因为填完表单，就宣布复利已经成立。</text></view>
+						<button class="primary-action" :disabled="saving || !canSavePlan" @tap="savePlan">{{ saving ? '正在保存…' : (editingPlanId ? '保存调整' : '开始这项长期计划') }}</button>
+					</template>
 				</view>
 
 				<view v-if="showDeletePlanEditor && selectedPlan" class="editor-panel delete-plan-panel">
@@ -121,37 +131,39 @@
 				</view>
 
 				<template v-if="home.plans.length">
-					<view class="section-intro"><view><text class="eyebrow">MY COMPOUND PORTFOLIO</text><text>我的复利项</text></view><button @tap="openCatalog">浏览全部原型</button></view>
+					<view class="section-intro"><view><text class="eyebrow">我的长期计划</text><text>现在正在积累</text></view><button @tap="openCatalog">添加计划</button></view>
 					<view v-for="(plan, index) in home.plans" :key="plan.id" class="plan-card" :class="{ primary: index === 0, protection: plan.investmentKind === 'PROTECTION' }">
-						<view class="plan-head"><view><text>{{ plan.archetype ? plan.archetype.name : '历史计划' }}</text><text>{{ plan.title }}</text></view><view class="plan-head-actions"><button @tap="plan.archetypeKey === 'financial_capital' ? openFinancialLedger(plan) : openEditPlan(plan)">{{ plan.archetypeKey === 'financial_capital' ? '打开' : '编辑' }}</button><button class="more-action" :aria-label="'管理' + plan.title" @tap="openDeletePlan(plan)">•••</button></view></view>
-						<view v-if="plan.archetypeKey === 'financial_capital'" class="validation-row"><text>计划运行中</text><text>私人台账</text><text>按月核对 · 按季度回看</text></view>
+						<view class="plan-head"><view><text>{{ plan.archetype ? plan.archetype.name : '历史计划' }}</text><text>{{ plan.title }}</text></view><view class="plan-head-actions"><button class="more-action" :aria-label="'管理' + plan.title" @tap="openDeletePlan(plan)">•••</button></view></view>
+						<view v-if="plan.archetypeKey === 'financial_capital'" class="validation-row"><text>计划进行中</text><text>每月检查一次</text></view>
 						<view v-else class="validation-row"><text :class="{ validating: plan.validation.status === 'VALIDATING', compounding: plan.validation.status === 'COMPOUNDING', linear: plan.validation.status === 'LINEAR', protection: plan.validation.status === 'PROTECTION' }">{{ validationLabel(plan.validation.status, plan) }}</text><text>{{ plan.investmentKind === 'PROTECTION' ? '保障型' : '增长型' }}</text><text v-if="plan.validation.dueAt">首次判断 {{ compactDate(plan.validation.dueAt) }}</text><button @tap="openValidation(plan)">更新判断</button></view>
 						<text class="plan-outcome">{{ plan.desiredOutcome }}</text>
 						<template v-if="plan.archetypeKey === 'financial_capital'">
-							<view class="finance-boundary compact"><text>钱记得清，结果算得明白</text><text>区分投入、取出、内部转移与市值；看清实际持有，并对照你自己的规则。不会推荐产品或交易。</text></view>
-							<view class="finance-entry-grid"><view><text>01</text><text>投入了多少</text></view><view><text>02</text><text>实际赚亏</text></view><view><text>03</text><text>持有什么</text></view><view><text>04</text><text>是否偏离计划</text></view></view>
-							<button class="finance-open" @tap="openFinancialLedger(plan)">打开资金计划 <text>›</text></button>
+							<view class="plan-focus"><text>打开后能看到</text><text>投入多少 · 实际赚亏 · 持有什么 · 是否按计划</text></view>
+							<button class="finance-open" @tap="openFinancialLedger(plan)">查看我的投资计划 <text>›</text></button>
 						</template>
 						<template v-else>
+						<view class="next-step compact"><text>现在最重要的一步</text><text>{{ plan.currentStep }}</text><view><button @tap="createTask(plan, null)">加入待办</button><button @tap="openProgress(plan, null)">记录进展</button></view></view>
+						<button class="plan-detail-toggle" @tap="togglePlanDetails(plan)">{{ expandedPlanId === plan.id ? '收起完整计划' : '查看完整计划和进度' }} <text>{{ expandedPlanId === plan.id ? '−' : '+' }}</text></button>
+						<view v-if="expandedPlanId === plan.id" class="plan-details">
 						<view class="compound-loop">
-							<view><text>01 本金</text><text>{{ plan.principalDefinition || plan.compoundMechanism }}</text></view>
-							<view><text>02 复用 / 回报</text><text>{{ plan.returnDefinition || '待补充' }}</text></view>
-							<view><text>03 再投入</text><text>{{ plan.reinvestmentDefinition || '待补充' }}</text></view>
+							<view><text>持续投入什么</text><text>{{ plan.principalDefinition || plan.compoundMechanism }}</text></view>
+							<view><text>怎样产生回报</text><text>{{ plan.returnDefinition || '待补充' }}</text></view>
+							<view><text>怎样进入下一轮</text><text>{{ plan.reinvestmentDefinition || '待补充' }}</text></view>
 						</view>
 						<view class="metric-pair">
-							<view><text>本金增加</text><text>{{ plan.principalMetric.name || '待配置' }}</text><strong>{{ formatMetric(plan.principalMetric.current) }}<small> / {{ formatMetric(plan.principalMetric.target) }}</small></strong><view><view :style="{ width: plan.principalMetric.progressWidth }"></view></view></view>
-							<view><text>复用 / 回报</text><text>{{ plan.returnMetric.name || '待配置' }}</text><strong>{{ formatMetric(plan.returnMetric.current) }}<small> / {{ formatMetric(plan.returnMetric.target) }}</small></strong><view><view :style="{ width: plan.returnMetric.progressWidth }"></view></view></view>
+							<view><text>投入进度</text><text>{{ plan.principalMetric.name || '待配置' }}</text><strong>{{ formatMetric(plan.principalMetric.current) }}<small> / {{ formatMetric(plan.principalMetric.target) }}</small></strong><view><view :style="{ width: plan.principalMetric.progressWidth }"></view></view></view>
+							<view><text>回报信号</text><text>{{ plan.returnMetric.name || '待配置' }}</text><strong>{{ formatMetric(plan.returnMetric.current) }}<small> / {{ formatMetric(plan.returnMetric.target) }}</small></strong><view><view :style="{ width: plan.returnMetric.progressWidth }"></view></view></view>
 						</view>
-						<view class="plan-facts"><view><text>本周时间</text><text>{{ formatMinutes(plan.week.actualMinutes) }} / {{ formatMinutes(plan.week.plannedMinutes) }}</text></view><view><text>12 周机制验证</text><text>{{ compactDate(plan.cycleStart) }} — {{ compactDate(plan.cycleEnd) }}</text></view></view>
-						<view class="milestone"><text>当前里程碑</text><text>{{ plan.currentMilestone || plan.desiredOutcome }}</text></view>
+						<view class="plan-facts"><view><text>本周投入时间</text><text>{{ formatMinutes(plan.week.actualMinutes) }} / {{ formatMinutes(plan.week.plannedMinutes) }}</text></view><view><text>本轮计划</text><text>{{ compactDate(plan.cycleStart) }} — {{ compactDate(plan.cycleEnd) }}</text></view></view>
+						<view class="milestone"><text>这一阶段要看到</text><text>{{ plan.currentMilestone || plan.desiredOutcome }}</text></view>
 						<view class="week-plan">
-							<view class="week-plan-head"><view><text>本周配置</text><text>{{ plan.week.actions.length ? completedActionCount(plan) + ' / ' + plan.week.actions.length + ' 项完成' : '还没有安排' }}</text></view><button @tap="openWeekEditor(plan)">{{ plan.week.actions.length ? '调整' : '安排本周' }}</button></view>
-							<view v-for="action in plan.week.actions" :key="action.id" class="week-action" :class="{ done: action.completed }"><button class="action-check" :disabled="saving" @tap="toggleWeekAction(plan, action)">{{ action.completed ? '✓' : '' }}</button><button class="action-copy" @tap="openProgress(plan, action)"><text>{{ action.title }}</text><text>记录本金或回报</text></button><button class="action-todo" @tap="createTask(plan, action)">待办</button></view>
+							<view class="week-plan-head"><view><text>本周行动</text><text>{{ plan.week.actions.length ? completedActionCount(plan) + ' / ' + plan.week.actions.length + ' 项完成' : '还没有安排' }}</text></view><button @tap="openWeekEditor(plan)">{{ plan.week.actions.length ? '调整' : '安排' }}</button></view>
+							<view v-for="action in plan.week.actions" :key="action.id" class="week-action" :class="{ done: action.completed }"><button class="action-check" :disabled="saving" @tap="toggleWeekAction(plan, action)">{{ action.completed ? '✓' : '' }}</button><button class="action-copy" @tap="openProgress(plan, action)"><text>{{ action.title }}</text><text>记录实际进展</text></button><button class="action-todo" @tap="createTask(plan, action)">待办</button></view>
 							<view v-if="!plan.week.actions.length" class="week-empty"><text>先把本周真正愿意投入的时间和 1–3 个行动留下。</text><button @tap="openWeekEditor(plan)">配置时间与行动</button></view>
 						</view>
-						<view class="next-step"><text>现在的最小一步</text><text>{{ plan.currentStep }}</text><view><button @tap="createTask(plan, null)">加入待办</button><button @tap="openProgress(plan, null)">记录进展</button></view></view>
 						<view v-if="combinedStopList(plan).length" class="stop-list"><text>本周主动不做</text><text v-for="(item, stopIndex) in combinedStopList(plan)" :key="stopIndex">— {{ item }}</text></view>
-						<button class="bottleneck-trigger" @tap="openBlocker(plan)">这项积累卡住了，分析最大瓶颈 →</button>
+						<button class="bottleneck-trigger" @tap="openBlocker(plan)">遇到阻碍，帮我找原因 →</button>
+						</view>
 						</template>
 					</view>
 				</template>
@@ -166,10 +178,11 @@
 
 				<view v-if="showBlockerEditor" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">BOTTLENECK</text><text>{{ selectedPlan.title }} · 最大瓶颈</text></view><button @tap="closeEditors">×</button></view><label class="editor-field"><text>具体卡在哪里</text><textarea v-model="blockerText" maxlength="1800" auto-height placeholder="是本金没有留下、无人复用、回报无法再投入，还是这项本身不值得？" /></label><button class="primary-action" :disabled="saving || !blockerText.trim()" @tap="submitBlocker">{{ saving ? '正在分析…' : '分析这一个瓶颈' }}</button><view v-if="blockerInsight" class="blocker-insight"><text>判断</text><text>{{ blockerInsight.payload.analysis || blockerInsight.summary }}</text><text v-if="blockerInsight.payload.adjustedStep">建议调整为</text><text v-if="blockerInsight.payload.adjustedStep">{{ blockerInsight.payload.adjustedStep }}</text><button v-if="blockerInsight.payload.adjustedStep" :disabled="saving" @tap="adoptBlocker">由我确认采用</button></view></view>
 
-				<view v-if="home.diarySuggestions.length" class="feedback-section"><view class="section-intro"><view><text class="eyebrow">REALITY FEEDBACK</text><text>来自日记的现实反馈</text></view><text>{{ home.diarySuggestions.length }}</text></view><view v-for="item in home.diarySuggestions" :key="item.linkId" class="diary-feedback"><text>{{ item.sourceDate }} · {{ item.itemName }}</text><text>“{{ item.evidenceExcerpt }}”</text><view><button @tap="reviewDiary(item)">回看它怎样影响计划</button><button @tap="dismissDiary(item)">与计划无关</button></view></view></view>
+					<button v-if="home.diarySuggestions.length || home.recentResults.length" class="activity-toggle" @tap="showActivityHistory = !showActivityHistory"><view><text>日记反馈与近期进展</text><text>{{ home.diarySuggestions.length + home.recentResults.length }} 条记录，需要时再看</text></view><text>{{ showActivityHistory ? '−' : '+' }}</text></button>
+					<view v-if="showActivityHistory && home.diarySuggestions.length" class="feedback-section"><view class="section-intro"><view><text class="eyebrow">来自日记</text><text>可能影响计划的现实反馈</text></view><text>{{ home.diarySuggestions.length }}</text></view><view v-for="item in home.diarySuggestions" :key="item.linkId" class="diary-feedback"><text>{{ item.sourceDate }} · {{ item.itemName }}</text><text>“{{ item.evidenceExcerpt }}”</text><view><button @tap="reviewDiary(item)">回看它怎样影响计划</button><button @tap="dismissDiary(item)">与计划无关</button></view></view></view>
 				<view v-if="diaryReviewDraft" class="editor-panel"><view class="panel-heading"><view><text class="eyebrow">JOURNAL FEEDBACK</text><text>事实与推测分开看</text></view><button @tap="diaryReviewDraft = null">×</button></view><view class="review-list"><text>日记支持的事实</text><text v-for="(fact, factIndex) in diaryReviewDraft.payload.facts" :key="factIndex">— {{ fact }}</text></view><label class="editor-field"><text>下次尝试</text><textarea v-model="diaryReviewDraft.payload.nextTry" maxlength="1000" auto-height /></label><button class="primary-action" :disabled="saving" @tap="confirmDiaryReview">确认作为下一次尝试</button></view>
 
-				<view v-if="home.recentResults.length" class="recent-section"><view class="section-intro"><view><text class="eyebrow">EVIDENCE LOG</text><text>近期真实证据</text></view></view><view v-for="item in home.recentResults" :key="item.id" class="result-row"><view><text>{{ item.itemName }}</text><text>{{ eventTime(item.createdAt) }}</text></view><text>{{ item.payload.actualResult || item.summary }}</text><view class="result-meta"><text v-if="item.payload.spentMinutes">投入 {{ formatMinutes(item.payload.spentMinutes) }}</text><text v-if="item.payload.principalMetricDelta">本金 +{{ item.payload.principalMetricDelta }}</text><text v-if="item.payload.returnMetricDelta">回报 +{{ item.payload.returnMetricDelta }}</text></view></view></view>
+					<view v-if="showActivityHistory && home.recentResults.length" class="recent-section"><view class="section-intro"><view><text class="eyebrow">近期进展</text><text>已经确认的真实记录</text></view></view><view v-for="item in home.recentResults" :key="item.id" class="result-row"><view><text>{{ item.itemName }}</text><text>{{ eventTime(item.createdAt) }}</text></view><text>{{ item.payload.actualResult || item.summary }}</text><view class="result-meta"><text v-if="item.payload.spentMinutes">投入 {{ formatMinutes(item.payload.spentMinutes) }}</text><text v-if="item.payload.principalMetricDelta">持续投入 +{{ item.payload.principalMetricDelta }}</text><text v-if="item.payload.returnMetricDelta">回报 +{{ item.payload.returnMetricDelta }}</text></view></view></view>
 
 				<view class="secondary-links"><button @tap="openReview"><view><text>阶段回看</text><text>用真实证据判断复利、线性积累或停止</text></view><text>›</text></button><button @tap="openYogaPractice"><view><text>身体练习</text><text>保障身体底盘的可选工具</text></view><text>›</text></button><button @tap="openPrinciples"><view><text>人生 OS</text><text>决定什么值得，但不自动创建复利项</text></view><text>›</text></button></view>
 				<view class="privacy-note"><view></view><text>{{ home.privacy }}</text></view>
@@ -220,27 +233,30 @@ export default {
 		return {
 			statusBarHeight: 0, loading: true, loadError: false, saving: false,
 			home: freshHome(), catalog: { growth: [], protection: [] }, catalogMode: 'GROWTH',
-			showCatalog: false, selectedArchetype: null, showPlanEditor: false, showAdvancedPlan: false,
-			showWeekEditor: false, showProgressEditor: false, showValidationEditor: false,
-			showBlockerEditor: false, showDeletePlanEditor: false, editingPlanId: '', selectedPlan: null,
-			planDraft: freshPlanDraft(), weekDraft: { plannedMinutes: 180, actionsText: '', stopListText: '' },
+				showCatalog: false, showAllArchetypes: false, showArchetypeDetails: false, selectedArchetype: null, showPlanEditor: false, showAdvancedPlan: false,
+				showWeekEditor: false, showProgressEditor: false, showValidationEditor: false,
+				showBlockerEditor: false, showDeletePlanEditor: false, showActivityHistory: false, editingPlanId: '', expandedPlanId: '', selectedPlan: null,
+				financialPlanStep: 1, planDraft: freshPlanDraft(), weekDraft: { plannedMinutes: 180, actionsText: '', stopListText: '' },
 			progressDraft: { text: '', spentMinutes: '', principalMetricDelta: '', returnMetricDelta: '', weekActionId: '', weekActionTitle: '' },
 			resultDraft: null, validationDraft: { status: 'VALIDATING', note: '' }, blockerText: '', blockerInsight: null, diaryReviewDraft: null, deletePlanConfirm: '',
 			financialContributionOptions: [{ value: 'FIXED', label: '固定金额' }, { value: 'SURPLUS_RATIO', label: '按结余比例' }, { value: 'BATCHED_LUMP_SUM', label: '一次资金分批' }],
 			financialFrequencyOptions: [{ value: 'MONTHLY', label: '每月' }, { value: 'QUARTERLY', label: '每季度' }, { value: 'YEARLY', label: '每年' }]
 		};
 	},
-	computed: {
-		catalogItems() { return this.catalogMode === 'PROTECTION' ? this.catalog.protection : this.catalog.growth; },
+		computed: {
+			catalogItems() { return this.catalogMode === 'PROTECTION' ? this.catalog.protection : this.catalog.growth; },
+			visibleCatalogItems() { return this.showAllArchetypes ? this.catalogItems : this.catalogItems.slice(0, 6); },
 		weekRange() { const p = this.home.portfolio || {}; return p.weekStart ? '本周 · ' + this.compactDate(p.weekStart) + ' — ' + this.compactDate(p.weekEnd) : 'COMPOUND OPPORTUNITY MAP'; },
 		currentArchetype() { return this.selectedArchetype || (this.selectedPlan && this.selectedPlan.archetype) || null; },
 		currentArchetypeName() { return this.currentArchetype ? this.currentArchetype.name : '历史计划'; },
 		currentArchetypeSummary() { return this.currentArchetype ? this.currentArchetype.summary : '这项历史计划可以继续修订，新计划将从通用原型建立。'; },
 		currentArchetypeKindLabel() { const item = this.currentArchetype; return item && item.kind === 'PROTECTION' ? '底盘保障' : '直接积累'; },
 		planSetup() { const item = this.currentArchetype; return { ...fallbackPlanSetup(item), ...((item && item.setup) || {}) }; },
-		isFinancialPlanDraft() { return Boolean(this.currentArchetype && this.currentArchetype.key === 'financial_capital'); },
-		financialTargets() { return this.splitLines(this.planDraft.financialTargetLabelsText, 12); },
-		financialRuleReady() { const d = this.planDraft; if (!Number.isInteger(Number(d.financialTargetYears)) || Number(d.financialTargetYears) < 1 || Number(d.financialTargetYears) > 60 || !this.financialTargets.length || !d.financialFrequency) return false; if (d.financialContributionMethod === 'FIXED') return Number(d.financialFixedAmount) > 0; if (d.financialContributionMethod === 'SURPLUS_RATIO') return Number(d.financialSurplusRatio) > 0 && Number(d.financialSurplusRatio) <= 100; if (d.financialContributionMethod === 'BATCHED_LUMP_SUM') return Number(d.financialTotalBudget) > 0; return false; },
+			isFinancialPlanDraft() { return Boolean(this.currentArchetype && this.currentArchetype.key === 'financial_capital'); },
+			financialTargets() { return this.splitLines(this.planDraft.financialTargetLabelsText, 12); },
+			financialContributionReady() { const d = this.planDraft; if (!d.financialFrequency) return false; if (d.financialContributionMethod === 'FIXED') return Number(d.financialFixedAmount) > 0; if (d.financialContributionMethod === 'SURPLUS_RATIO') return Number(d.financialSurplusRatio) > 0 && Number(d.financialSurplusRatio) <= 100; if (d.financialContributionMethod === 'BATCHED_LUMP_SUM') return Number(d.financialTotalBudget) > 0; return false; },
+			financialRuleReady() { const years = Number(this.planDraft.financialTargetYears); return Number.isInteger(years) && years >= 1 && years <= 60 && this.financialTargets.length > 0 && this.financialContributionReady; },
+			canContinueFinancialStep() { const d = this.planDraft; if (this.financialPlanStep === 1) { const years = Number(d.financialTargetYears); return Boolean(d.title.trim() && d.desiredOutcome.trim() && Number.isInteger(years) && years >= 1 && years <= 60); } if (this.financialPlanStep === 2) return this.financialContributionReady; if (this.financialPlanStep === 3) return Boolean(this.financialTargets.length && d.financialTrackingMode); return this.canSavePlan; },
 		financialPlanSummary() { const d = this.planDraft; const years = Number(d.financialTargetYears); const cycle = { MONTHLY: '每月', QUARTERLY: '每季度', YEARLY: '每年' }[d.financialFrequency] || '每期'; if (!Number.isInteger(years) || years < 1) return ''; if (d.financialContributionMethod === 'FIXED' && Number(d.financialFixedAmount) > 0) { const periods = { MONTHLY: 12, QUARTERLY: 4, YEARLY: 1 }[d.financialFrequency] || 0; const total = Math.round(Number(d.financialFixedAmount) * periods * years); return years + ' 年 · ' + cycle + '投入 ' + d.financialBaseCurrency + ' ' + Number(d.financialFixedAmount).toLocaleString() + ' · 计划本金约 ' + d.financialBaseCurrency + ' ' + total.toLocaleString(); } if (d.financialContributionMethod === 'SURPLUS_RATIO' && Number(d.financialSurplusRatio) > 0) return years + ' 年 · ' + cycle + '投入可投资结余的 ' + Number(d.financialSurplusRatio) + '%'; if (d.financialContributionMethod === 'BATCHED_LUMP_SUM' && Number(d.financialTotalBudget) > 0) return years + ' 年 · ' + cycle + '分批 · 总额 ' + d.financialBaseCurrency + ' ' + Number(d.financialTotalBudget).toLocaleString(); return ''; },
 		canSavePlan() { const d = this.planDraft; const boundaryReady = !this.isFinancialPlanDraft || Boolean(this.editingPlanId) || (d.financialBoundaryAccepted && d.financialSensitiveConsent); const principalReady = this.isFinancialPlanDraft || d.principalDefinition.trim(); const actionReady = this.isFinancialPlanDraft ? this.financialRuleReady : d.currentStep.trim(); return Boolean((this.editingPlanId || d.archetypeKey) && d.title.trim() && principalReady && d.desiredOutcome.trim() && actionReady && boundaryReady); },
 		validationGuidance() {
@@ -267,14 +283,16 @@ export default {
 	onLoad() { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; },
 	onShow() { this.loadAll(); },
 	methods: {
-		async loadAll() { this.loading = true; this.loadError = false; try { const results = await Promise.all([this.$http.get(compoundHome), this.$http.get(compoundArchetypes)]); this.home = decorateHome(results[0].data); this.catalog = { growth: results[1].data.growth || [], protection: results[1].data.protection || [] }; } catch (error) { this.loadError = true; console.error('加载复利系统失败', error); } finally { this.loading = false; } },
-		openCatalog() { if (this.home.portfolio.activeCount >= 3) return uni.showToast({ title: '同时最多验证 3 项', icon: 'none' }); this.closeEditors(); this.showCatalog = true; this.selectedArchetype = null; this.scrollTo(300); },
-		openNewPlan() { this.openCatalog(); },
-		openFinancialLedger(plan) { uni.navigateTo({ url: '/pages/shroom/financial-ledger?id=' + encodeURIComponent(plan.id) }); },
+			async loadAll() { this.loading = true; this.loadError = false; try { const results = await Promise.all([this.$http.get(compoundHome), this.$http.get(compoundArchetypes)]); this.home = decorateHome(results[0].data); this.catalog = { growth: results[1].data.growth || [], protection: results[1].data.protection || [] }; if (this.expandedPlanId && !this.home.plans.some(item => item.id === this.expandedPlanId)) this.expandedPlanId = ''; } catch (error) { this.loadError = true; console.error('加载复利系统失败', error); } finally { this.loading = false; } },
+			openCatalog() { if (this.home.portfolio.activeCount >= 3) return uni.showToast({ title: '同时最多进行 3 项计划', icon: 'none' }); this.closeEditors(); this.showCatalog = true; this.showAllArchetypes = false; this.showArchetypeDetails = false; this.selectedArchetype = null; this.scrollTo(260); },
+			openNewPlan() { this.openCatalog(); },
+			changeCatalogMode(mode) { this.catalogMode = mode; this.selectedArchetype = null; this.showAllArchetypes = false; this.showArchetypeDetails = false; },
+			openFinancialLedger(plan) { uni.navigateTo({ url: '/pages/shroom/financial-ledger?id=' + encodeURIComponent(plan.id) }); },
+			togglePlanDetails(plan) { this.expandedPlanId = this.expandedPlanId === plan.id ? '' : plan.id; },
 		openDeletePlan(plan) { this.closeEditors(); this.selectedPlan = plan; this.deletePlanConfirm = ''; this.showDeletePlanEditor = true; this.scrollTo(320); },
 		async deletePlan() { if (!this.selectedPlan || this.saving || this.deletePlanConfirm !== this.selectedPlan.title) return; this.saving = true; try { await this.$http.delete(compoundThread(this.selectedPlan.id), { confirmText: '永久删除复利计划', confirmTitle: this.deletePlanConfirm }); this.closeEditors(); this.selectedPlan = null; await this.loadAll(); uni.showToast({ title: '复利计划已删除', icon: 'success' }); } catch (error) { uni.showToast({ title: error.message || '计划没有删除成功', icon: 'none' }); } finally { this.saving = false; } },
-		selectArchetype(item) { this.selectedArchetype = item; setTimeout(() => this.scrollTo(700), 40); },
-		startFromArchetype() { if (!this.selectedArchetype) return; const item = this.selectedArchetype; const setup = { ...fallbackPlanSetup(item), ...(item.setup || {}) }; this.editingPlanId = ''; this.selectedPlan = null; this.showAdvancedPlan = false; this.planDraft = { ...freshPlanDraft(), archetypeKey: item.key, returnDefinition: setup.returnDefinition, reinvestmentDefinition: setup.reinvestmentDefinition, weeklyTimeBudgetMinutes: setup.weeklyTimeBudgetMinutes, principalMetricName: item.defaultPrincipalMetric, principalMetricTarget: setup.principalMetricTarget, returnMetricName: item.defaultReturnMetric, returnMetricTarget: setup.returnMetricTarget, currentMilestone: setup.currentMilestone }; this.showCatalog = false; this.showPlanEditor = true; this.scrollTo(320); },
+			selectArchetype(item) { this.selectedArchetype = item; this.showArchetypeDetails = false; setTimeout(() => this.scrollTo(560), 40); },
+			startFromArchetype() { if (!this.selectedArchetype) return; const item = this.selectedArchetype; const setup = { ...fallbackPlanSetup(item), ...(item.setup || {}) }; this.editingPlanId = ''; this.selectedPlan = null; this.showAdvancedPlan = false; this.financialPlanStep = 1; this.planDraft = { ...freshPlanDraft(), archetypeKey: item.key, returnDefinition: setup.returnDefinition, reinvestmentDefinition: setup.reinvestmentDefinition, weeklyTimeBudgetMinutes: setup.weeklyTimeBudgetMinutes, principalMetricName: item.defaultPrincipalMetric, principalMetricTarget: setup.principalMetricTarget, returnMetricName: item.defaultReturnMetric, returnMetricTarget: setup.returnMetricTarget, currentMilestone: setup.currentMilestone }; this.showCatalog = false; this.showPlanEditor = true; this.scrollTo(260); },
 		openEditPlan(plan) { this.closeEditors(); this.editingPlanId = plan.id; this.selectedPlan = plan; this.selectedArchetype = plan.archetype || null; this.showAdvancedPlan = false; this.planDraft = { archetypeKey: plan.archetypeKey || '', title: plan.title || '', desiredOutcome: plan.desiredOutcome || '', principalDefinition: plan.principalDefinition || plan.compoundMechanism || '', returnDefinition: plan.returnDefinition || plan.outcomeEvidence || '', reinvestmentDefinition: plan.reinvestmentDefinition || '由阶段回看确认如何再投入', weeklyTimeBudgetMinutes: plan.weeklyTimeBudgetMinutes || 120, principalMetricName: plan.principalMetric.name || plan.leadingMetric.name || '', principalMetricTarget: plan.principalMetric.target || plan.leadingMetric.target || 1, returnMetricName: plan.returnMetric.name || '', returnMetricTarget: plan.returnMetric.target || 1, outcomeEvidence: plan.outcomeEvidence || '', currentMilestone: plan.currentMilestone || '', currentStep: plan.currentStep || '', stopListText: (plan.stopList || []).join('\n'), cycleStart: plan.cycleStart, cycleEnd: plan.cycleEnd, financialBoundaryAccepted: true }; this.showPlanEditor = true; this.scrollTo(320); },
 		planPayload() { const d = this.planDraft; const setup = this.planSetup; const item = this.currentArchetype; const financial = d.archetypeKey === 'financial_capital'; const principalDefinition = financial ? '用户定义的长期资金计划；计划标的与实际持有分开核对' : d.principalDefinition.trim(); const returnDefinition = d.returnDefinition.trim() || setup.returnDefinition || (item && item.mechanism) || ''; const reinvestmentDefinition = d.reinvestmentDefinition.trim() || setup.reinvestmentDefinition; const principalMetricName = d.principalMetricName.trim() || (item && item.defaultPrincipalMetric) || '真实投入'; const returnMetricName = d.returnMetricName.trim() || (item && item.defaultReturnMetric) || '真实回报'; const principalMetricTarget = financial ? 0 : (Number(d.principalMetricTarget) || Number(setup.principalMetricTarget) || 1); const returnMetricTarget = financial ? 0 : (Number(d.returnMetricTarget) || Number(setup.returnMetricTarget) || 1); const currentStep = financial ? this.financialFirstAction() : d.currentStep.trim(); return { archetypeKey: this.editingPlanId ? undefined : d.archetypeKey, title: d.title.trim(), desiredOutcome: d.desiredOutcome.trim(), principalDefinition, returnDefinition, reinvestmentDefinition, compoundMechanism: [principalDefinition, returnDefinition, reinvestmentDefinition].join('\n'), weeklyTimeBudgetMinutes: financial ? 0 : Math.round(Number(d.weeklyTimeBudgetMinutes) || Number(setup.weeklyTimeBudgetMinutes) || 120), principalMetricName, principalMetricTarget, returnMetricName, returnMetricTarget, leadingMetricName: principalMetricName, leadingMetricTarget: principalMetricTarget, outcomeEvidence: d.outcomeEvidence.trim() || d.desiredOutcome.trim(), currentMilestone: d.currentMilestone.trim() || setup.currentMilestone || d.desiredOutcome.trim(), currentStep, stopList: this.splitLines(d.stopListText, 8), cycleStart: d.cycleStart, cycleEnd: d.cycleEnd, contextReason: '用户从通用复利原型建立的私人验证项', financialBoundaryAccepted: d.financialBoundaryAccepted === true }; },
 		financialFirstAction() { return { FROM_NOW: '记录基准日的计划总资产，并确认第一笔实际投入', HISTORY: '补录第一笔外部投入和对应历史市值', PLAN_ONLY: '发生第一次实际投入后确认记录' }[this.planDraft.financialTrackingMode] || '确认第一笔实际资金记录'; },
@@ -294,10 +312,11 @@ export default {
 		async reviewDiary(item) { if (!this.home.current || this.saving) return; this.saving = true; try { const response = await this.$http.post(compoundDiaryReview(this.home.current.id, item.linkId), {}); this.diaryReviewDraft = response.data.event; } catch (error) { uni.showToast({ title: '这次日记暂时没有回看完成', icon: 'none' }); } finally { this.saving = false; } },
 		async confirmDiaryReview() { if (!this.home.current || !this.diaryReviewDraft || this.saving) return; this.saving = true; try { await this.$http.post(compoundDiaryReviewConfirm(this.home.current.id, this.diaryReviewDraft.id), this.diaryReviewDraft.payload); this.diaryReviewDraft = null; await this.loadAll(); } finally { this.saving = false; } },
 		async dismissDiary(item) { if (!this.home.current || this.saving) return; this.saving = true; try { await this.$http.post(compoundDiaryDismiss(this.home.current.id, item.linkId), {}); await this.loadAll(); } finally { this.saving = false; } },
-		changeFinancialBoundaryConsent(event) { this.planDraft.financialBoundaryAccepted = Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
-		changeFinancialSensitiveConsent(event) { this.planDraft.financialSensitiveConsent = Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
+			changeFinancialBoundaryConsent(event) { this.planDraft.financialBoundaryAccepted = Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
+			changeFinancialSensitiveConsent(event) { this.planDraft.financialSensitiveConsent = Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
+			financialStepLabel(step) { return ['目的', '投入', '方向', '确认'][step - 1] || ''; },
 		createTask(plan, action) { const title = action ? action.title : plan.currentStep; uni.setStorageSync('todoPrefill', { title, description: '服务于复利验证项：' + plan.title + '\n\n12 周结果：' + plan.desiredOutcome, compoundItemId: plan.itemId || undefined, sourceType: 'COMPOUND', sourceRefId: plan.id, sourceCompoundThreadId: plan.id }); uni.navigateTo({ url: '/pages/todo/list' }); },
-		closeEditors() { this.showPlanEditor = false; this.showAdvancedPlan = false; this.showWeekEditor = false; this.showProgressEditor = false; this.showValidationEditor = false; this.showBlockerEditor = false; this.showDeletePlanEditor = false; this.resultDraft = null; this.blockerInsight = null; this.diaryReviewDraft = null; this.deletePlanConfirm = ''; },
+			closeEditors() { this.showPlanEditor = false; this.showAdvancedPlan = false; this.showWeekEditor = false; this.showProgressEditor = false; this.showValidationEditor = false; this.showBlockerEditor = false; this.showDeletePlanEditor = false; this.financialPlanStep = 1; this.resultDraft = null; this.blockerInsight = null; this.diaryReviewDraft = null; this.deletePlanConfirm = ''; },
 		scrollTo(value) { setTimeout(() => uni.pageScrollTo({ scrollTop: value, duration: 240 }), 40); },
 		splitLines(value, max) { return String(value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean).slice(0, max); },
 		combinedStopList(plan) { const source = plan.week.stopList && plan.week.stopList.length ? plan.week.stopList : plan.stopList; return (source || []).slice(0, 5); },
@@ -365,6 +384,45 @@ input, textarea { box-sizing: border-box; width: 100%; color: #172019; font-size
 .diary-feedback, .result-row { padding: 20rpx 0; border-top: 1rpx solid #e8ece6; }.diary-feedback:first-of-type, .result-row:first-of-type { margin-top: 14rpx; }.diary-feedback > text { display: block; }.diary-feedback > text:first-child { color: #77847b; font-size: 14rpx; }.diary-feedback > text:nth-child(2) { margin-top: 9rpx; font-size: 18rpx; line-height: 1.55; }.diary-feedback > view { display: flex; gap: 15rpx; margin-top: 12rpx; }.diary-feedback button { color: #4f6954; font-size: 14rpx; }.review-list { display: flex; margin-top: 18rpx; flex-direction: column; gap: 7rpx; color: #5e6b61; font-size: 16rpx; }.review-list > text:first-child { color: #3f4d43; font-weight: 700; }
 .result-row > view:first-child { display: flex; justify-content: space-between; gap: 14rpx; }.result-row > view:first-child text:first-child { font-size: 17rpx; font-weight: 700; }.result-row > view:first-child text:last-child { color: #879189; font-size: 13rpx; }.result-row > text { display: block; margin-top: 8rpx; color: #566359; font-size: 17rpx; line-height: 1.55; }.result-meta { display: flex; gap: 9rpx; margin-top: 11rpx; flex-wrap: wrap; }.result-meta text { padding: 6rpx 10rpx; border-radius: 999rpx; background: #edf2e9; color: #637067; font-size: 13rpx; }
 .secondary-links { margin-top: 25rpx; overflow: hidden; border-radius: 29rpx; background: rgba(255,255,255,.72); }.secondary-links > button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18rpx; padding: 23rpx 27rpx; border-top: 1rpx solid rgba(23,32,25,.07); text-align: left; }.secondary-links > button:first-child { border-top: 0; }.secondary-links > button > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }.secondary-links > button > view text:first-child { font-size: 19rpx; font-weight: 680; }.secondary-links > button > view text:last-child { color: #758078; font-size: 15rpx; line-height: 1.45; }.secondary-links > button > text { color: #748078; font-size: 29rpx; }.privacy-note { display: flex; align-items: flex-start; gap: 12rpx; margin-top: 24rpx; padding: 18rpx 21rpx; border-radius: 20rpx; background: #e1ead9; color: #5a685e; font-size: 15rpx; line-height: 1.55; }.privacy-note view { width: 8rpx; height: 8rpx; margin-top: 7rpx; flex: 0 0 8rpx; border-radius: 50%; background: #56705b; }
+
+/* Mobile-first readability: one decision per screen, details only on demand. */
+input, textarea { font-size: 30rpx; }
+.page-shell { padding: 24rpx 28rpx 150rpx; }
+.topbar-kicker, .eyebrow { font-size: 22rpx; letter-spacing: 1.4rpx; }
+.topbar-title { font-size: 40rpx; }
+.portfolio-hero { padding: 34rpx 31rpx; border-radius: 32rpx; }
+.portfolio-title { margin-top: 15rpx; font-size: 43rpx; line-height: 1.28; }
+.portfolio-copy { margin-top: 15rpx; font-size: 29rpx; line-height: 1.58; }
+.hero-status { display: flex; gap: 14rpx; margin-top: 24rpx; flex-wrap: wrap; }.hero-status text { padding: 11rpx 16rpx; border-radius: 999rpx; background: rgba(255,255,255,.1); color: #d6dfd7; font-size: 25rpx; }
+.hero-action { min-height: 88rpx; padding: 22rpx 27rpx; font-size: 29rpx; }
+.catalog-panel, .editor-panel, .plan-card, .feedback-section, .recent-section { padding: 28rpx; border-radius: 28rpx; }
+.panel-heading > view > text:last-child, .section-intro > view > text:last-child { font-size: 37rpx; line-height: 1.35; }
+.panel-heading > button { display: flex; min-width: 70rpx; min-height: 70rpx; align-items: center; justify-content: center; font-size: 42rpx; }
+.section-intro { align-items: center; }.section-intro > button { min-height: 70rpx; font-size: 27rpx; }
+.catalog-intro { margin-top: 18rpx; font-size: 29rpx; line-height: 1.55; }
+.catalog-tabs { gap: 7rpx; padding: 7rpx; }.catalog-tabs button { min-height: 82rpx; padding: 10rpx; font-size: 26rpx; line-height: 1.3; }.catalog-tabs text { font-size: 22rpx; }
+.protection-note { padding: 20rpx; font-size: 27rpx; }
+.archetype-card { min-height: 88rpx; align-items: center; padding: 20rpx 8rpx; }.archetype-number { font-size: 23rpx; }.archetype-copy text:first-child { font-size: 31rpx; }.archetype-copy text:last-child { font-size: 27rpx; }.archetype-arrow { font-size: 38rpx; }
+.catalog-more, .detail-toggle, .plan-detail-toggle, .activity-toggle { display: flex; width: 100%; min-height: 82rpx; align-items: center; justify-content: space-between; margin-top: 12rpx; padding: 16rpx 5rpx; color: #526558; font-size: 28rpx; text-align: left; }.catalog-more { justify-content: center; border-top: 1rpx solid #e6ebe4; }
+.archetype-detail { padding: 29rpx; }.detail-head > view text:first-child, .detail-head > text { font-size: 22rpx; }.detail-head > view text:last-child { font-size: 37rpx; }.loop-statement text:first-child, .fit-grid view text:first-child, .example-list > text:first-child { font-size: 23rpx; }.loop-statement text:last-child { font-size: 30rpx; line-height: 1.55; }.fit-grid view text:last-child, .default-measures text:last-child, .example-list text:not(:first-child) { font-size: 27rpx; }.default-measures text:first-child { font-size: 22rpx; }.detail-toggle.dark { color: #dbe5dc; border-top: 1rpx solid rgba(255,255,255,.12); }
+.chosen-archetype > text { font-size: 22rpx; }.chosen-archetype > view text:first-child { font-size: 31rpx; }.chosen-archetype > view text:last-child { font-size: 27rpx; }
+.editor-intro text:first-child, .finance-boundary text:first-child { font-size: 30rpx; }.editor-intro text:last-child, .finance-boundary text:last-child { font-size: 27rpx; }
+.editor-field > text, .metric-editor > view > text { font-size: 28rpx; }.editor-field input, .editor-field textarea, .metric-editor input { min-height: 88rpx; padding: 22rpx; font-size: 30rpx; }.editor-field textarea { min-height: 130rpx; }
+.finance-step-progress { display: flex; justify-content: space-between; margin-top: 25rpx; padding: 0 4rpx; }.finance-step-progress > view { display: flex; width: 25%; align-items: center; flex-direction: column; gap: 8rpx; color: #8a938c; }.finance-step-progress > view > text { display: flex; width: 50rpx; height: 50rpx; align-items: center; justify-content: center; border-radius: 50%; background: #e8ede5; font-size: 25rpx; font-weight: 700; }.finance-step-progress > view > small { font-size: 22rpx; }.finance-step-progress > view.active > text, .finance-step-progress > view.done > text { background: #172019; color: #fff; }.finance-step-progress > view.active > small { color: #172019; font-weight: 700; }
+.finance-step-title { display: flex; margin-top: 28rpx; flex-direction: column; gap: 8rpx; }.finance-step-title > text { color: #738078; font-size: 23rpx; font-weight: 700; }.finance-step-title strong { font-family: Georgia, 'Songti SC', serif; font-size: 38rpx; line-height: 1.35; }.finance-step-title small { color: #6c786f; font-size: 27rpx; line-height: 1.5; }
+.finance-choice { gap: 12rpx; margin-top: 18rpx; }.finance-choice > text { font-size: 28rpx; }.finance-choice button { min-height: 78rpx; padding: 17rpx 21rpx; font-size: 27rpx; }
+.planned-not-held { padding: 18rpx; font-size: 26rpx; }.finance-plan-summary > text, .finance-plan-summary small { font-size: 24rpx; }.finance-plan-summary strong { font-size: 30rpx; }
+.boundary-consent label { gap: 16rpx; font-size: 27rpx; line-height: 1.55; }.boundary-consent checkbox { transform: scale(1); }
+.finance-step-nav { display: flex; gap: 14rpx; margin-top: 23rpx; }.finance-step-nav button { display: flex; min-height: 88rpx; flex: 1; align-items: center; justify-content: center; border: 1rpx solid #ced8cc; border-radius: 999rpx; color: #55645a; font-size: 29rpx; font-weight: 700; }.finance-step-nav button.next { border-color: #172019; background: #172019; color: #fff; }
+.primary-action { min-height: 92rpx; font-size: 30rpx; }
+.two-column, .metric-editor, .metric-pair { flex-direction: column; }.metric-editor input { min-height: 84rpx; }
+.system-setup > text, .system-setup > view text:first-child { font-size: 23rpx; }.system-setup > view text:last-child { font-size: 27rpx; }.advanced-toggle { min-height: 80rpx; font-size: 27rpx; }.validation-notice text:first-child { font-size: 29rpx; }.validation-notice text:last-child { font-size: 27rpx; }
+.plan-head > view:first-child text:first-child { font-size: 23rpx; }.plan-head > view:first-child text:last-child { font-size: 38rpx; }.plan-head-actions .more-action { min-width: 64rpx; min-height: 64rpx; font-size: 28rpx; }.validation-row > text, .validation-row > button { font-size: 23rpx; }.plan-outcome { display: -webkit-box; overflow: hidden; font-size: 29rpx; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.plan-focus { display: flex; margin-top: 21rpx; padding: 21rpx; flex-direction: column; gap: 7rpx; border-radius: 20rpx; background: #eef3eb; }.plan-focus text:first-child { color: #758078; font-size: 23rpx; }.plan-focus text:last-child { font-size: 29rpx; line-height: 1.5; }
+.finance-open { min-height: 90rpx; padding: 0 25rpx; font-size: 30rpx; }.next-step.compact { margin-top: 21rpx; }.next-step > text:first-child { font-size: 23rpx; }.next-step > text:nth-child(2) { font-size: 30rpx; }.next-step button { min-height: 70rpx; padding: 16rpx 21rpx; font-size: 27rpx; }
+.plan-detail-toggle { border-top: 1rpx solid #e3e9e1; }.plan-details { margin-top: 5rpx; }.compound-loop > view { grid-template-columns: 190rpx 1fr; }.compound-loop text:first-child { font-size: 23rpx; }.compound-loop text:last-child { font-size: 28rpx; }.metric-pair > view > text:first-child, .metric-pair small { font-size: 23rpx; }.metric-pair > view > text:nth-child(2) { font-size: 27rpx; }.metric-pair strong { font-size: 36rpx; }.plan-facts { flex-direction: column; gap: 18rpx; }.plan-facts view + view { padding-left: 0; border-left: 0; }.plan-facts text:first-child { font-size: 23rpx; }.plan-facts text:last-child, .milestone text:last-child { font-size: 28rpx; }.milestone text:first-child { font-size: 23rpx; }.week-plan-head > view text:first-child { font-size: 31rpx; }.week-plan-head > view text:last-child, .week-plan-head > button { font-size: 25rpx; }.week-action { min-height: 86rpx; }.action-copy text:first-child { font-size: 29rpx; }.action-copy text:last-child, .action-todo { font-size: 23rpx; }.week-empty, .stop-list, .bottleneck-trigger { font-size: 27rpx; }
+.activity-toggle { margin-top: 27rpx; padding: 22rpx 25rpx; border-radius: 24rpx; background: rgba(255,255,255,.75); }.activity-toggle > view { display: flex; flex-direction: column; gap: 6rpx; }.activity-toggle > view text:first-child { font-size: 30rpx; font-weight: 700; }.activity-toggle > view text:last-child { color: #738078; font-size: 25rpx; }.activity-toggle > text { font-size: 35rpx; }
+.secondary-links > button { min-height: 100rpx; }.secondary-links > button > view text:first-child { font-size: 30rpx; }.secondary-links > button > view text:last-child, .privacy-note { font-size: 26rpx; }
 /* #ifdef H5 */
 @media (min-width: 980px) { .compound-page { box-sizing: border-box; padding-left: 96px; }.status-bar { display: none; }.page-shell { max-width: 960px; margin: 0 auto; padding: 55px 42px 100px; }.portfolio-hero { padding: 50px; }.portfolio-title { max-width: 720px; font-size: 42px; }.archetype-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }.archetype-card:nth-child(2) { border-top: 0; }.plan-card, .catalog-panel, .editor-panel { padding: 34px; }.metric-editor > view { min-width: 0; } }
 /* #endif */

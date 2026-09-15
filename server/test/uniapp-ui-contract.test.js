@@ -251,10 +251,10 @@ test('compound system starts from a shared archetype catalog and verifies privat
 	assert.match(api, /\/compound\/v2\/home/);
 	assert.match(api, /\/compound\/v2\/archetypes/);
 	assert.match(api, /\/validation/);
-	assert.match(compound, /从真正会积累的东西里/);
-	assert.match(compound, /这些是所有用户共享的复利原型/);
-	assert.match(compound, /直接产生积累/);
-	assert.match(compound, /保护长期底盘/);
+	assert.match(compound, /选择一件值得长期积累的事/);
+	assert.match(compound, /先选择类型，再决定它在你的生活中具体是什么/);
+	assert.match(compound, /让成果继续增值/);
+	assert.match(compound, /保护长期基础/);
 	assert.match(compound, /只需要回答 4 件事/);
 	assert.match(compound, /planSetup\.commitmentLabel/);
 	assert.match(compound, /系统已经替你设定/);
@@ -263,10 +263,10 @@ test('compound system starts from a shared archetype catalog and verifies privat
 	assert.match(compound, /目前线性/);
 	assert.match(compound, /selectedPlan\.principalMetric\.name/);
 	assert.match(compound, /selectedPlan\.returnMetric\.name/);
-	assert.match(compound, /当前里程碑/);
+	assert.match(compound, /这一阶段要看到/);
 	assert.match(compound, /为了保护它/);
 	assert.match(compound, /本周真实分给它多少分钟/);
-	assert.match(compound, /来自日记的现实反馈/);
+	assert.match(compound, /可能影响计划的现实反馈/);
 	assert.match(compound, /人生 OS/);
 	assert.match(compound, /重新读取/);
 	assert.doesNotMatch(compound, /setTimeout\(\(\) => this\.goBack/);

@@ -58,7 +58,7 @@ test('financial product exposes four tabs without adding a bottom navigation ite
   assert.match(page, /持有/);
   assert.match(page, /计划/);
   assert.match(page, /暂不能计算/);
-  assert.match(page, /记录与核算，不是投资建议/);
+	assert.match(page, /这里只记录和计算，不推荐买什么/);
   assert.match(page, /计划期限/);
   assert.match(page, /每期计划投入金额/);
   assert.match(page, /计划执行周期/);
@@ -80,7 +80,7 @@ test('first financial setup persists a complete plan and rule instead of an empt
   assert.match(route, /\['FIXED', 'SURPLUS_RATIO', 'BATCHED_LUMP_SUM'\]\.includes/);
   assert.match(compoundPage, /financialSetupPayload/);
   assert.match(compoundPage, /financialPlanSummary/);
-  assert.match(compoundPage, /只计算计划投入本金，不包含任何收益假设/);
+	assert.match(compoundPage, /不会推荐买什么，也不会承诺收益/);
 });
 
 test('legacy financial progress verdicts are blocked instead of influencing ledger results', () => {
@@ -88,6 +88,6 @@ test('legacy financial progress verdicts are blocked instead of influencing ledg
   const page = source('src/pages/shroom/compound.vue');
   assert.match(route, /财务计划不再使用“线性／复利已出现”判断/);
   assert.match(route, /财务金额和结果必须进入可核对的资金台账/);
-  assert.match(page, /打开资金计划/);
-  assert.match(page, /按月核对 · 按季度回看/);
+	assert.match(page, /查看我的投资计划/);
+	assert.match(page, /每月检查一次/);
 });
