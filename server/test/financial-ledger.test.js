@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   calculateOverview,
+  holdingSummary,
   minorToMoney,
   moneyPayload,
   moneyToMinor,
@@ -16,6 +17,29 @@ function snapshot(date, amount, status = 'CONFIRMED', currency = 'CNY') {
 
 function record(type, date, amount, options = {}) {
   return { recordType: type, occurredOn: date, status: options.status || 'CONFIRMED', payload: { amountMinor: moneyToMinor(amount), currency: options.currency || 'CNY', paidOutsidePlan: options.paidOutsidePlan === true } };
+}
+
+function holding(key, date, amount, costBasis, options = {}) {
+  return {
+    id: `${key}-${date}`,
+    holdingKey: key,
+    valuedOn: date,
+    createdAt: `${date}T08:00:00Z`,
+    currency: options.currency || 'CNY',
+    status: options.status || 'CONFIRMED',
+    classificationStatus: 'USER_ENTERED',
+    sourceRef: '',
+    payload: {
+      amountMinor: moneyToMinor(amount, { allowZero: true }),
+      costBasisMinor: costBasis === null ? null : moneyToMinor(costBasis, { allowZero: true }),
+      currency: options.currency || 'CNY',
+      channelLabel: options.channel || '支付宝',
+      productName: options.product || '恒生科技',
+      directionName: options.direction || '恒生科技指数',
+      shareClass: options.shareClass || 'C',
+      userMaxPercent: null
+    }
+  };
 }
 
 test('money is normalized to integer minor units without float arithmetic', () => {
@@ -88,6 +112,33 @@ test('pending and multi-currency records remain visible without false aggregatio
   assert.equal(result.pendingCount, 1);
   assert.deepEqual(result.currencies.map(item => item.currency), ['CNY', 'USD']);
   assert.equal(result.currencies[1].investmentPnl, null);
+});
+
+test('holding summary uses only the latest snapshot for each channel and product', () => {
+  const result = holdingSummary([
+    holding('alipay-hstech', '2026-09-15', '167294.35', '197000'),
+    holding('alipay-hstech', '2026-09-16', '250294.35', '280000'),
+    holding('mky-hstech', '2026-09-15', '81057', '88000', { channel: 'mky' })
+  ]);
+  assert.equal(result.items.length, 2);
+  assert.equal(result.totals[0].amount, '331351.35');
+  assert.equal(result.totals[0].costBasis, '368000.00');
+  assert.equal(result.totals[0].pnl, '-36648.65');
+  assert.equal(result.channels.find(item => item.label === '支付宝').amount, '250294.35');
+  assert.equal(result.products[0].amount, '331351.35');
+  assert.deepEqual(result.dates, ['2026-09-15', '2026-09-16']);
+});
+
+test('holding profit stays unavailable when any current cost basis is missing', () => {
+  const result = holdingSummary([
+    holding('known', '2026-09-16', '100', '90'),
+    holding('unknown', '2026-09-16', '50', null, { channel: '代持', product: '未知成本产品' })
+  ]);
+  assert.equal(result.totals[0].amount, '150.00');
+  assert.equal(result.totals[0].costBasis, null);
+  assert.equal(result.totals[0].pnl, null);
+  assert.equal(result.totals[0].unknownCostCount, 1);
+  assert.equal(result.channels.find(item => item.label === '支付宝').pnl, '10.00');
 });
 
 test('xirr is only returned for a solvable one-sign-change cash flow', () => {

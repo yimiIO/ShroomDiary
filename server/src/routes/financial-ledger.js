@@ -13,8 +13,10 @@ const {
   calculateOverview,
   currencyCode,
   dateOnly,
+  holdingSummary,
   minorToMoney,
   moneyPayload,
+  moneyToMinor,
   stableFingerprint
 } = require('../financial-ledger');
 const {
@@ -235,7 +237,22 @@ function recordInput(input, options = {}) {
   const occurredOn = dateOnly(input.occurredOn);
   const payload = moneyPayload(input);
   if (!recordType || !occurredOn || !payload || (!options.allowMissingSource && !payload.sourceCategory)) return null;
-  return { recordType, occurredOn, currency: payload.currency, payload };
+  const quantity = String(input.quantity === undefined || input.quantity === null ? '' : input.quantity)
+    .trim().replace(/,/g, '');
+  if (quantity && (!/^\d+(?:\.\d{1,8})?$/.test(quantity) || Number(quantity) <= 0)) return null;
+  return {
+    recordType,
+    occurredOn,
+    currency: payload.currency,
+    payload: {
+      ...payload,
+      occurredOnEstimated: input.occurredOnEstimated === true,
+      amountEstimated: input.amountEstimated === true,
+      quantity,
+      quantityUnit: quantity ? (text(input.quantityUnit, 20) || '份') : '',
+      quantityEstimated: Boolean(quantity && input.quantityEstimated === true)
+    }
+  };
 }
 
 function snapshotInput(input) {
@@ -250,6 +267,15 @@ function holdingInput(input) {
   const valuedOn = dateOnly(input.valuedOn);
   const payload = moneyPayload(input, { allowZero: true });
   if (!valuedOn || !payload || (!payload.productName && !payload.channelLabel && !payload.directionName)) return null;
+  const hasCostBasis = input.costBasis !== undefined && input.costBasis !== null && String(input.costBasis).trim() !== '';
+  const costBasisMinor = hasCostBasis ? moneyToMinor(input.costBasis, { allowZero: true }) : null;
+  if (hasCostBasis && costBasisMinor === null) return null;
+  const unrealizedPnlMinor = costBasisMinor === null
+    ? null
+    : (BigInt(payload.amountMinor) - BigInt(costBasisMinor)).toString();
+  const quantity = String(input.quantity === undefined || input.quantity === null ? '' : input.quantity)
+    .trim().replace(/,/g, '');
+  if (quantity && (!/^\d+(?:\.\d{1,8})?$/.test(quantity) || Number(quantity) <= 0)) return null;
   const percent = input.userMaxPercent === '' || input.userMaxPercent === undefined || input.userMaxPercent === null
     ? null : Number(input.userMaxPercent);
   if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) return null;
@@ -268,7 +294,15 @@ function holdingInput(input) {
       shareClass: text(input.shareClass, 80),
       category: text(input.category, 120),
       userMaxPercent: percent,
-      sourceLabel: text(input.sourceLabel, 160)
+      sourceLabel: text(input.sourceLabel, 160),
+      quantity,
+      quantityUnit: quantity ? (text(input.quantityUnit, 20) || '份') : '',
+      quantityEstimated: Boolean(quantity && input.quantityEstimated === true),
+      costBasisMinor,
+      unrealizedPnlMinor,
+      unrealizedPnlTone: unrealizedPnlMinor === null
+        ? null
+        : (BigInt(unrealizedPnlMinor) < 0n ? 'negative' : (BigInt(unrealizedPnlMinor) > 0n ? 'positive' : 'neutral'))
     }
   };
 }
@@ -315,102 +349,6 @@ function normalizedImport(raw, fallbackCurrency, sourceHash) {
     ambiguities: (Array.isArray(raw?.ambiguities) ? raw.ambiguities : []).map(item => text(item, 400)).filter(Boolean).slice(0, 20),
     ignoredIntentions: (Array.isArray(raw?.ignoredIntentions) ? raw.ignoredIntentions : []).map(item => text(item, 400)).filter(Boolean).slice(0, 20)
   };
-}
-
-function holdingSummary(holdings, aliases = []) {
-  const latestByKey = new Map();
-  for (const item of holdings.filter(row => row.status === 'CONFIRMED')) {
-    const key = item.holdingKey || item.id;
-    const existing = latestByKey.get(key);
-    if (!existing || item.valuedOn > existing.valuedOn || (item.valuedOn === existing.valuedOn && item.createdAt > existing.createdAt)) {
-      latestByKey.set(key, item);
-    }
-  }
-  const current = [...latestByKey.values()].filter(item => BigInt(item.payload.amountMinor) > 0n).map(item => {
-    const labels = [item.payload.channelLabel, item.payload.productName].filter(Boolean).map(value => value.trim().toLowerCase());
-    const alias = aliases.find(mapping => {
-      const appliesToRecord = !mapping.batchScope || mapping.batchScope === item.sourceRef;
-      return appliesToRecord && labels.includes(String(mapping.sourceAlias || '').trim().toLowerCase());
-    });
-    if (!alias) return item;
-    return {
-      ...item,
-      payload: {
-        ...item.payload,
-        productName: alias.productName || item.payload.productName,
-        directionName: alias.directionName || item.payload.directionName,
-        aliasApplied: alias.sourceAlias
-      }
-    };
-  });
-  const totals = {};
-  for (const item of current) {
-    totals[item.payload.currency] = (totals[item.payload.currency] || 0n) + BigInt(item.payload.amountMinor);
-  }
-  const items = current.map(item => ({
-    ...item,
-    amount: minorToMoney(item.payload.amountMinor),
-    percent: totals[item.payload.currency]
-      ? Number((Number(item.payload.amountMinor) / Number(totals[item.payload.currency]) * 100).toFixed(1)) : null
-  }));
-  const dates = [...new Set(items.map(item => item.valuedOn))];
-  const directionMap = new Map();
-  const productMap = new Map();
-  for (const item of items) {
-    const label = item.payload.directionName || '待分类';
-    const key = `${item.currency}:${label}`;
-    const group = directionMap.get(key) || { currency: item.currency, label, amountMinor: 0n, channels: new Set(), itemCount: 0 };
-    group.amountMinor += BigInt(item.payload.amountMinor);
-    if (item.payload.channelLabel) group.channels.add(item.payload.channelLabel);
-    group.itemCount += 1;
-    directionMap.set(key, group);
-
-    const productLabel = item.payload.productName || '未识别产品';
-    const productKey = `${item.currency}:${productLabel}`;
-    const product = productMap.get(productKey) || {
-      currency: item.currency,
-      label: productLabel,
-      directionName: item.payload.directionName || '',
-      amountMinor: 0n,
-      channels: new Set(),
-      shareClasses: new Set(),
-      itemCount: 0
-    };
-    product.amountMinor += BigInt(item.payload.amountMinor);
-    if (item.payload.channelLabel) product.channels.add(item.payload.channelLabel);
-    if (item.payload.shareClass) product.shareClasses.add(item.payload.shareClass);
-    product.itemCount += 1;
-    productMap.set(productKey, product);
-  }
-  const directions = [...directionMap.values()].map(group => ({
-    key: `${group.currency}:${group.label}`,
-    currency: group.currency,
-    label: group.label,
-    amount: minorToMoney(group.amountMinor.toString()),
-    percent: totals[group.currency] ? Number((Number(group.amountMinor) / Number(totals[group.currency]) * 100).toFixed(1)) : null,
-    channelCount: group.channels.size,
-    itemCount: group.itemCount
-  })).sort((a, b) => Number(b.amount) - Number(a.amount));
-  const products = [...productMap.values()].map(product => ({
-    key: `${product.currency}:${product.label}`,
-    currency: product.currency,
-    label: product.label,
-    directionName: product.directionName,
-    amount: minorToMoney(product.amountMinor.toString()),
-    percent: totals[product.currency] ? Number((Number(product.amountMinor) / Number(totals[product.currency]) * 100).toFixed(1)) : null,
-    channels: [...product.channels],
-    shareClasses: [...product.shareClasses],
-    shareClassLabel: [...product.shareClasses].length ? ` · ${[...product.shareClasses].join(' / ')} 份额` : '',
-    itemCount: product.itemCount
-  })).sort((a, b) => Number(b.amount) - Number(a.amount));
-  const itemsWithLimits = items.map(item => ({
-    ...item,
-    limitDeviation: item.payload.userMaxPercent !== null && item.payload.userMaxPercent !== undefined &&
-      item.percent !== null && item.percent > item.payload.userMaxPercent
-      ? Number((item.percent - item.payload.userMaxPercent).toFixed(1))
-      : null
-  }));
-  return { items: itemsWithLimits, products, directions, mixedDates: dates.length > 1, dates, totals: Object.entries(totals).map(([currency, amount]) => ({ currency, amount: minorToMoney(amount.toString()) })) };
 }
 
 function executionSummary(records, rules, asOfDate = shanghaiDate(), periodStart = null) {
@@ -653,7 +591,7 @@ router.post('/plans/:threadId/records', asyncRoute(async (req, res) => {
     `INSERT INTO financial_records
       (id,user_id,thread_id,record_type,occurred_on,currency,status,source_kind,
        source_ref,transfer_group_id,idempotency_key,private_payload,confirmed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $7='CONFIRMED' THEN now() ELSE NULL END)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $7::varchar='CONFIRMED' THEN now() ELSE NULL END)
      ON CONFLICT (user_id,thread_id,idempotency_key) DO UPDATE SET updated_at=financial_records.updated_at
      RETURNING *`,
     [id, req.user.id, owned.thread.id, input.recordType, input.occurredOn, input.currency,
@@ -695,7 +633,7 @@ router.patch('/plans/:threadId/records/:recordId', asyncRoute(async (req, res) =
       `INSERT INTO financial_records
         (id,user_id,thread_id,record_type,occurred_on,currency,status,source_kind,source_ref,
          transfer_group_id,revision_of,revision_reason,idempotency_key,private_payload,confirmed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$14,$7,$8,$9,$10,$11,$12,$13,CASE WHEN $14='CONFIRMED' THEN now() ELSE NULL END) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$14,$7,$8,$9,$10,$11,$12,$13,CASE WHEN $14::varchar='CONFIRMED' THEN now() ELSE NULL END) RETURNING *`,
       [crypto.randomUUID(), req.user.id, owned.thread.id, input.recordType, input.occurredOn, input.currency,
         existing.source_kind, existing.source_ref, existing.transfer_group_id, existing.id, revisionReason,
         clientRequestId, encryptFinancialPayload(input.payload), status]
@@ -737,7 +675,7 @@ router.post('/plans/:threadId/snapshots', asyncRoute(async (req, res) => {
     `INSERT INTO financial_snapshots
       (id,user_id,thread_id,snapshot_kind,valued_on,currency,status,source_kind,
        source_ref,idempotency_key,private_payload,confirmed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $7='CONFIRMED' THEN now() ELSE NULL END)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $7::varchar='CONFIRMED' THEN now() ELSE NULL END)
      ON CONFLICT (user_id,thread_id,idempotency_key) DO UPDATE SET updated_at=financial_snapshots.updated_at
      RETURNING *`,
     [id, req.user.id, owned.thread.id, input.snapshotKind, input.valuedOn, input.currency,
@@ -819,7 +757,7 @@ router.post('/plans/:threadId/holdings', asyncRoute(async (req, res) => {
     `INSERT INTO financial_holdings
       (id,user_id,thread_id,valued_on,currency,status,classification_status,source_kind,source_ref,holding_key,
        idempotency_key,private_payload,confirmed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $6='CONFIRMED' THEN now() ELSE NULL END)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $6::varchar='CONFIRMED' THEN now() ELSE NULL END)
      ON CONFLICT (user_id,thread_id,idempotency_key) DO UPDATE SET updated_at=financial_holdings.updated_at
      RETURNING *`,
     [id, req.user.id, owned.thread.id, input.valuedOn, input.currency,
@@ -845,9 +783,14 @@ router.patch('/plans/:threadId/holdings/:holdingId', asyncRoute(async (req, res)
     const previous = decrypt(existing);
     const input = holdingInput({
       ...previous,
-...req.body,
+      ...req.body,
       valuedOn: req.body.valuedOn || dateOnly(existing.valued_on),
       amount: req.body.amount || minorToMoney(previous.amountMinor),
+      costBasis: req.body.costBasis !== undefined
+        ? req.body.costBasis
+        : (previous.costBasisMinor !== undefined && previous.costBasisMinor !== null
+          ? minorToMoney(previous.costBasisMinor)
+          : ''),
       currency: req.body.currency || existing.currency,
       classificationStatus: req.body.classificationStatus || existing.classification_status
     });
@@ -1093,7 +1036,7 @@ router.post('/plans/:threadId/import-drafts/:draftId/confirm', asyncRoute(async 
         const saved = await client.query(
           `INSERT INTO financial_records
             (id,user_id,thread_id,record_type,occurred_on,currency,status,source_kind,source_ref,idempotency_key,private_payload,confirmed_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$10,'IMPORT',$7,$8,$9,CASE WHEN $10='CONFIRMED' THEN now() ELSE NULL END)
+           VALUES ($1,$2,$3,$4,$5,$6,$10,'IMPORT',$7,$8,$9,CASE WHEN $10::varchar='CONFIRMED' THEN now() ELSE NULL END)
            ON CONFLICT (user_id,thread_id,idempotency_key) DO NOTHING`,
           [crypto.randomUUID(), req.user.id, owned.thread.id, normalized.recordType, normalized.occurredOn,
             normalized.currency, `AI导入草稿 ${draft.id}`, idempotency, encryptFinancialPayload(normalized.payload), recordStatus]

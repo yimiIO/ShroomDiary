@@ -52,6 +52,7 @@ test('general exports keep private financial data unavailable to API tokens', ()
 
 test('financial product exposes four tabs without adding a bottom navigation item', () => {
   const page = source('src/pages/shroom/financial-ledger.vue');
+  const ledger = source('server/src/financial-ledger.js');
   const pages = JSON.parse(source('src/pages.json'));
   assert.match(page, /概览/);
   assert.match(page, /记录/);
@@ -67,6 +68,11 @@ test('financial product exposes four tabs without adding a bottom navigation ite
 	assert.match(page, /具体产品（可选）/);
 	assert.match(page, /在哪个平台（可选）/);
 	assert.match(page, /recordContext\(item\)/);
+	assert.match(page, /总投入、现在余额和涨跌/);
+	assert.match(page, /按渠道/);
+	assert.match(page, /按标的/);
+	assert.match(page, /投入本金/);
+	assert.match(ledger, /holdingSummary/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
   assert.equal(pages.tabBar.list.length, 4);
 });

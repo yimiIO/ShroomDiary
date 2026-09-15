@@ -21,6 +21,13 @@ const RECORD_TYPES = Object.freeze([
 const RECORD_STATUSES = Object.freeze(['DRAFT', 'CONFIRMED', 'SUPERSEDED', 'VOID']);
 
 function dateOnly(value) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/);
   if (!match) return null;
   const date = new Date(`${match[0]}T00:00:00.000Z`);
@@ -94,6 +101,159 @@ function groupByCurrency(rows) {
     groups[currency].push(row);
     return groups;
   }, {});
+}
+
+function percentageOf(numerator, denominator, decimals = 1) {
+  const top = BigInt(String(numerator || '0'));
+  const bottom = BigInt(String(denominator || '0'));
+  if (bottom <= 0n) return null;
+  const factor = 10n ** BigInt(decimals);
+  const scaled = top * 100n * factor;
+  const rounded = scaled >= 0n
+    ? (scaled + bottom / 2n) / bottom
+    : -((-scaled + bottom / 2n) / bottom);
+  return Number(rounded) / Number(factor);
+}
+
+function holdingGroupSummary(rows, currencyTotalMinor) {
+  const amountMinor = rows.reduce((sum, row) => sum + BigInt(row.payload.amountMinor), 0n);
+  const knownCostRows = rows.filter(row => row.payload.costBasisMinor !== null && row.payload.costBasisMinor !== undefined);
+  const costComplete = rows.length > 0 && knownCostRows.length === rows.length;
+  const costBasisMinor = knownCostRows.reduce((sum, row) => sum + BigInt(row.payload.costBasisMinor), 0n);
+  const pnlMinor = costComplete ? amountMinor - costBasisMinor : null;
+  const dates = [...new Set(rows.map(row => row.valuedOn))];
+  return {
+    amount: minorToMoney(amountMinor.toString()),
+    costBasis: costComplete ? minorToMoney(costBasisMinor.toString()) : null,
+    pnl: pnlMinor === null ? null : minorToMoney(pnlMinor.toString()),
+    pnlPercent: pnlMinor === null || costBasisMinor <= 0n ? null : percentageOf(pnlMinor, costBasisMinor, 2),
+    pnlTone: pnlMinor === null ? 'neutral' : (pnlMinor < 0n ? 'negative' : (pnlMinor > 0n ? 'positive' : 'neutral')),
+    costComplete,
+    unknownCostCount: rows.length - knownCostRows.length,
+    percent: currencyTotalMinor ? percentageOf(amountMinor, currencyTotalMinor, 1) : null,
+    asOfDate: dates.sort().at(-1) || null,
+    mixedDates: dates.length > 1,
+    itemCount: rows.length
+  };
+}
+
+function holdingSummary(holdings = [], aliases = []) {
+  const latestByKey = new Map();
+  for (const item of holdings.filter(row => row.status === 'CONFIRMED')) {
+    const key = item.holdingKey || item.id;
+    const existing = latestByKey.get(key);
+    if (!existing || item.valuedOn > existing.valuedOn ||
+      (item.valuedOn === existing.valuedOn && String(item.createdAt) > String(existing.createdAt))) {
+      latestByKey.set(key, item);
+    }
+  }
+
+  const current = [...latestByKey.values()]
+    .filter(item => BigInt(item.payload.amountMinor) > 0n)
+    .map(item => {
+      const labels = [item.payload.channelLabel, item.payload.productName]
+        .filter(Boolean).map(value => value.trim().toLowerCase());
+      const alias = aliases.find(mapping => {
+        const appliesToRecord = !mapping.batchScope || mapping.batchScope === item.sourceRef;
+        return appliesToRecord && labels.includes(String(mapping.sourceAlias || '').trim().toLowerCase());
+      });
+      if (!alias) return item;
+      return {
+        ...item,
+        payload: {
+          ...item.payload,
+          productName: alias.productName || item.payload.productName,
+          directionName: alias.directionName || item.payload.directionName,
+          aliasApplied: alias.sourceAlias
+        }
+      };
+    });
+
+  const currencyTotals = new Map();
+  for (const item of current) {
+    currencyTotals.set(item.currency, (currencyTotals.get(item.currency) || 0n) + BigInt(item.payload.amountMinor));
+  }
+
+  const items = current.map(item => {
+    const summary = holdingGroupSummary([item], currencyTotals.get(item.currency));
+    return {
+      ...item,
+      ...summary,
+      limitDeviation: item.payload.userMaxPercent !== null && item.payload.userMaxPercent !== undefined &&
+        summary.percent !== null && summary.percent > item.payload.userMaxPercent
+        ? Number((summary.percent - item.payload.userMaxPercent).toFixed(1))
+        : null
+    };
+  });
+
+  const directionMap = new Map();
+  const productMap = new Map();
+  const channelMap = new Map();
+  for (const item of current) {
+    const directionLabel = item.payload.directionName || '待分类';
+    const directionKey = `${item.currency}:${directionLabel}`;
+    const direction = directionMap.get(directionKey) || { currency: item.currency, label: directionLabel, rows: [], channels: new Set() };
+    direction.rows.push(item);
+    if (item.payload.channelLabel) direction.channels.add(item.payload.channelLabel);
+    directionMap.set(directionKey, direction);
+
+    const productLabel = item.payload.productName || '未识别产品';
+    const productKey = `${item.currency}:${productLabel}`;
+    const product = productMap.get(productKey) || {
+      currency: item.currency,
+      label: productLabel,
+      directionName: item.payload.directionName || '',
+      rows: [],
+      channels: new Set(),
+      shareClasses: new Set()
+    };
+    product.rows.push(item);
+    if (item.payload.channelLabel) product.channels.add(item.payload.channelLabel);
+    if (item.payload.shareClass) product.shareClasses.add(item.payload.shareClass);
+    productMap.set(productKey, product);
+
+    const channelLabel = item.payload.channelLabel || '未填渠道';
+    const channelKey = `${item.currency}:${channelLabel}`;
+    const channel = channelMap.get(channelKey) || { currency: item.currency, label: channelLabel, rows: [], products: new Set() };
+    channel.rows.push(item);
+    channel.products.add(productLabel);
+    channelMap.set(channelKey, channel);
+  }
+
+  const directions = [...directionMap.entries()].map(([key, group]) => ({
+    key,
+    currency: group.currency,
+    label: group.label,
+    channelCount: group.channels.size,
+    ...holdingGroupSummary(group.rows, currencyTotals.get(group.currency))
+  })).sort((a, b) => Number(b.amount) - Number(a.amount));
+
+  const products = [...productMap.entries()].map(([key, group]) => ({
+    key,
+    currency: group.currency,
+    label: group.label,
+    directionName: group.directionName,
+    channels: [...group.channels],
+    shareClasses: [...group.shareClasses],
+    shareClassLabel: group.shareClasses.size ? ` · ${[...group.shareClasses].join(' / ')} 份额` : '',
+    ...holdingGroupSummary(group.rows, currencyTotals.get(group.currency))
+  })).sort((a, b) => Number(b.amount) - Number(a.amount));
+
+  const channels = [...channelMap.entries()].map(([key, group]) => ({
+    key,
+    currency: group.currency,
+    label: group.label,
+    productCount: group.products.size,
+    products: [...group.products],
+    ...holdingGroupSummary(group.rows, currencyTotals.get(group.currency))
+  })).sort((a, b) => Number(b.amount) - Number(a.amount));
+
+  const totals = [...currencyTotals.entries()].map(([currency, amountMinor]) => ({
+    currency,
+    ...holdingGroupSummary(current.filter(item => item.currency === currency), amountMinor)
+  }));
+  const dates = [...new Set(items.map(item => item.valuedOn))].sort();
+  return { items, totals, channels, products, directions, mixedDates: dates.length > 1, dates };
 }
 
 function xirr(cashflows) {
@@ -228,6 +388,7 @@ module.exports = {
   calculateOverview,
   currencyCode,
   dateOnly,
+  holdingSummary,
   minorToMoney,
   moneyPayload,
   moneyToMinor,
