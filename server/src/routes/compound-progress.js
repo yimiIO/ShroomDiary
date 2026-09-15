@@ -1012,6 +1012,42 @@ router.post('/threads/:id/primary', asyncRoute(async (req, res) => {
   return ok(res, { id: changed.id }, '已切换，下次会从这件事接着做');
 }));
 
+router.delete('/threads/:id', asyncRoute(async (req, res) => {
+  const confirmText = text(req.body.confirmText, 40);
+  const confirmTitle = text(req.body.confirmTitle, 240);
+  if (confirmText !== '永久删除复利计划') {
+    return fail(res, 400, '请确认你理解删除后无法恢复');
+  }
+  const deleted = await db.transaction(async client => {
+    const thread = await ownedThread(req.user.id, req.params.id, { lock: true, queryable: client });
+    if (!thread) return { error: 'thread' };
+    if (!confirmTitle || confirmTitle !== thread.title) return { error: 'title' };
+    const result = await client.query(
+      `DELETE FROM compound_threads
+        WHERE id = $1 AND user_id = $2
+        RETURNING id, title, archetype_key`,
+      [thread.id, req.user.id]
+    );
+    await client.query(
+      `UPDATE compound_threads SET is_primary = true, updated_at = now()
+        WHERE id = (
+          SELECT id FROM compound_threads
+           WHERE user_id = $1 AND status = 'ACTIVE'
+           ORDER BY last_activity_at DESC, created_at DESC LIMIT 1
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM compound_threads
+           WHERE user_id = $1 AND status = 'ACTIVE' AND is_primary
+        )`,
+      [req.user.id]
+    );
+    return result.rows[0];
+  });
+  if (deleted.error === 'thread') return fail(res, 404, '复利计划不存在');
+  if (deleted.error === 'title') return fail(res, 400, '请输入完整计划名称后再删除');
+  return ok(res, { id: deleted.id, title: deleted.title }, '复利计划及其进度和专属数据已永久删除');
+}));
+
 router.post('/threads/:id/continue', asyncRoute(async (req, res) => {
   const thread = await ownedThread(req.user.id, req.params.id);
   if (!thread || thread.status !== 'ACTIVE') return fail(res, 404, '正在推进的事不存在');

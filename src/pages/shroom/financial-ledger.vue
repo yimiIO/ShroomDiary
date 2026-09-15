@@ -99,7 +99,7 @@
 						<view class="section-card"><view class="section-head"><view><text class="kicker">RULE VERSIONS</text><text>执行规则</text></view><text>{{ data.rules.length }}</text></view><view v-if="!data.rules.length" class="inline-empty">规则由你制定；系统不会预填收益率、仓位或品种建议。</view><view v-for="item in data.rules" :key="item.id" class="rule-row"><view><text>v{{ item.version }} · {{ contributionLabel(item.contributionMethod) }}</text><text>{{ item.effectiveOn }} 生效</text></view><text>{{ ruleDescription(item) }}</text><small v-if="item.targetLabels && item.targetLabels.length">计划标的：{{ item.targetLabels.join(' · ') }}</small><small>核对频率：{{ reviewFrequencyLabel(item.reviewFrequency) }}</small><small v-if="item.changeReason">调整原因：{{ item.changeReason }}</small></view></view>
 						<view v-if="data.notes.length" class="section-card"><view class="section-head"><view><text class="kicker">DECISION LOG</text><text>判断与决定</text></view></view><view v-for="item in data.notes" :key="item.id" class="note-row"><text>{{ item.decidedOn }} · {{ item.noteType === 'DECISION' ? '决定' : '判断' }}</text><text>{{ item.body }}</text><small>用户当时记录，不代表系统验证</small></view></view>
 						<view v-if="data.legacy.recordCount" class="legacy-note"><text>旧版历史仍在</text><text>{{ data.legacy.note }} 共 {{ data.legacy.recordCount }} 条旧进展记录。</text></view>
-						<view class="privacy-box"><text>隐私与数据权利</text><text>{{ data.privacy.notice }} {{ data.features.aiImportEnabled ? 'AI 只在你主动粘贴并授权整理时使用；普通核算不调用 AI。' : '当前不向第三方 AI 发送财务文本。' }}</text><view><button @tap="exportPlan">导出本计划</button><button v-if="data.profile.aiProcessingConsentAt" @tap="revokeAiConsent">撤回 AI 授权</button><button class="danger-link" @tap="openDelete">删除财务台账</button></view></view>
+						<view class="privacy-box"><text>隐私与数据权利</text><text>{{ data.privacy.notice }} {{ data.features.aiImportEnabled ? 'AI 只在你主动粘贴并授权整理时使用；普通核算不调用 AI。' : '当前不向第三方 AI 发送财务文本。' }}</text><view><button @tap="exportPlan">导出本计划</button><button v-if="data.profile.aiProcessingConsentAt" @tap="revokeAiConsent">撤回 AI 授权</button><button class="danger-link" @tap="openDelete">清空财务数据（保留计划）</button></view></view>
 					</view>
 
 					<view v-if="editor" class="editor-card">
@@ -154,7 +154,7 @@
 						</template>
 
 						<template v-if="editor === 'DELETE'">
-							<view class="danger-box"><text>这会删除什么</text><text>本计划下的财务设置、金额记录、市值快照、持有、别名、规则、AI 草稿和回看摘要都会删除；原复利计划本身和旧版历史进展保留。</text></view><label class="field"><text>输入“删除财务台账”确认</text><input v-model="deleteConfirm" maxlength="20" /></label><button class="primary danger" :disabled="saving || deleteConfirm !== '删除财务台账'" @tap="deleteLedger">确认永久删除</button>
+							<view class="danger-box"><text>只清空财务数据，保留复利计划</text><text>金额记录、市值快照、持有、别名、规则、AI 草稿和回看摘要都会删除；复利计划本身仍会保留。如需删除整个计划，请返回复利系统，在计划右上角“•••”中操作。</text></view><label class="field"><text>输入“删除财务台账”确认</text><input v-model="deleteConfirm" maxlength="20" /></label><button class="primary danger" :disabled="saving || deleteConfirm !== '删除财务台账'" @tap="deleteLedger">确认清空财务数据</button>
 						</template>
 					</view>
 				</template>
