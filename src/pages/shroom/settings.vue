@@ -14,6 +14,11 @@
 			<view class="section">
 				<text class="section-label">数据与隐私</text>
 				<view class="settings-card">
+					<view class="setting-row" data-testid="settings-inbox" @tap="openInbox">
+						<view class="setting-icon inbox">信</view>
+						<view class="setting-copy"><text>收件箱与提醒</text><text>查看每日总结、未读消息与通知权限</text></view>
+						<text class="arrow">›</text>
+					</view>
 					<view class="setting-row" data-testid="settings-data-sources" @tap="openDataSources">
 						<view class="setting-icon codex">C</view>
 						<view class="setting-copy"><text>数据与连接</text><text>管理 Codex 等菇日记数据源</text></view>
@@ -66,6 +71,7 @@ export default {
 		if (!this.$mStore.getters.hasLogin) uni.switchTab({ url: '/pages/shroom/me' });
 	},
 	methods: {
+		openInbox() { uni.navigateTo({ url: '/pages/shroom/inbox' }); },
 		openDataSources() { uni.navigateTo({ url: '/pages/shroom/data-sources' }); },
 		openExport() { uni.navigateTo({ url: '/pages/shroom/export' }); },
 		openWallet() { uni.navigateTo({ url: '/pages/shroom/wallet' }); },
@@ -108,6 +114,7 @@ export default {
 .setting-row { display: flex; align-items: center; gap: 19rpx; padding: 28rpx 0; border-bottom: 1rpx solid #edf0eb; }
 .setting-row:last-child { border-bottom: 0; }
 .setting-icon { display: flex; width: 62rpx; height: 62rpx; flex: 0 0 62rpx; align-items: center; justify-content: center; border-radius: 20rpx; font-family: Georgia, serif; font-size: 25rpx; font-weight: 700; }
+.setting-icon.inbox { background: #e4ebd2; color: #526755; }
 .setting-icon.codex { background: #172019; color: #eef4e8; }
 .setting-icon.export { background: #e4ebd2; color: #526755; }
 .setting-icon.wallet { background: #f5e7bf; color: #755e30; }

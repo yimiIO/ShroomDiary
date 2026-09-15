@@ -71,7 +71,15 @@ test('financial product exposes four tabs without adding a bottom navigation ite
 	assert.match(page, /浮亏/);
 	assert.match(page, /costBasisMinor/);
 	assert.match(page, /unrealizedPnlMinor/);
+	assert.match(page, /持有份额（可选）/);
+	assert.match(page, /quantityEstimated/);
+	assert.match(page, /约.*份/);
+	assert.match(page, /估算记账日/);
 	assert.match(source('server/src/routes/financial-ledger.js'), /BigInt\(payload\.amountMinor\) - BigInt\(costBasisMinor\)/);
+	assert.match(source('server/src/routes/financial-ledger.js'), /quantityUnit/);
+	assert.match(source('server/src/routes/financial-ledger.js'), /quantityEstimated/);
+	assert.match(source('server/src/routes/financial-ledger.js'), /occurredOnEstimated/);
+	assert.match(source('server/src/routes/financial-ledger.js'), /CASE WHEN \$7::varchar='CONFIRMED'/);
 	assert.match(source('server/src/routes/financial-ledger.js'), /unrealizedPnlTone/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
   assert.equal(pages.tabBar.list.length, 4);

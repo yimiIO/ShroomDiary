@@ -79,6 +79,86 @@ async function shanghaiClock() {
   return result.rows[0];
 }
 
+async function queueInboxReviews(date) {
+  await db.query(
+    `INSERT INTO daily_reviews
+      (id, user_id, review_date, status, generated_by, email_status)
+     SELECT gen_random_uuid(), p.user_id, $1::date, 'PENDING', 'INBOX', 'NONE'
+       FROM daily_review_preferences p
+      WHERE p.inbox_enabled AND (
+        EXISTS (
+          SELECT 1 FROM diaries d
+           WHERE d.user_id = p.user_id AND d.deleted_at IS NULL AND d.ai_allowed
+             AND (d.occurred_at AT TIME ZONE 'Asia/Shanghai')::date = $1::date
+        )
+        OR EXISTS (
+          SELECT 1 FROM external_activity_events e
+          JOIN data_source_connections c ON c.id = e.connection_id AND c.user_id = e.user_id
+           WHERE e.user_id = p.user_id AND c.ai_allowed
+             AND (e.completed_at AT TIME ZONE 'Asia/Shanghai')::date = $1::date
+        )
+        OR EXISTS (
+          SELECT 1 FROM todos t
+           WHERE t.user_id = p.user_id AND t.deleted_at IS NULL AND t.status = 'completed'
+             AND (t.completed_at AT TIME ZONE 'Asia/Shanghai')::date = $1::date
+        )
+        OR EXISTS (
+          SELECT 1 FROM compound_events e
+           WHERE e.user_id = p.user_id AND e.status = 'CONFIRMED' AND e.source_valid
+             AND (e.created_at AT TIME ZONE 'Asia/Shanghai')::date = $1::date
+        )
+      )
+     ON CONFLICT (user_id, review_date) DO NOTHING`,
+    [date]
+  );
+}
+
+async function claimInboxReview(date) {
+  return db.transaction(async client => {
+    const candidate = await client.query(
+      `SELECT r.* FROM daily_reviews r
+       JOIN daily_review_preferences p ON p.user_id = r.user_id
+      WHERE r.review_date = $1::date AND r.status = 'PENDING' AND p.inbox_enabled
+      ORDER BY r.updated_at
+      FOR UPDATE OF r SKIP LOCKED LIMIT 1`,
+      [date]
+    );
+    const row = candidate.rows[0];
+    if (!row) return null;
+    const claimed = await client.query(
+      `UPDATE daily_reviews SET generated_by = 'INBOX', updated_at = now()
+        WHERE id = $1 AND status = 'PENDING' RETURNING *`,
+      [row.id]
+    );
+    return claimed.rows[0] || null;
+  });
+}
+
+async function processInboxClaim(claim) {
+  try {
+    const reviewDate = dateFromRow(claim.review_date);
+    const context = await loadDailyReviewContext(claim.user_id, reviewDate);
+    await generateDailyReview(claim.user_id, reviewDate, {
+      context,
+      generatedBy: 'INBOX',
+      id: claim.id
+    });
+    return true;
+  } catch (error) {
+    await db.query(
+      `UPDATE daily_reviews SET status = 'FAILED', error_message = $2, updated_at = now()
+        WHERE id = $1 AND status = 'PENDING'`,
+      [claim.id, String(error.message || '收件箱总结生成失败').slice(0, 1000)]
+    );
+    console.error('daily review inbox failed', {
+      reviewId: claim.id,
+      code: error.code,
+      message: error.message
+    });
+    return true;
+  }
+}
+
 async function claimReview() {
   if (!isMailConfigured()) return null;
   const clock = await shanghaiClock();
@@ -197,13 +277,24 @@ function dateFromRow(value) {
 }
 
 async function tick() {
-  if (running || !config.dailyReview.workerEnabled || !isMailConfigured()) return;
+  if (running || !config.dailyReview.workerEnabled) return;
   running = true;
   try {
-    for (let count = 0; count < 3; count += 1) {
-      const claim = await claimReview();
-      if (!claim) break;
-      await processClaim(claim);
+    const clock = await shanghaiClock();
+    if (Number(clock.hour) >= config.dailyReview.emailHour) {
+      await queueInboxReviews(clock.date);
+      for (let count = 0; count < 3; count += 1) {
+        const inboxClaim = await claimInboxReview(clock.date);
+        if (!inboxClaim) break;
+        await processInboxClaim(inboxClaim);
+      }
+      if (isMailConfigured()) {
+        for (let count = 0; count < 3; count += 1) {
+          const mailClaim = await claimReview();
+          if (!mailClaim) break;
+          await processClaim(mailClaim);
+        }
+      }
     }
   } catch (error) {
     console.error('daily review worker tick failed', { code: error.code, message: error.message });
@@ -225,9 +316,12 @@ function stopDailyReviewWorker() {
 }
 
 module.exports = {
+  claimInboxReview,
   claimReview,
   dateFromRow,
+  processInboxClaim,
   processClaim,
+  queueInboxReviews,
   renderReviewHtml,
   renderReviewText,
   startDailyReviewWorker,

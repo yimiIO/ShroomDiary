@@ -236,7 +236,22 @@ function recordInput(input, options = {}) {
   const occurredOn = dateOnly(input.occurredOn);
   const payload = moneyPayload(input);
   if (!recordType || !occurredOn || !payload || (!options.allowMissingSource && !payload.sourceCategory)) return null;
-  return { recordType, occurredOn, currency: payload.currency, payload };
+  const quantity = String(input.quantity === undefined || input.quantity === null ? '' : input.quantity)
+    .trim().replace(/,/g, '');
+  if (quantity && (!/^\d+(?:\.\d{1,8})?$/.test(quantity) || Number(quantity) <= 0)) return null;
+  return {
+    recordType,
+    occurredOn,
+    currency: payload.currency,
+    payload: {
+      ...payload,
+      occurredOnEstimated: input.occurredOnEstimated === true,
+      amountEstimated: input.amountEstimated === true,
+      quantity,
+      quantityUnit: quantity ? (text(input.quantityUnit, 20) || '份') : '',
+      quantityEstimated: Boolean(quantity && input.quantityEstimated === true)
+    }
+  };
 }
 
 function snapshotInput(input) {
@@ -257,6 +272,9 @@ function holdingInput(input) {
   const unrealizedPnlMinor = costBasisMinor === null
     ? null
     : (BigInt(payload.amountMinor) - BigInt(costBasisMinor)).toString();
+  const quantity = String(input.quantity === undefined || input.quantity === null ? '' : input.quantity)
+    .trim().replace(/,/g, '');
+  if (quantity && (!/^\d+(?:\.\d{1,8})?$/.test(quantity) || Number(quantity) <= 0)) return null;
   const percent = input.userMaxPercent === '' || input.userMaxPercent === undefined || input.userMaxPercent === null
     ? null : Number(input.userMaxPercent);
   if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) return null;
@@ -276,6 +294,9 @@ function holdingInput(input) {
       category: text(input.category, 120),
       userMaxPercent: percent,
       sourceLabel: text(input.sourceLabel, 160),
+      quantity,
+      quantityUnit: quantity ? (text(input.quantityUnit, 20) || '份') : '',
+      quantityEstimated: Boolean(quantity && input.quantityEstimated === true),
       costBasisMinor,
       unrealizedPnlMinor,
       unrealizedPnlTone: unrealizedPnlMinor === null
@@ -665,7 +686,7 @@ router.post('/plans/:threadId/records', asyncRoute(async (req, res) => {
     `INSERT INTO financial_records
       (id,user_id,thread_id,record_type,occurred_on,currency,status,source_kind,
        source_ref,transfer_group_id,idempotency_key,private_payload,confirmed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $7='CONFIRMED' THEN now() ELSE NULL END)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $7::varchar='CONFIRMED' THEN now() ELSE NULL END)
      ON CONFLICT (user_id,thread_id,idempotency_key) DO UPDATE SET updated_at=financial_records.updated_at
      RETURNING *`,
     [id, req.user.id, owned.thread.id, input.recordType, input.occurredOn, input.currency,
@@ -707,7 +728,7 @@ router.patch('/plans/:threadId/records/:recordId', asyncRoute(async (req, res) =
       `INSERT INTO financial_records
         (id,user_id,thread_id,record_type,occurred_on,currency,status,source_kind,source_ref,
          transfer_group_id,revision_of,revision_reason,idempotency_key,private_payload,confirmed_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$14,$7,$8,$9,$10,$11,$12,$13,CASE WHEN $14='CONFIRMED' THEN now() ELSE NULL END) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$14,$7,$8,$9,$10,$11,$12,$13,CASE WHEN $14::varchar='CONFIRMED' THEN now() ELSE NULL END) RETURNING *`,
       [crypto.randomUUID(), req.user.id, owned.thread.id, input.recordType, input.occurredOn, input.currency,
         existing.source_kind, existing.source_ref, existing.transfer_group_id, existing.id, revisionReason,
         clientRequestId, encryptFinancialPayload(input.payload), status]
@@ -749,7 +770,7 @@ router.post('/plans/:threadId/snapshots', asyncRoute(async (req, res) => {
     `INSERT INTO financial_snapshots
       (id,user_id,thread_id,snapshot_kind,valued_on,currency,status,source_kind,
        source_ref,idempotency_key,private_payload,confirmed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $7='CONFIRMED' THEN now() ELSE NULL END)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $7::varchar='CONFIRMED' THEN now() ELSE NULL END)
      ON CONFLICT (user_id,thread_id,idempotency_key) DO UPDATE SET updated_at=financial_snapshots.updated_at
      RETURNING *`,
     [id, req.user.id, owned.thread.id, input.snapshotKind, input.valuedOn, input.currency,
@@ -831,7 +852,7 @@ router.post('/plans/:threadId/holdings', asyncRoute(async (req, res) => {
     `INSERT INTO financial_holdings
       (id,user_id,thread_id,valued_on,currency,status,classification_status,source_kind,source_ref,holding_key,
        idempotency_key,private_payload,confirmed_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $6='CONFIRMED' THEN now() ELSE NULL END)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $6::varchar='CONFIRMED' THEN now() ELSE NULL END)
      ON CONFLICT (user_id,thread_id,idempotency_key) DO UPDATE SET updated_at=financial_holdings.updated_at
      RETURNING *`,
     [id, req.user.id, owned.thread.id, input.valuedOn, input.currency,
@@ -1110,7 +1131,7 @@ router.post('/plans/:threadId/import-drafts/:draftId/confirm', asyncRoute(async 
         const saved = await client.query(
           `INSERT INTO financial_records
             (id,user_id,thread_id,record_type,occurred_on,currency,status,source_kind,source_ref,idempotency_key,private_payload,confirmed_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$10,'IMPORT',$7,$8,$9,CASE WHEN $10='CONFIRMED' THEN now() ELSE NULL END)
+           VALUES ($1,$2,$3,$4,$5,$6,$10,'IMPORT',$7,$8,$9,CASE WHEN $10::varchar='CONFIRMED' THEN now() ELSE NULL END)
            ON CONFLICT (user_id,thread_id,idempotency_key) DO NOTHING`,
           [crypto.randomUUID(), req.user.id, owned.thread.id, normalized.recordType, normalized.occurredOn,
             normalized.currency, `AI导入草稿 ${draft.id}`, idempotency, encryptFinancialPayload(normalized.payload), recordStatus]

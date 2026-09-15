@@ -150,6 +150,15 @@
 			}
 		},
 		{
+			"path": "pages/shroom/inbox",
+			"style": {
+				"navigationBarTitleText": "收件箱",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true,
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/friends",
 			"style": {
 				"enablePullDownRefresh": true,

@@ -5,7 +5,14 @@ const express = require('express');
 const config = require('../config');
 const db = require('../db');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
-const { openDailyReview, reviewRow, mapReview, todayInShanghai, validReviewDate } = require('../daily-review');
+const {
+  mapInboxReview,
+  mapReview,
+  openDailyReview,
+  reviewRow,
+  todayInShanghai,
+  validReviewDate
+} = require('../daily-review');
 const { isMailConfigured, sendMail } = require('../mail');
 
 const router = express.Router();
@@ -35,6 +42,9 @@ function safeEqual(left, right) {
 
 function publicPreferences(row) {
   return {
+    inboxEnabled: row ? Boolean(row.inbox_enabled) : true,
+    inboxDeliveryTime: '22:00',
+    pushMode: 'IN_APP',
     email: row?.email_verified_at ? row.email_address : '',
     maskedEmail: maskedEmail(row?.email_address),
     emailVerified: Boolean(row?.email_verified_at),
@@ -50,8 +60,49 @@ async function preferences(userId) {
   return result.rows[0] || null;
 }
 
+async function ensurePreferences(userId) {
+  const result = await db.query(
+    `INSERT INTO daily_review_preferences (user_id, inbox_enabled)
+     VALUES ($1, true)
+     ON CONFLICT (user_id) DO UPDATE SET user_id = EXCLUDED.user_id
+     RETURNING *`,
+    [userId]
+  );
+  return result.rows[0];
+}
+
 router.get('/preferences', asyncRoute(async (req, res) => {
-  return ok(res, publicPreferences(await preferences(req.user.id)));
+  return ok(res, publicPreferences(await ensurePreferences(req.user.id)));
+}));
+
+router.get('/inbox/unread-count', asyncRoute(async (req, res) => {
+  const result = await db.query(
+    `SELECT count(*)::int AS unread_count,
+            (array_agg(id ORDER BY review_date DESC, updated_at DESC))[1] AS latest_unread_id
+       FROM daily_reviews
+      WHERE user_id = $1 AND status = 'READY' AND viewed_at IS NULL`,
+    [req.user.id]
+  );
+  return ok(res, {
+    unreadCount: Number(result.rows[0]?.unread_count || 0),
+    latestUnreadId: result.rows[0]?.latest_unread_id || null
+  });
+}));
+
+router.get('/inbox', asyncRoute(async (req, res) => {
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 30));
+  const result = await db.query(
+    `SELECT id, review_date, result, viewed_at, created_at, updated_at
+       FROM daily_reviews
+      WHERE user_id = $1 AND status = 'READY'
+      ORDER BY review_date DESC, updated_at DESC
+      LIMIT $2`,
+    [req.user.id, limit]
+  );
+  return ok(res, {
+    items: result.rows.map(mapInboxReview),
+    unreadCount: result.rows.filter(row => !row.viewed_at).length
+  });
 }));
 
 router.post('/preferences/email/request', asyncRoute(async (req, res) => {
@@ -124,15 +175,25 @@ router.post('/preferences/email/verify', asyncRoute(async (req, res) => {
 }));
 
 router.patch('/preferences', asyncRoute(async (req, res) => {
-  if (typeof req.body.emailEnabled !== 'boolean') return fail(res, 400, '设置内容不正确');
-  const current = await preferences(req.user.id);
-  if (!current?.email_verified_at) return fail(res, 400, '请先验证接收邮箱');
+  const changesInbox = typeof req.body.inboxEnabled === 'boolean';
+  const changesEmail = typeof req.body.emailEnabled === 'boolean';
+  if (!changesInbox && !changesEmail) return fail(res, 400, '设置内容不正确');
+  const current = await ensurePreferences(req.user.id);
+  if (changesEmail && !current?.email_verified_at) return fail(res, 400, '请先验证接收邮箱');
   const result = await db.query(
-    `UPDATE daily_review_preferences SET email_enabled = $2, updated_at = now()
+    `UPDATE daily_review_preferences
+        SET inbox_enabled = $2, email_enabled = $3, updated_at = now()
       WHERE user_id = $1 RETURNING *`,
-    [req.user.id, req.body.emailEnabled]
+    [
+      req.user.id,
+      changesInbox ? req.body.inboxEnabled : current.inbox_enabled,
+      changesEmail ? req.body.emailEnabled : current.email_enabled
+    ]
   );
-  return ok(res, publicPreferences(result.rows[0]), req.body.emailEnabled ? '22:00 邮件已开启' : '每日总结邮件已关闭');
+  const message = changesInbox
+    ? (req.body.inboxEnabled ? '每日总结会进入收件箱' : '每日总结收件箱投递已关闭')
+    : (req.body.emailEnabled ? '22:00 邮件已开启' : '每日总结邮件已关闭');
+  return ok(res, publicPreferences(result.rows[0]), message);
 }));
 
 router.get('/:date', asyncRoute(async (req, res) => {

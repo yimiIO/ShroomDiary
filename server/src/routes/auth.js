@@ -66,6 +66,11 @@ router.post('/register', asyncRoute(async (req, res) => {
     );
     await ensureDefaultObservers(result.rows[0].id, client);
     await setupNewUser(client, result.rows[0].id);
+    await client.query(
+      `INSERT INTO daily_review_preferences (user_id, inbox_enabled)
+       VALUES ($1, true) ON CONFLICT (user_id) DO NOTHING`,
+      [result.rows[0].id]
+    );
     return result.rows[0];
   });
   return ok(res, member(user), '账号已创建');

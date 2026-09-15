@@ -114,6 +114,11 @@
 				<view class="menu-section">
 					<text class="section-label">理解与复盘</text>
 					<view class="menu-card">
+						<view class="menu-item" data-testid="me-inbox" @tap="openInbox">
+							<view class="menu-icon green">信</view>
+							<view class="menu-copy"><text class="menu-title">收件箱</text><text class="menu-description">每日总结与来自菇的私人提醒</text></view>
+							<text v-if="inboxUnreadCount" class="unread-count">{{ inboxUnreadCount > 99 ? '99+' : inboxUnreadCount }}</text><text v-else class="menu-arrow">›</text>
+						</view>
 						<view class="menu-item" data-testid="me-daily-review" @tap="openDailyReview">
 							<view class="menu-icon green">日</view>
 							<view class="menu-copy"><text class="menu-title">菇每日总结</text><text class="menu-description">事实、人生 OS、复利与委派建议</text></view>
@@ -151,6 +156,8 @@ import { compoundHome } from '@/api/compound-system';
 import { inquirySummary } from '@/api/inquiry';
 import { wellbeingSummary } from '@/api/wellbeing';
 import { billingOverview } from '@/api/billing';
+import { dailyReviewInboxUnread } from '@/api/daily-review';
+import { handleInboxSnapshot } from '@/utils/inbox-notifications';
 
 export default {
 	data() {
@@ -161,7 +168,8 @@ export default {
 			inquiryOverview: null,
 			wellbeingOverview: null,
 			compoundOverview: null,
-			billing: null
+			billing: null,
+			inboxUnreadCount: 0
 		};
 	},
 	computed: {
@@ -225,6 +233,7 @@ export default {
 			if (this.featureActive('inquiries')) this.loadInquiries();
 			if (this.featureActive('wellbeing')) this.loadWellbeing();
 			if (this.featureActive('compound')) this.loadCompoundOverview();
+			this.loadInboxUnread();
 		}
 	},
 	methods: {
@@ -288,6 +297,13 @@ export default {
 				this.compoundOverview = null;
 			}
 		},
+		async loadInboxUnread() {
+			try {
+				const response = await this.$http.get(dailyReviewInboxUnread);
+				this.inboxUnreadCount = Number(response.data && response.data.unreadCount || 0);
+				handleInboxSnapshot(response.data || {}, { notify: false });
+			} catch (error) { this.inboxUnreadCount = 0; }
+		},
 		goLogin() {
 			uni.navigateTo({ url: '/pages/public/login' });
 		},
@@ -314,6 +330,9 @@ export default {
 		},
 		openDailyReview() {
 			uni.navigateTo({ url: '/pages/shroom/daily-review' });
+		},
+		openInbox() {
+			uni.navigateTo({ url: '/pages/shroom/inbox' });
 		},
 		openObservers() {
 			uni.navigateTo({ url: '/pages/shroom/observers' });
@@ -762,6 +781,20 @@ export default {
 	font-size: 17rpx;
 	font-weight: 700;
 	color: #786741;
+}
+
+.unread-count {
+	display: flex;
+	min-width: 42rpx;
+	height: 42rpx;
+	padding: 0 8rpx;
+	align-items: center;
+	justify-content: center;
+	border-radius: 999rpx;
+	background: #a45e50;
+	color: #fff;
+	font-size: 17rpx;
+	font-weight: 750;
 }
 
 .version {

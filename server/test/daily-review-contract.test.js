@@ -51,3 +51,25 @@ test('private daily reviews are invalidated when diary or Codex AI access is wit
   assert.match(dataSources, /invalidateDailyReviewsUsingCodex/);
   assert.match(dataSources, /req\.body\.aiAllowed === false/);
 });
+
+test('daily review inbox keeps private delivery available across app entry and worker', () => {
+  const migration = source('server/sql/039_daily_review_inbox.sql');
+  const route = source('server/src/routes/daily-reviews.js');
+  const worker = source('server/src/daily-review-worker.js');
+  const api = source('src/api/daily-review.js');
+  const app = source('src/App.vue');
+  const me = source('src/pages/shroom/me.vue');
+  const inbox = source('src/pages/shroom/inbox.vue');
+  const pages = JSON.parse(source('src/pages.json'));
+
+  assert.match(migration, /inbox_enabled boolean NOT NULL DEFAULT true/);
+  assert.match(route, /router\.get\('\/inbox'/);
+  assert.match(route, /router\.get\('\/inbox\/unread-count'/);
+  assert.match(worker, /queueInboxReviews/);
+  assert.match(worker, /generatedBy: 'INBOX'/);
+  assert.match(api, /dailyReviewInboxUnread/);
+  assert.match(app, /refreshInbox/);
+  assert.match(me, /me-inbox/);
+  assert.match(inbox, /PRIVATE INBOX/);
+  assert.ok(pages.pages.some(item => item.path === 'pages/shroom/inbox'));
+});

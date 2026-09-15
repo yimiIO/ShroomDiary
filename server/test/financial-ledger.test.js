@@ -4,11 +4,17 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   calculateOverview,
+  dateOnly,
   minorToMoney,
   moneyPayload,
   moneyToMinor,
   xirr
 } = require('../src/financial-ledger');
+
+test('PostgreSQL date objects keep their calendar date in financial ledger responses', () => {
+  assert.equal(dateOnly(new Date(2026, 8, 15)), '2026-09-15');
+  assert.equal(dateOnly(new Date('invalid')), null);
+});
 
 function snapshot(date, amount, status = 'CONFIRMED', currency = 'CNY') {
   return { snapshotKind: 'PLAN_TOTAL', valuedOn: date, status, createdAt: `${date}T00:00:00Z`, payload: { amountMinor: moneyToMinor(amount), currency } };

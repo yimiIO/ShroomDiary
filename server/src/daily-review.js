@@ -339,6 +339,23 @@ function mapReview(row, context = null) {
   };
 }
 
+function mapInboxReview(row) {
+  if (!row) return null;
+  const result = row.result || {};
+  const date = dateText(row.review_date);
+  return {
+    id: row.id,
+    type: 'DAILY_REVIEW',
+    date,
+    title: result.headline || `${date} 的菇每日总结`,
+    preview: result.tomorrowAdjustment?.action || result.factsSummary || '当天总结已经准备好。',
+    unread: !row.viewed_at,
+    readAt: row.viewed_at,
+    availableAt: row.updated_at || row.created_at,
+    route: `/pages/shroom/daily-review?date=${date}`
+  };
+}
+
 async function reviewRow(userId, date, queryable = db) {
   const result = await queryable.query(
     'SELECT * FROM daily_reviews WHERE user_id = $1 AND review_date = $2::date',
@@ -351,6 +368,8 @@ async function generateDailyReview(userId, date, options = {}) {
   const context = options.context || await loadDailyReviewContext(userId, date);
   const generated = await createReviewResult(userId, context);
   const id = options.id || crypto.randomUUID();
+  const generatedBy = ['USER', 'EMAIL', 'INBOX'].includes(options.generatedBy)
+    ? options.generatedBy : 'USER';
   const result = await db.query(
     `INSERT INTO daily_reviews
       (id, user_id, review_date, status, result, source_refs, source_fingerprint,
@@ -363,7 +382,7 @@ async function generateDailyReview(userId, date, options = {}) {
        error_message = '', updated_at = now()
      RETURNING *`,
     [id, userId, date, JSON.stringify(generated.result), JSON.stringify(publicSourceRefs(context)),
-      context.fingerprint, options.generatedBy === 'EMAIL' ? 'EMAIL' : 'USER', generated.modelVersion,
+      context.fingerprint, generatedBy, generated.modelVersion,
       context.sourceCutoff]
   );
   return mapReview(result.rows[0], context);
@@ -392,6 +411,7 @@ module.exports = {
   generateDailyReview,
   legacyLifeOsClauses,
   loadDailyReviewContext,
+  mapInboxReview,
   mapReview,
   normalizeDailyReview,
   openDailyReview,
