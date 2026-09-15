@@ -72,7 +72,14 @@ test('financial product exposes four tabs without adding a bottom navigation ite
 	assert.match(page, /按渠道/);
 	assert.match(page, /按标的/);
 	assert.match(page, /投入本金/);
+	assert.match(page, /年后测算/);
+	assert.match(page, /用户填写的测算假设/);
+	assert.match(page, /最近资金变化/);
+	assert.match(page, /scrollToEditor/);
+	assert.match(page, /createSelectorQuery/);
+	assert.doesNotMatch(page, /scrollTop: 260/);
 	assert.match(ledger, /holdingSummary/);
+	assert.match(ledger, /financialPlanProjection/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
   assert.equal(pages.tabBar.list.length, 4);
 });
@@ -90,6 +97,8 @@ test('first financial setup persists a complete plan and rule instead of an empt
   assert.match(compoundPage, /financialSetupPayload/);
   assert.match(compoundPage, /financialPlanSummary/);
 	assert.match(compoundPage, /不会推荐买什么，也不会承诺收益/);
+	assert.match(compoundPage, /financialAssumedAnnualReturnPercent/);
+	assert.match(compoundPage, /收益承诺/);
 });
 
 test('legacy financial progress verdicts are blocked instead of influencing ledger results', () => {

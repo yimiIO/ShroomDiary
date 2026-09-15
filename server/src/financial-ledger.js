@@ -137,7 +137,33 @@ function holdingGroupSummary(rows, currencyTotalMinor) {
   };
 }
 
-function holdingSummary(holdings = [], aliases = []) {
+function normalizedLabel(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function recentActivitiesForHolding(item, records) {
+  const channel = normalizedLabel(item.payload.channelLabel);
+  const product = normalizedLabel(item.payload.productName);
+  if (!channel || !product) return [];
+  return confirmed(records)
+    .filter(record => record.payload?.currency === item.currency &&
+      normalizedLabel(record.payload.channelLabel) === channel &&
+      normalizedLabel(record.payload.productName) === product)
+    .sort((left, right) => right.occurredOn.localeCompare(left.occurredOn) ||
+      String(right.createdAt || '').localeCompare(String(left.createdAt || '')))
+    .slice(0, 3)
+    .map(record => ({
+      id: record.id,
+      recordType: record.recordType,
+      occurredOn: record.occurredOn,
+      currency: record.payload.currency,
+      amount: minorToMoney(record.payload.amountMinor),
+      sharesPending: ['EXTERNAL_CONTRIBUTION', 'BUY'].includes(record.recordType) &&
+        !String(record.payload.quantity || '').trim()
+    }));
+}
+
+function holdingSummary(holdings = [], aliases = [], records = []) {
   const latestByKey = new Map();
   for (const item of holdings.filter(row => row.status === 'CONFIRMED')) {
     const key = item.holdingKey || item.id;
@@ -179,6 +205,7 @@ function holdingSummary(holdings = [], aliases = []) {
     return {
       ...item,
       ...summary,
+      recentActivities: recentActivitiesForHolding(item, records),
       limitDeviation: item.payload.userMaxPercent !== null && item.payload.userMaxPercent !== undefined &&
         summary.percent !== null && summary.percent > item.payload.userMaxPercent
         ? Number((summary.percent - item.payload.userMaxPercent).toFixed(1))
@@ -254,6 +281,125 @@ function holdingSummary(holdings = [], aliases = []) {
   }));
   const dates = [...new Set(items.map(item => item.valuedOn))].sort();
   return { items, totals, channels, products, directions, mixedDates: dates.length > 1, dates };
+}
+
+function currentPositionSummary(holdingData = {}, overview = {}) {
+  const positions = (holdingData.totals || []).map(item => ({ ...item, source: 'HOLDINGS' }));
+  const coveredCurrencies = new Set(positions.map(item => item.currency));
+  for (const item of overview.currencies || []) {
+    if (!item.latest || coveredCurrencies.has(item.currency)) continue;
+    positions.push({
+      currency: item.currency,
+      amount: item.latest.amount,
+      costBasis: null,
+      pnl: item.investmentPnl,
+      pnlPercent: null,
+      pnlTone: item.investmentPnl === null
+        ? 'neutral'
+        : (String(item.investmentPnl).startsWith('-') ? 'negative' : (Number(item.investmentPnl) > 0 ? 'positive' : 'neutral')),
+      costComplete: false,
+      unknownCostCount: 0,
+      asOfDate: item.latest.date,
+      mixedDates: false,
+      itemCount: 0,
+      source: 'PLAN_TOTAL'
+    });
+  }
+  return positions;
+}
+
+function moneyFromNumber(value) {
+  const minor = Math.round(value * 100);
+  if (!Number.isFinite(minor) || !Number.isSafeInteger(minor)) return null;
+  return minorToMoney(String(minor));
+}
+
+function addCalendarYears(value, years) {
+  const source = dateOnly(value);
+  if (!source || !Number.isInteger(years)) return null;
+  const date = new Date(`${source}T00:00:00.000Z`);
+  const month = date.getUTCMonth();
+  date.setUTCFullYear(date.getUTCFullYear() + years);
+  if (date.getUTCMonth() !== month) date.setUTCDate(0);
+  return date.toISOString().slice(0, 10);
+}
+
+function remainingPeriods(fromDate, targetDate, periodsPerYear) {
+  const from = dateOnly(fromDate);
+  const target = dateOnly(targetDate);
+  if (!from || !target || target <= from) return 0;
+  const fromYear = Number(from.slice(0, 4));
+  const fromMonth = Number(from.slice(5, 7));
+  const fromDay = Number(from.slice(8, 10));
+  const targetYear = Number(target.slice(0, 4));
+  const targetMonth = Number(target.slice(5, 7));
+  const targetDay = Number(target.slice(8, 10));
+  const months = (targetYear - fromYear) * 12 + (targetMonth - fromMonth) + (targetDay > fromDay ? 1 : 0);
+  return Math.max(0, Math.ceil(months / (12 / periodsPerYear)));
+}
+
+function financialPlanProjection({ profile = {}, rule = {}, currentPosition = null } = {}) {
+  const currency = currencyCode(profile.baseCurrency || currentPosition?.currency || rule.fixedAmount?.currency);
+  const years = Number(profile.targetYears);
+  const rawAssumption = profile.assumedAnnualReturnPercent;
+  const assumptionMissing = rawAssumption === null || rawAssumption === undefined || String(rawAssumption).trim() === '';
+  const assumedAnnualReturnPercent = assumptionMissing ? null : Number(rawAssumption);
+  const planStartedOn = dateOnly(profile.planStartedOn) || dateOnly(currentPosition?.asOfDate) || dateOnly(new Date());
+  const targetDate = addCalendarYears(planStartedOn, years);
+  const asOfDate = dateOnly(currentPosition?.asOfDate) || dateOnly(new Date());
+  const base = {
+    status: 'NOT_READY',
+    currency,
+    years: Number.isInteger(years) ? years : null,
+    planStartedOn,
+    targetDate,
+    assumedAnnualReturnPercent,
+    currentBalance: currentPosition?.amount || '0.00',
+    currentAsOfDate: currentPosition?.asOfDate || null,
+    frequency: rule.frequency || null,
+    periodicContribution: rule.fixedAmount ? minorToMoney(rule.fixedAmount.amountMinor) : null,
+    futureContributions: null,
+    projectedBalance: null,
+    projectedGrowth: null,
+    disclaimer: '这是按用户填写的测算假设计算的数学情景，不是收益预测、投资建议或收益承诺。'
+  };
+  if (!Number.isInteger(years) || years < 1 || years > 60) return { ...base, status: 'MISSING_HORIZON' };
+  if (assumptionMissing) return { ...base, status: 'MISSING_ASSUMPTION' };
+  if (!Number.isFinite(assumedAnnualReturnPercent) || assumedAnnualReturnPercent < 0 || assumedAnnualReturnPercent > 100) {
+    return { ...base, status: 'INVALID_ASSUMPTION' };
+  }
+  if (rule.contributionMethod !== 'FIXED' || !rule.fixedAmount) return { ...base, status: 'UNSUPPORTED_RULE' };
+  if (!currency || rule.fixedAmount.currency !== currency || (currentPosition?.currency && currentPosition.currency !== currency)) {
+    return { ...base, status: 'CURRENCY_MISMATCH' };
+  }
+  const periodsPerYear = { MONTHLY: 12, QUARTERLY: 4, YEARLY: 1 }[rule.frequency];
+  if (!periodsPerYear) return { ...base, status: 'UNSUPPORTED_RULE' };
+  const currentBalance = Number(currentPosition?.amount || 0);
+  const periodicContribution = Number(rule.fixedAmount.amountMinor) / 100;
+  if (!Number.isFinite(currentBalance) || currentBalance < 0 || !Number.isFinite(periodicContribution) || periodicContribution <= 0) {
+    return { ...base, status: 'OUT_OF_RANGE' };
+  }
+  const periods = remainingPeriods(asOfDate, targetDate, periodsPerYear);
+  if (periods === 0) return { ...base, status: 'HORIZON_REACHED', periods: 0, periodsPerYear };
+  const annualRate = assumedAnnualReturnPercent / 100;
+  const periodicRate = annualRate === 0 ? 0 : Math.pow(1 + annualRate, 1 / periodsPerYear) - 1;
+  const growthFactor = Math.pow(1 + periodicRate, periods);
+  const projectedCurrent = currentBalance * growthFactor;
+  const projectedContributions = periodicRate === 0
+    ? periodicContribution * periods
+    : periodicContribution * ((growthFactor - 1) / periodicRate);
+  const futureContributions = periodicContribution * periods;
+  const projectedBalance = projectedCurrent + projectedContributions;
+  const projectedGrowth = projectedBalance - currentBalance - futureContributions;
+  const formatted = {
+    currentBalance: moneyFromNumber(currentBalance),
+    periodicContribution: moneyFromNumber(periodicContribution),
+    futureContributions: moneyFromNumber(futureContributions),
+    projectedBalance: moneyFromNumber(projectedBalance),
+    projectedGrowth: moneyFromNumber(projectedGrowth)
+  };
+  if (Object.values(formatted).some(value => value === null)) return { ...base, status: 'OUT_OF_RANGE' };
+  return { ...base, ...formatted, status: 'READY', periods, periodsPerYear };
 }
 
 function xirr(cashflows) {
@@ -386,8 +532,10 @@ module.exports = {
   RECORD_STATUSES,
   RECORD_TYPES,
   calculateOverview,
+  currentPositionSummary,
   currencyCode,
   dateOnly,
+  financialPlanProjection,
   holdingSummary,
   minorToMoney,
   moneyPayload,

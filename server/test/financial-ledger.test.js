@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   calculateOverview,
+  currentPositionSummary,
+  financialPlanProjection,
   holdingSummary,
   minorToMoney,
   moneyPayload,
@@ -16,7 +18,21 @@ function snapshot(date, amount, status = 'CONFIRMED', currency = 'CNY') {
 }
 
 function record(type, date, amount, options = {}) {
-  return { recordType: type, occurredOn: date, status: options.status || 'CONFIRMED', payload: { amountMinor: moneyToMinor(amount), currency: options.currency || 'CNY', paidOutsidePlan: options.paidOutsidePlan === true } };
+  return {
+    id: options.id || `${type}-${date}-${amount}`,
+    recordType: type,
+    occurredOn: date,
+    createdAt: `${date}T09:00:00Z`,
+    status: options.status || 'CONFIRMED',
+    payload: {
+      amountMinor: moneyToMinor(amount),
+      currency: options.currency || 'CNY',
+      paidOutsidePlan: options.paidOutsidePlan === true,
+      channelLabel: options.channel || '',
+      productName: options.product || '',
+      quantity: options.quantity || ''
+    }
+  };
 }
 
 function holding(key, date, amount, costBasis, options = {}) {
@@ -139,6 +155,79 @@ test('holding profit stays unavailable when any current cost basis is missing', 
   assert.equal(result.totals[0].pnl, null);
   assert.equal(result.totals[0].unknownCostCount, 1);
   assert.equal(result.channels.find(item => item.label === '支付宝').pnl, '10.00');
+});
+
+test('current holdings expose matching recent money changes without adding them twice', () => {
+  const result = holdingSummary([
+    holding('alipay-hstech', '2026-09-16', '250294.35', '280000', {
+      channel: '支付宝', product: '易方达恒生科技ETF联接(QDII)C'
+    })
+  ], [], [
+    record('EXTERNAL_CONTRIBUTION', '2026-09-16', '83000', {
+      channel: '支付宝', product: '易方达恒生科技ETF联接(QDII)C'
+    })
+  ]);
+
+  assert.equal(result.totals[0].amount, '250294.35');
+  assert.equal(result.items[0].recentActivities.length, 1);
+  assert.equal(result.items[0].recentActivities[0].amount, '83000.00');
+  assert.equal(result.items[0].recentActivities[0].sharesPending, true);
+});
+
+test('a new user can use one total snapshot as the current position without entering holdings', () => {
+  const overview = calculateOverview({ snapshots: [snapshot('2026-09-16', '10000')] });
+  const positions = currentPositionSummary({ totals: [] }, overview);
+  assert.equal(positions.length, 1);
+  assert.equal(positions[0].amount, '10000.00');
+  assert.equal(positions[0].asOfDate, '2026-09-16');
+  assert.equal(positions[0].source, 'PLAN_TOTAL');
+  assert.equal(positions[0].pnl, null);
+});
+
+test('detailed holdings take precedence over a total snapshot in the same currency', () => {
+  const overview = calculateOverview({ snapshots: [snapshot('2026-09-16', '99999')] });
+  const holdingData = holdingSummary([holding('fund', '2026-09-16', '12000', '10000')]);
+  const positions = currentPositionSummary(holdingData, overview);
+  assert.equal(positions.length, 1);
+  assert.equal(positions[0].amount, '12000.00');
+  assert.equal(positions[0].source, 'HOLDINGS');
+});
+
+test('plan projection connects current balance, fixed contributions, horizon and user assumption', () => {
+  const result = financialPlanProjection({
+    profile: { targetYears: 20, assumedAnnualReturnPercent: 5, baseCurrency: 'CNY' },
+    rule: { contributionMethod: 'FIXED', frequency: 'MONTHLY', fixedAmount: { amountMinor: '1000000', currency: 'CNY' } },
+    currentPosition: { amount: '581788.13', costBasis: '622331.00', pnl: '-40542.87', asOfDate: '2026-09-16', currency: 'CNY' }
+  });
+
+  assert.equal(result.status, 'READY');
+  assert.equal(result.years, 20);
+  assert.equal(result.assumedAnnualReturnPercent, 5);
+  assert.equal(result.currentBalance, '581788.13');
+  assert.equal(result.futureContributions, '2400000.00');
+  assert.match(result.projectedBalance, /^5\d{6}\.\d{2}$/);
+  assert.match(result.disclaimer, /用户填写的测算假设/);
+});
+
+test('plan projection stays honest when the return assumption is missing', () => {
+  const result = financialPlanProjection({
+    profile: { targetYears: 20, assumedAnnualReturnPercent: null, baseCurrency: 'CNY' },
+    rule: { contributionMethod: 'FIXED', frequency: 'MONTHLY', fixedAmount: { amountMinor: '1000000', currency: 'CNY' } },
+    currentPosition: { amount: '0.00', currency: 'CNY' }
+  });
+  assert.equal(result.status, 'MISSING_ASSUMPTION');
+  assert.equal(result.projectedBalance, null);
+});
+
+test('plan horizon is anchored to its start instead of rolling forward forever', () => {
+  const result = financialPlanProjection({
+    profile: { targetYears: 20, planStartedOn: '2020-01-01', assumedAnnualReturnPercent: 5, baseCurrency: 'CNY' },
+    rule: { contributionMethod: 'FIXED', frequency: 'MONTHLY', fixedAmount: { amountMinor: '1000000', currency: 'CNY' } },
+    currentPosition: { amount: '500000.00', asOfDate: '2030-01-01', currency: 'CNY' }
+  });
+  assert.equal(result.targetDate, '2040-01-01');
+  assert.equal(result.periods, 120);
+  assert.equal(result.futureContributions, '1200000.00');
 });
 
 test('xirr is only returned for a solvable one-sign-change cash flow', () => {

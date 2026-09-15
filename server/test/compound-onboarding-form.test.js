@@ -22,7 +22,7 @@ test('compound onboarding asks for user decisions and keeps validation internals
   assert.doesNotMatch(canSave[0], /returnDefinition|reinvestmentDefinition|MetricTarget|outcomeEvidence|currentMilestone|weeklyTimeBudgetMinutes/);
 });
 
-test('financial capital supplies a tailored, non-advisory setup instead of asking for expected returns', () => {
+test('financial capital supplies a tailored setup without presenting a predicted return', () => {
   const archetypes = source('server/src/compound-archetypes.js');
   const route = source('server/src/routes/compound-progress.js');
   const page = source('src/pages/shroom/compound.vue');

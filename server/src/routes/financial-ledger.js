@@ -11,8 +11,10 @@ const { decryptFinancialPayload, encryptFinancialPayload } = require('../financi
 const {
   RECORD_TYPES,
   calculateOverview,
+  currentPositionSummary,
   currencyCode,
   dateOnly,
+  financialPlanProjection,
   holdingSummary,
   minorToMoney,
   moneyPayload,
@@ -432,6 +434,14 @@ async function planData(userId, threadId) {
   const holdings = holdingsResult.rows.map(mapHolding);
   const aliases = aliasesResult.rows.map(mapPrivateRow);
   const rules = rulesResult.rows.map(row => ({ id: row.id, version: row.version, effectiveOn: dateOnly(row.effective_on), decidedOn: dateOnly(row.decided_on), ...decrypt(row), createdAt: row.created_at }));
+  const profile = mapProfile(profileResult.rows[0]);
+  if (profile) profile.planStartedOn = dateOnly(thread.started_at);
+  const holdingData = holdingSummary(holdings, aliases, records);
+  const overview = calculateOverview({ records, snapshots, holdings });
+  overview.currentPositions = currentPositionSummary(holdingData, overview);
+  const currentPosition = overview.currentPositions.find(item => item.currency === profile?.baseCurrency) ||
+    { amount: '0.00', currency: profile?.baseCurrency || 'CNY', asOfDate: dateOnly(thread.started_at) };
+  overview.projection = financialPlanProjection({ profile, rule: rules[0], currentPosition });
   return {
     thread: {
       id: thread.id,
@@ -441,11 +451,11 @@ async function planData(userId, threadId) {
       currentStep: thread.current_step || '',
       startedAt: thread.started_at
     },
-    profile: mapProfile(profileResult.rows[0]),
-    overview: calculateOverview({ records, snapshots, holdings }),
+    profile,
+    overview,
     records,
     snapshots,
-    holdings: holdingSummary(holdings, aliases),
+    holdings: holdingData,
     aliases,
     rules,
     execution: executionSummary(records, rules),
@@ -488,6 +498,10 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
   if (!existing && req.body.sensitiveDataConsent !== true) {
     return fail(res, 400, '保存精确金额和持有信息前，需要单独确认敏感财务数据处理说明');
   }
+  const assumptionInput = req.body.assumedAnnualReturnPercent;
+  const assumedAnnualReturnPercent = assumptionInput === undefined
+    ? (existingPrivate.assumedAnnualReturnPercent ?? null)
+    : (assumptionInput === null || String(assumptionInput).trim() === '' ? null : Number(assumptionInput));
   const profile = {
     status: enumValue(req.body.status, PROFILE_STATUSES, existing?.status || 'ACTIVE'),
     scopeType: enumValue(req.body.scopeType, SCOPE_TYPES, existing?.scope_type || 'PARTIAL'),
@@ -501,11 +515,13 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
     reserveStatus: enumValue(req.body.reserveStatus, RESERVE_STATUSES, existing?.reserve_status || 'UNSPECIFIED'),
     purpose: text(req.body.purpose, 600),
     contributionMethod: enumValue(req.body.contributionMethod, CONTRIBUTION_METHODS, 'UNSET'),
-    firstAction: text(req.body.firstAction, 500)
+    firstAction: text(req.body.firstAction, 500),
+    assumedAnnualReturnPercent
   };
   const initialRule = !existing ? rulePayload(req.body.initialRule, profile.baseCurrency) : null;
   if (initialRule) profile.contributionMethod = initialRule.contributionMethod;
   if (!profile.baseCurrency ||
+    (profile.assumedAnnualReturnPercent !== null && (!Number.isFinite(profile.assumedAnnualReturnPercent) || profile.assumedAnnualReturnPercent < 0 || profile.assumedAnnualReturnPercent > 100)) ||
     (profile.horizonStatus === 'TARGET_DATE' && !profile.expectedUseOn) ||
     (profile.horizonStatus === 'TARGET_YEAR' && (!Number.isInteger(profile.targetYears) || profile.targetYears < 1 || profile.targetYears > 60))) {
     return fail(res, 400, '请检查币种和计划期限');
@@ -522,7 +538,8 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
     purpose: profile.purpose,
     contributionMethod: profile.contributionMethod,
     firstAction: profile.firstAction,
-    targetYears: profile.targetYears
+    targetYears: profile.targetYears,
+    assumedAnnualReturnPercent: profile.assumedAnnualReturnPercent
   });
   await db.transaction(async client => {
     await client.query(
