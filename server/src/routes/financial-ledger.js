@@ -41,6 +41,7 @@ const HORIZON_STATUSES = ['TARGET_DATE', 'TARGET_YEAR', 'UNDECIDED'];
 const RESERVE_STATUSES = ['RESERVED', 'PENDING', 'UNSPECIFIED'];
 const CONTRIBUTION_METHODS = ['FIXED', 'SURPLUS_RATIO', 'BATCHED_LUMP_SUM', 'FLEXIBLE', 'UNSET'];
 const CONTRIBUTION_FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'YEARLY'];
+const REVIEW_FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'YEARLY'];
 const SOURCE_KINDS = ['MANUAL', 'IMPORT', 'DIARY', 'MIGRATION'];
 const CLASSIFICATION_STATUSES = ['USER_ENTERED', 'SOURCE_VERIFIED', 'UNVERIFIED'];
 
@@ -199,6 +200,34 @@ function sensitiveInput(value) {
 
 function safeSourceKind(value) {
   return enumValue(value, SOURCE_KINDS, 'MANUAL');
+}
+
+function targetLabelList(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(/[\n,，]+/);
+  return [...new Set(source.map(item => text(item, 120)).filter(Boolean))].slice(0, 12);
+}
+
+function rulePayload(input, baseCurrency) {
+  const value = input && typeof input === 'object' ? input : {};
+  const contributionMethod = enumValue(value.contributionMethod, CONTRIBUTION_METHODS);
+  if (!contributionMethod) return null;
+  const payload = {
+    contributionMethod,
+    frequency: enumValue(value.frequency, CONTRIBUTION_FREQUENCIES, contributionMethod === 'FIXED' ? 'MONTHLY' : null),
+    fixedAmount: value.fixedAmount ? moneyPayload({ amount: value.fixedAmount, currency: value.currency || baseCurrency }) : null,
+    surplusRatio: value.surplusRatio === '' || value.surplusRatio === undefined ? null : Number(value.surplusRatio),
+    totalBudget: value.totalBudget ? moneyPayload({ amount: value.totalBudget, currency: value.currency || baseCurrency }) : null,
+    targetLabels: targetLabelList(value.targetLabels || value.targetLabelsText),
+    reviewFrequency: enumValue(value.reviewFrequency, REVIEW_FREQUENCIES, 'MONTHLY'),
+    returnDisposition: text(value.returnDisposition, 120),
+    userLimits: text(value.userLimits, 800),
+    changeReason: text(value.changeReason, 600)
+  };
+  if ((payload.surplusRatio !== null && (!Number.isFinite(payload.surplusRatio) || payload.surplusRatio < 0 || payload.surplusRatio > 100)) ||
+    (contributionMethod === 'FIXED' && !payload.fixedAmount) ||
+    (contributionMethod === 'SURPLUS_RATIO' && payload.surplusRatio === null) ||
+    (contributionMethod === 'BATCHED_LUMP_SUM' && !payload.totalBudget)) return null;
+  return payload;
 }
 
 function recordInput(input, options = {}) {
@@ -517,6 +546,7 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
   const thread = await ownedFinancialThread(req.user.id, req.params.threadId);
   if (!thread) return fail(res, 404, '财务计划不存在');
   const existing = await profileFor(db, req.user.id, thread.id);
+  const existingPrivate = existing ? decrypt(existing) : {};
   if (!existing && req.body.sensitiveDataConsent !== true) {
     return fail(res, 400, '保存精确金额和持有信息前，需要单独确认敏感财务数据处理说明');
   }
@@ -527,20 +557,34 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
     baseCurrency: currencyCode(req.body.baseCurrency, existing?.base_currency || 'CNY'),
     horizonStatus: enumValue(req.body.horizonStatus, HORIZON_STATUSES, existing?.horizon_status || 'UNDECIDED'),
     expectedUseOn: req.body.expectedUseOn ? dateOnly(req.body.expectedUseOn) : null,
+    targetYears: req.body.targetYears === undefined
+      ? (Number(existingPrivate.targetYears) || null)
+      : Number(req.body.targetYears),
     reserveStatus: enumValue(req.body.reserveStatus, RESERVE_STATUSES, existing?.reserve_status || 'UNSPECIFIED'),
     purpose: text(req.body.purpose, 600),
     contributionMethod: enumValue(req.body.contributionMethod, CONTRIBUTION_METHODS, 'UNSET'),
     firstAction: text(req.body.firstAction, 500)
   };
-  if (!profile.baseCurrency || (profile.horizonStatus === 'TARGET_DATE' && !profile.expectedUseOn)) {
-    return fail(res, 400, '请检查币种和预计使用日期');
+  const initialRule = !existing ? rulePayload(req.body.initialRule, profile.baseCurrency) : null;
+  if (initialRule) profile.contributionMethod = initialRule.contributionMethod;
+  if (!profile.baseCurrency ||
+    (profile.horizonStatus === 'TARGET_DATE' && !profile.expectedUseOn) ||
+    (profile.horizonStatus === 'TARGET_YEAR' && (!Number.isInteger(profile.targetYears) || profile.targetYears < 1 || profile.targetYears > 60))) {
+    return fail(res, 400, '请检查币种和计划期限');
   }
   if (!profile.purpose || !profile.firstAction) return fail(res, 400, '请填写计划目的和第一项核对行动');
-  if (sensitiveInput(profile)) return fail(res, 400, '请删除账户号、密码、验证码等敏感凭证后再保存');
+  if (!existing && (!initialRule ||
+    !['FIXED', 'SURPLUS_RATIO', 'BATCHED_LUMP_SUM'].includes(initialRule.contributionMethod) ||
+    !initialRule.frequency ||
+    !initialRule.targetLabels.length)) {
+    return fail(res, 400, '首次建立资金计划时，请填写期限、投入规则、金额或比例，以及自己选择的标的或方向');
+  }
+  if (sensitiveInput({ profile, initialRule: req.body.initialRule })) return fail(res, 400, '请删除账户号、密码、验证码等敏感凭证后再保存');
   const payload = encryptFinancialPayload({
     purpose: profile.purpose,
     contributionMethod: profile.contributionMethod,
-    firstAction: profile.firstAction
+    firstAction: profile.firstAction,
+    targetYears: profile.targetYears
   });
   await db.transaction(async client => {
     await client.query(
@@ -567,17 +611,28 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
         profile.scopeType === 'ALL_LONG_TERM' ? '全部长期投资' : '一部分长期资金']
     );
     if (!existing) {
- await client.query(
-      `INSERT INTO compound_events
-        (id, user_id, thread_id, kind, status, actor, summary, payload)
-       VALUES ($1,$2,$3,'ADJUSTMENT','CONFIRMED','USER','启用财务事实账本',$4::jsonb)`,
-      [crypto.randomUUID(), req.user.id, thread.id, JSON.stringify({
-        financialLedgerVersion: 2,
-        privacyNoticeVersion: PRIVACY_NOTICE_VERSION,
-        legacyAmountsMigrated: false
-      })]
-    );
-}
+      const initialRuleInput = req.body.initialRule || {};
+      await client.query(
+        `INSERT INTO financial_rule_versions
+          (id,user_id,thread_id,version,effective_on,decided_on,private_payload)
+         VALUES ($1,$2,$3,1,$4,$5,$6)`,
+        [crypto.randomUUID(), req.user.id, thread.id,
+          dateOnly(initialRuleInput.effectiveOn) || shanghaiDate(),
+          dateOnly(initialRuleInput.decidedOn) || shanghaiDate(),
+          encryptFinancialPayload(initialRule)]
+      );
+      await client.query(
+        `INSERT INTO compound_events
+          (id, user_id, thread_id, kind, status, actor, summary, payload)
+         VALUES ($1,$2,$3,'ADJUSTMENT','CONFIRMED','USER','启用财务事实账本',$4::jsonb)`,
+        [crypto.randomUUID(), req.user.id, thread.id, JSON.stringify({
+          financialLedgerVersion: 2,
+          privacyNoticeVersion: PRIVACY_NOTICE_VERSION,
+          legacyAmountsMigrated: false,
+          initialRuleCreated: true
+        })]
+      );
+    }
   });
   return ok(res, { profile: mapProfile(await profileFor(db, req.user.id, thread.id)) }, '资金计划设置已保存');
 }));
@@ -877,20 +932,8 @@ router.post('/plans/:threadId/rules', asyncRoute(async (req, res) => {
     if (priorRule && (effectiveOn < today || effectiveOn < dateOnly(priorRule.effective_on))) {
       return { error: 'retroactive' };
     }
-    const payload = {
-      contributionMethod,
-      frequency: enumValue(req.body.frequency, CONTRIBUTION_FREQUENCIES, contributionMethod === 'FIXED' ? 'MONTHLY' : null),
-      fixedAmount: req.body.fixedAmount ? moneyPayload({ amount: req.body.fixedAmount, currency: req.body.currency || owned.profile.base_currency }) : null,
-      surplusRatio: req.body.surplusRatio === '' || req.body.surplusRatio === undefined ? null : Number(req.body.surplusRatio),
-      totalBudget: req.body.totalBudget ? moneyPayload({ amount: req.body.totalBudget, currency: req.body.currency || owned.profile.base_currency }) : null,
-      returnDisposition: text(req.body.returnDisposition, 120),
-      userLimits: text(req.body.userLimits, 800),
-      changeReason: text(req.body.changeReason, 600)
-    };
-    if ((payload.surplusRatio !== null && (!Number.isFinite(payload.surplusRatio) || payload.surplusRatio < 0 || payload.surplusRatio > 100)) ||
-      (contributionMethod === 'FIXED' && !payload.fixedAmount) ||
-      (contributionMethod === 'SURPLUS_RATIO' && payload.surplusRatio === null) ||
-      (contributionMethod === 'BATCHED_LUMP_SUM' && !payload.totalBudget)) return { error: 'input' };
+    const payload = rulePayload(req.body, owned.profile.base_currency);
+    if (!payload || payload.contributionMethod !== contributionMethod || !payload.targetLabels.length) return { error: 'input' };
     if (version > 1 && !payload.changeReason) return { error: 'reason' };
     const result = await client.query(
       `INSERT INTO financial_rule_versions

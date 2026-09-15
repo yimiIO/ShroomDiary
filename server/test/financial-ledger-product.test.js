@@ -59,8 +59,28 @@ test('financial product exposes four tabs without adding a bottom navigation ite
   assert.match(page, /计划/);
   assert.match(page, /暂不能计算/);
   assert.match(page, /记录与核算，不是投资建议/);
+  assert.match(page, /计划期限/);
+  assert.match(page, /每期计划投入金额/);
+  assert.match(page, /计划执行周期/);
+  assert.match(page, /计划标的不是持有记录/);
+  assert.match(page, /targetLabelsText/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
   assert.equal(pages.tabBar.list.length, 4);
+});
+
+test('first financial setup persists a complete plan and rule instead of an empty ledger', () => {
+  const route = source('server/src/routes/financial-ledger.js');
+  const compoundPage = source('src/pages/shroom/compound.vue');
+
+  assert.match(route, /targetYears/);
+  assert.match(route, /initialRule/);
+  assert.match(route, /targetLabels/);
+  assert.match(route, /reviewFrequency/);
+  assert.match(route, /INSERT INTO financial_rule_versions/);
+  assert.match(route, /\['FIXED', 'SURPLUS_RATIO', 'BATCHED_LUMP_SUM'\]\.includes/);
+  assert.match(compoundPage, /financialSetupPayload/);
+  assert.match(compoundPage, /financialPlanSummary/);
+  assert.match(compoundPage, /只计算计划投入本金，不包含任何收益假设/);
 });
 
 test('legacy financial progress verdicts are blocked instead of influencing ledger results', () => {
