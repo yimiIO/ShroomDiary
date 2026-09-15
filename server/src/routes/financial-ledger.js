@@ -15,6 +15,7 @@ const {
   dateOnly,
   minorToMoney,
   moneyPayload,
+  moneyToMinor,
   stableFingerprint
 } = require('../financial-ledger');
 const {
@@ -250,6 +251,12 @@ function holdingInput(input) {
   const valuedOn = dateOnly(input.valuedOn);
   const payload = moneyPayload(input, { allowZero: true });
   if (!valuedOn || !payload || (!payload.productName && !payload.channelLabel && !payload.directionName)) return null;
+  const hasCostBasis = input.costBasis !== undefined && input.costBasis !== null && String(input.costBasis).trim() !== '';
+  const costBasisMinor = hasCostBasis ? moneyToMinor(input.costBasis, { allowZero: true }) : null;
+  if (hasCostBasis && costBasisMinor === null) return null;
+  const unrealizedPnlMinor = costBasisMinor === null
+    ? null
+    : (BigInt(payload.amountMinor) - BigInt(costBasisMinor)).toString();
   const percent = input.userMaxPercent === '' || input.userMaxPercent === undefined || input.userMaxPercent === null
     ? null : Number(input.userMaxPercent);
   if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) return null;
@@ -268,7 +275,12 @@ function holdingInput(input) {
       shareClass: text(input.shareClass, 80),
       category: text(input.category, 120),
       userMaxPercent: percent,
-      sourceLabel: text(input.sourceLabel, 160)
+      sourceLabel: text(input.sourceLabel, 160),
+      costBasisMinor,
+      unrealizedPnlMinor,
+      unrealizedPnlTone: unrealizedPnlMinor === null
+        ? null
+        : (BigInt(unrealizedPnlMinor) < 0n ? 'negative' : (BigInt(unrealizedPnlMinor) > 0n ? 'positive' : 'neutral'))
     }
   };
 }
@@ -845,9 +857,14 @@ router.patch('/plans/:threadId/holdings/:holdingId', asyncRoute(async (req, res)
     const previous = decrypt(existing);
     const input = holdingInput({
       ...previous,
-...req.body,
+      ...req.body,
       valuedOn: req.body.valuedOn || dateOnly(existing.valued_on),
       amount: req.body.amount || minorToMoney(previous.amountMinor),
+      costBasis: req.body.costBasis !== undefined
+        ? req.body.costBasis
+        : (previous.costBasisMinor !== undefined && previous.costBasisMinor !== null
+          ? minorToMoney(previous.costBasisMinor)
+          : ''),
       currency: req.body.currency || existing.currency,
       classificationStatus: req.body.classificationStatus || existing.classification_status
     });

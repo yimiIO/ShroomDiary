@@ -67,6 +67,12 @@ test('financial product exposes four tabs without adding a bottom navigation ite
 	assert.match(page, /具体产品（可选）/);
 	assert.match(page, /在哪个平台（可选）/);
 	assert.match(page, /recordContext\(item\)/);
+	assert.match(page, /投入成本（可选）/);
+	assert.match(page, /浮亏/);
+	assert.match(page, /costBasisMinor/);
+	assert.match(page, /unrealizedPnlMinor/);
+	assert.match(source('server/src/routes/financial-ledger.js'), /BigInt\(payload\.amountMinor\) - BigInt\(costBasisMinor\)/);
+	assert.match(source('server/src/routes/financial-ledger.js'), /unrealizedPnlTone/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
   assert.equal(pages.tabBar.list.length, 4);
 });
