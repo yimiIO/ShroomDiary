@@ -23,7 +23,7 @@ const SETUP_BY_KEY = Object.freeze({
   financial_capital: {
     titleLabel: '这项长期本金计划叫什么？',
     titlePlaceholder: '例如：长期选择权资金；不要填写账户信息',
-    commitmentLabel: '计划范围在私人台账中确认',
+    commitmentLabel: '计划范围稍后在投资计划中确认',
     commitmentPlaceholder: '创建后选择全部长期投资或一部分长期资金',
     outcomeLabel: '这项长期本金计划为了什么？',
     outcomePlaceholder: '描述长期目的；不需要填写目标收益率',

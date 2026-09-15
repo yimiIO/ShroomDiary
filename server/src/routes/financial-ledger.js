@@ -532,7 +532,7 @@ async function planData(userId, threadId) {
       )
     },
     policyVersion: FINANCIAL_COMPOUND_POLICY_VERSION,
-    boundary: '只做私人台账、事实核算和用户自设规则核对；不提供产品、组合、买卖时点或收益预测建议。'
+    boundary: '只记录你填写的事实，并检查是否按自己的计划执行；不提供具体产品、买卖时点或收益预测建议。'
   };
 }
 
@@ -744,13 +744,13 @@ router.post('/plans/:threadId/snapshots', asyncRoute(async (req, res) => {
       boolean(req.body.confirmed) ? 'CONFIRMED' : 'DRAFT', safeSourceKind(req.body.sourceKind),
       text(req.body.sourceRef, 160) || null, clientRequestId, encryptFinancialPayload(input.payload)]
   );
-  return ok(res, { snapshot: mapSnapshot(result.rows[0]) }, boolean(req.body.confirmed) ? '资产快照已确认' : '资产快照待核对');
+  return ok(res, { snapshot: mapSnapshot(result.rows[0]) }, boolean(req.body.confirmed) ? '这一天的总金额已确认' : '这一天的总金额待核对');
 }));
 
 router.patch('/plans/:threadId/snapshots/:snapshotId', asyncRoute(async (req, res) => {
   const snapshotId = uuid(req.params.snapshotId);
   const revisionReason = text(req.body.revisionReason, 600);
-  if (!snapshotId || !revisionReason) return fail(res, 400, '更正快照时需要填写修改依据');
+  if (!snapshotId || !revisionReason) return fail(res, 400, '更正总金额记录时需要填写修改依据');
   const saved = await db.transaction(async client => {
     const owned = await requireProfile(req.user.id, req.params.threadId, { queryable: client, lock: true });
     if (owned.error) return owned;
@@ -786,9 +786,9 @@ router.patch('/plans/:threadId/snapshots/:snapshotId', asyncRoute(async (req, re
   });
   if (saved.error === 'thread') return fail(res, 404, '财务计划不存在');
   if (saved.error === 'profile') return fail(res, 409, '请先完成资金计划设置');
-  if (saved.error === 'snapshot') return fail(res, 409, '原快照已经被修订或作废');
+  if (saved.error === 'snapshot') return fail(res, 409, '原总金额记录已经被修订或作废');
   if (saved.error) return fail(res, 400, '请检查更正后的日期、金额和修改依据');
-  return ok(res, { snapshot: mapSnapshot(saved.row) }, '快照已更正，原版本继续保留');
+  return ok(res, { snapshot: mapSnapshot(saved.row) }, '总金额记录已更正，原版本继续保留');
 }));
 
 router.delete('/plans/:threadId/snapshots/:snapshotId', asyncRoute(async (req, res) => {
@@ -796,14 +796,14 @@ router.delete('/plans/:threadId/snapshots/:snapshotId', asyncRoute(async (req, r
   const snapshotId = uuid(req.params.snapshotId);
   const reason = text(req.body.reason, 600);
   if (owned.error) return fail(res, owned.error === 'thread' ? 404 : 409, owned.error === 'thread' ? '财务计划不存在' : '请先完成资金计划设置');
-  if (!snapshotId || !reason) return fail(res, 400, '作废快照时需要保留原因');
+  if (!snapshotId || !reason) return fail(res, 400, '作废总金额记录时需要保留原因');
   const result = await db.query(
     `UPDATE financial_snapshots SET status='VOID',revision_reason=$4,updated_at=now()
       WHERE id=$1 AND user_id=$2 AND thread_id=$3 AND status NOT IN ('SUPERSEDED','VOID') RETURNING *`,
     [snapshotId, req.user.id, owned.thread.id, reason]
   );
-  if (!result.rowCount) return fail(res, 409, '快照已经被修订、作废或不存在');
-  return ok(res, { snapshot: mapSnapshot(result.rows[0]) }, '快照已作废，历史依据仍保留');
+  if (!result.rowCount) return fail(res, 409, '总金额记录已经被修订、作废或不存在');
+	return ok(res, { snapshot: mapSnapshot(result.rows[0]) }, '总金额记录已作废，历史依据仍保留');
 }));
 
 router.post('/plans/:threadId/holdings', asyncRoute(async (req, res) => {

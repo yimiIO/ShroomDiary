@@ -8,11 +8,11 @@
 				<view class="private-mark"><view></view><text>仅自己</text></view>
 			</view>
 
-			<view v-if="loading" class="state-card"><view class="loading-dot"></view><text>正在读取私人台账</text></view>
+				<view v-if="loading" class="state-card"><view class="loading-dot"></view><text>正在读取你的投资计划</text></view>
 			<view v-else-if="loadError" class="state-card error"><text>{{ loadError }}</text><button class="dark-button" @tap="load">重新读取</button></view>
 
 			<template v-else>
-				<view class="boundary-strip"><text>记录与核算，不是投资建议</text><text>{{ data.boundary }}</text></view>
+					<view class="boundary-strip"><text>这里只记录和计算，不推荐买什么</text><text>{{ data.boundary }}</text></view>
 
 				<view v-if="!data.profile || editor === 'PROFILE'" class="setup-card">
 					<view class="section-head"><view><text class="kicker">{{ data.profile ? 'PLAN SETTINGS' : 'START CLEAR' }}</text><text>{{ data.profile ? '调整计划设置' : '先定义这笔长期资金' }}</text></view><button v-if="data.profile" @tap="closeEditor">×</button></view>
@@ -38,8 +38,8 @@
 					<view class="next-action-preview"><text>创建后的第一项核对</text><text>{{ profileFirstAction }}</text></view>
 
 					<view class="privacy-box"><text>敏感财务数据处理说明</text><text>精确金额、持有名称和用户规则将使用加密字段保存，仅当前账号可访问，不进入发现。不要填写银行卡、证券账户、密码或验证码。</text></view>
-					<checkbox-group v-if="!data.profile" class="consent" @change="changeSensitiveConsent"><label><checkbox value="accepted" :checked="profileDraft.sensitiveDataConsent" color="#172019" /><text>我单独同意 Shroom 为建立私人财务台账处理我主动填写的金额与持有信息。</text></label></checkbox-group>
-					<button class="primary" :disabled="saving || !canSaveProfile" @tap="saveProfile">{{ saving ? '正在加密保存…' : (data.profile ? '保存计划设置' : '建立私人台账') }}</button>
+						<checkbox-group v-if="!data.profile" class="consent" @change="changeSensitiveConsent"><label><checkbox value="accepted" :checked="profileDraft.sensitiveDataConsent" color="#172019" /><text>我同意 Shroom 仅在自己的账号中加密保存我填写的金额与持有信息。</text></label></checkbox-group>
+						<button class="primary" :disabled="saving || !canSaveProfile" @tap="saveProfile">{{ saving ? '正在加密保存…' : (data.profile ? '保存计划设置' : '创建投资计划') }}</button>
 				</view>
 
 				<template v-if="data.profile && editor !== 'PROFILE'">
@@ -48,20 +48,20 @@
 					<view v-if="activeTab === 'OVERVIEW'" class="tab-view">
 						<view class="overview-hero">
 							<text class="kicker">{{ data.overview.asOfDate ? 'DATA AS OF ' + data.overview.asOfDate : 'WAITING FOR BASELINE' }}</text>
-							<text class="overview-title">{{ data.overview.canCalculate ? '资产变化，来自哪里' : '先补齐能核算的事实' }}</text>
-							<text>{{ data.overview.canCalculate ? '投入和投资损益已经分开呈现。' : '至少需要两个日期的计划总资产快照，以及期间的外部资金进出。' }}</text>
+							<text class="overview-title">{{ data.overview.canCalculate ? '我投入了多少，实际赚亏多少' : '先记一次今天的总金额' }}</text>
+							<text>{{ data.overview.canCalculate ? '投入和投资产生的赚亏已经分开计算。' : '之后再记另一天的总金额，并补上期间的投入或取出，就能计算实际赚亏。' }}</text>
 							<text>本计划仅覆盖你主动纳入的资产，不代表你的全部财产。</text>
 							<view v-if="data.overview.pendingCount" class="pending-pill">{{ data.overview.pendingCount }} 项待核对</view>
 						</view>
 
-						<view v-if="!data.overview.currencies.length" class="empty-card"><text>还没有金额记录</text><text>可以先录入今天的计划总资产，也可以只保留计划，稍后再补。</text><button @tap="openSnapshot">记录起点资产</button></view>
+						<view v-if="!data.overview.currencies.length" class="empty-card"><text>还没有金额记录</text><text>先记录今天这份计划内所有资产的总金额。也可以稍后再记，不影响计划本身。</text><button @tap="openSnapshot">记录今天的总金额</button></view>
 						<view v-for="item in data.overview.currencies" :key="item.currency" class="currency-card">
 							<view class="currency-head"><view><text>{{ item.currency }}</text><text>{{ item.latest ? '截至 ' + item.latest.date : '暂无最新市值' }}</text></view><text v-if="item.investmentPnl === null">暂不能计算</text><text v-else :class="item.investmentPnlTone">{{ signedMoney(item.investmentPnl, item.currency) }}</text></view>
 							<view class="metric-grid">
-								<view><text>期初资产</text><text>{{ item.opening ? formatMoney(item.opening.amount, item.currency) : '待补' }}</text></view>
-								<view><text>跟踪期净投入</text><text>{{ formatMoney(item.netContribution, item.currency) }}</text></view>
-								<view><text>最新资产价值</text><text>{{ item.latest ? formatMoney(item.latest.amount, item.currency) : '待补' }}</text></view>
-								<view><text>投资损益</text><text v-if="item.investmentPnl !== null" :class="item.investmentPnlTone">{{ signedMoney(item.investmentPnl, item.currency) }}</text><text v-else>暂不能计算</text></view>
+								<view><text>开始时总金额</text><text>{{ item.opening ? formatMoney(item.opening.amount, item.currency) : '待补' }}</text></view>
+								<view><text>后来投入减取出</text><text>{{ formatMoney(item.netContribution, item.currency) }}</text></view>
+								<view><text>现在总金额</text><text>{{ item.latest ? formatMoney(item.latest.amount, item.currency) : '待补' }}</text></view>
+								<view><text>扣除投入后的赚亏</text><text v-if="item.investmentPnl !== null" :class="item.investmentPnlTone">{{ signedMoney(item.investmentPnl, item.currency) }}</text><text v-else>暂不能计算</text></view>
 							</view>
 							<view v-if="item.annualizedReturn !== null" class="detail-metric"><text>资金加权年化（XIRR）</text><text>{{ item.annualizedReturn }}%</text><small v-if="item.annualizedShortPeriod">短期折算，不代表已实现一整年收益或未来预期</small></view>
 							<view v-if="item.missing.length" class="missing-list"><text v-for="(missing, index) in item.missing" :key="index">— {{ missing }}</text></view>
@@ -69,16 +69,16 @@
 
 						<view class="execution-card" :class="executionClass"><view><text>按自己的规则执行</text><text v-if="data.execution.ruleVersion">规则 v{{ data.execution.ruleVersion }}</text></view><text>{{ data.execution.message }}</text><view v-if="data.execution.planned" class="execution-numbers"><text>本期计划 {{ formatMoney(data.execution.planned, data.execution.currency) }}</text><text>已确认 {{ formatMoney(data.execution.actual, data.execution.currency) }}</text><text>偏差 {{ signedMoney(data.execution.deviation, data.execution.currency) }}</text></view></view>
 
-						<view class="quick-actions"><button @tap="openRecord"><text>＋</text><view><text>资金事件</text><text>投入、取出、转移或费用</text></view></button><button @tap="openSnapshot"><text>◎</text><view><text>市值快照</text><text>某一天整个计划值多少</text></view></button><button @tap="openReview"><text>↗</text><view><text>月度核对</text><text>事实、解释与待处理分开</text></view></button></view>
+						<view class="quick-actions"><button @tap="openRecord"><text>＋</text><view><text>记一笔资金变动</text><text>投入、取出、转移或费用</text></view></button><button @tap="openSnapshot"><text>◎</text><view><text>记某天的总金额</text><text>用来计算实际赚亏</text></view></button><button @tap="openReview"><text>↗</text><view><text>检查是否按计划</text><text>每月或每季度看一次</text></view></button></view>
 						<view v-if="data.reviews.length" class="section-card"><view class="section-head"><view><text class="kicker">LAST REVIEW</text><text>最近一次核对</text></view></view><view class="review-row"><text>{{ data.reviews[0].scopeStart }} — {{ data.reviews[0].scopeEnd }}</text><text>{{ data.reviews[0].userExplanation || '只保存了当期核算事实' }}</text></view></view>
 					</view>
 
 					<view v-if="activeTab === 'RECORDS'" class="tab-view">
-						<view class="action-row"><button @tap="openRecord">记资金事件</button><button @tap="openSnapshot">记市值快照</button><button v-if="data.features.aiImportEnabled" @tap="openImport">粘贴旧表 / 文字</button></view>
+						<view class="action-row"><button @tap="openRecord">记一笔资金变动</button><button @tap="openSnapshot">记某天的总金额</button><button v-if="data.features.aiImportEnabled" @tap="openImport">粘贴旧表 / 文字</button></view>
 						<view v-if="!data.features.aiImportEnabled" class="ai-disabled-note">AI 财务文本整理暂未开放；手动记录和核算不受影响。</view>
-						<view class="definition-note"><text>资金事件 ≠ 市值快照</text><text>余额增加不等于新增投入；账户总额与下属产品明细也不会同时加总。</text></view>
-						<view class="section-card"><view class="section-head"><view><text class="kicker">MONEY EVENTS</text><text>资金事件</text></view><text>{{ data.records.length }}</text></view><view v-if="!data.records.length" class="inline-empty">还没有资金事件</view><view v-for="item in data.records" :key="item.id" class="ledger-row"><view><text>{{ recordLabel(item.recordType) }}</text><text>{{ item.occurredOn }} · {{ statusLabel(item.status) }}</text><view v-if="editableStatus(item.status)" class="row-actions"><button @tap="editRecord(item)">{{ item.status === 'DRAFT' ? '核对' : '更正' }}</button><button @tap="voidRecord(item)">作废</button></view></view><view><text>{{ formatMoney(amountFrom(item), item.currency) }}</text><text>{{ item.payload.sourceCategory || item.payload.channelLabel || item.payload.note || '未填写来源' }}</text></view></view></view>
-						<view class="section-card"><view class="section-head"><view><text class="kicker">VALUATION SNAPSHOTS</text><text>计划总资产快照</text></view><text>{{ data.snapshots.length }}</text></view><view v-if="!data.snapshots.length" class="inline-empty">还没有市值快照</view><view v-for="item in data.snapshots" :key="item.id" class="ledger-row"><view><text>{{ item.snapshotKind === 'PLAN_TOTAL' ? '计划总资产' : '持有明细' }}</text><text>{{ item.valuedOn }} · {{ statusLabel(item.status) }}</text><view v-if="editableStatus(item.status)" class="row-actions"><button @tap="editSnapshot(item)">{{ item.status === 'DRAFT' ? '核对' : '更正' }}</button><button @tap="voidSnapshot(item)">作废</button></view></view><view><text>{{ formatMoney(amountFrom(item), item.currency) }}</text><text>{{ item.payload.coverage || '按当日确认范围' }}</text></view></view></view>
+						<view class="definition-note"><text>为什么要记两种数据？</text><text>“资金变动”说明你后来投入或取出了多少；“某天的总金额”用来和之前比较。两者分开，才能算出真正的赚亏。</text></view>
+						<view class="section-card"><view class="section-head"><view><text class="kicker">投入与取出</text><text>资金变动记录</text></view><text>{{ data.records.length }}</text></view><view v-if="!data.records.length" class="inline-empty">还没有投入、取出或费用记录</view><view v-for="item in data.records" :key="item.id" class="ledger-row"><view><text>{{ recordLabel(item.recordType) }}</text><text>{{ item.occurredOn }} · {{ statusLabel(item.status) }}</text><view v-if="editableStatus(item.status)" class="row-actions"><button @tap="editRecord(item)">{{ item.status === 'DRAFT' ? '核对' : '更正' }}</button><button @tap="voidRecord(item)">作废</button></view></view><view><text>{{ formatMoney(amountFrom(item), item.currency) }}</text><text>{{ item.payload.sourceCategory || item.payload.channelLabel || item.payload.note || '未填写来源' }}</text></view></view></view>
+						<view class="section-card"><view class="section-head"><view><text class="kicker">不同日期的总金额</text><text>总金额记录</text></view><text>{{ data.snapshots.length }}</text></view><view v-if="!data.snapshots.length" class="inline-empty">还没有记录某一天的总金额</view><view v-for="item in data.snapshots" :key="item.id" class="ledger-row"><view><text>{{ item.snapshotKind === 'PLAN_TOTAL' ? '这一天的总金额' : '持有明细' }}</text><text>{{ item.valuedOn }} · {{ statusLabel(item.status) }}</text><view v-if="editableStatus(item.status)" class="row-actions"><button @tap="editSnapshot(item)">{{ item.status === 'DRAFT' ? '核对' : '更正' }}</button><button @tap="voidSnapshot(item)">作废</button></view></view><view><text>{{ formatMoney(amountFrom(item), item.currency) }}</text><text>{{ item.payload.coverage || '按当日确认范围' }}</text></view></view></view>
 						<view v-if="data.notes.length" class="section-card"><view class="section-head"><view><text class="kicker">DECISION CONTEXT</text><text>当时的判断与决定</text></view><button @tap="openNote">＋</button></view><view v-for="item in data.notes" :key="item.id" class="note-row"><text>{{ item.decidedOn }} · {{ item.noteType === 'DECISION' ? '决定' : '判断' }}</text><text>{{ item.body }}</text><small>这是用户当时的记录，不是系统验证结论</small></view></view>
 					</view>
 
@@ -115,7 +115,7 @@
 						</template>
 
 						<template v-if="editor === 'SNAPSHOT'">
-							<view class="field"><text>估值日期</text><picker mode="date" :value="snapshotDraft.valuedOn" @change="setDate('snapshotDraft', 'valuedOn', $event)"><view class="date-input">{{ snapshotDraft.valuedOn }}</view></picker></view><view class="money-fields"><label class="field"><text>计划总资产价值</text><input v-model="snapshotDraft.amount" type="digit" placeholder="0.00" /></label><label class="field currency"><text>币种</text><input v-model="snapshotDraft.currency" maxlength="3" /></label></view><label class="field"><text>覆盖范围</text><input v-model="snapshotDraft.coverage" maxlength="240" placeholder="例如：本计划全部已纳入资产及现金" /></label><label v-if="snapshotDraft.editingId" class="field"><text>修改依据</text><textarea v-model="snapshotDraft.revisionReason" maxlength="600" auto-height /></label><view class="warning-card">快照按当日结束时理解。同日发生的资金事件已包含在快照里，不会重复计入；下属持有明细也不会与总额相加。</view><button class="primary" :disabled="saving || snapshotDraft.amount === ''" @tap="saveSnapshot">确认这一天的总资产</button>
+							<view class="field"><text>哪一天</text><picker mode="date" :value="snapshotDraft.valuedOn" @change="setDate('snapshotDraft', 'valuedOn', $event)"><view class="date-input">{{ snapshotDraft.valuedOn }}</view></picker></view><view class="money-fields"><label class="field"><text>这一天计划内所有资产共值多少</text><input v-model="snapshotDraft.amount" type="digit" placeholder="0.00" /></label><label class="field currency"><text>币种</text><input v-model="snapshotDraft.currency" maxlength="3" /></label></view><label class="field"><text>这笔总金额包含什么</text><input v-model="snapshotDraft.coverage" maxlength="240" placeholder="例如：本计划内的全部投资和现金" /></label><label v-if="snapshotDraft.editingId" class="field"><text>修改依据</text><textarea v-model="snapshotDraft.revisionReason" maxlength="600" auto-height /></label><view class="warning-card">填写当天结束时的总金额。如果当天刚投入或取出，这个总金额已经包含变化，系统不会再重复计算。</view><button class="primary" :disabled="saving || snapshotDraft.amount === ''" @tap="saveSnapshot">确认这一天的总金额</button>
 						</template>
 
 						<template v-if="editor === 'HOLDING'">
@@ -154,7 +154,7 @@
 						</template>
 
 						<template v-if="editor === 'DELETE'">
-							<view class="danger-box"><text>只清空财务数据，保留复利计划</text><text>金额记录、市值快照、持有、别名、规则、AI 草稿和回看摘要都会删除；复利计划本身仍会保留。如需删除整个计划，请返回复利系统，在计划右上角“•••”中操作。</text></view><label class="field"><text>输入“删除财务台账”确认</text><input v-model="deleteConfirm" maxlength="20" /></label><button class="primary danger" :disabled="saving || deleteConfirm !== '删除财务台账'" @tap="deleteLedger">确认清空财务数据</button>
+							<view class="danger-box"><text>只清空金额数据，保留长期计划</text><text>资金变动、总金额记录、持有、别名、规则、AI 草稿和检查结果都会删除；长期计划本身仍会保留。如需删除整个计划，请返回复利系统，在计划右上角“•••”中操作。</text></view><label class="field"><text>输入“删除财务台账”确认</text><input v-model="deleteConfirm" maxlength="20" /></label><button class="primary danger" :disabled="saving || deleteConfirm !== '删除财务台账'" @tap="deleteLedger">确认清空金额数据</button>
 						</template>
 					</view>
 				</template>
@@ -178,7 +178,7 @@ function requestId() { return Date.now() + '-' + Math.random().toString(36).slic
 function emptyData() { return { thread: { title: '' }, profile: null, overview: { asOfDate: null, pendingCount: 0, currencies: [], canCalculate: false }, execution: { status: 'NO_RULE', message: '' }, records: [], snapshots: [], holdings: { items: [], totals: [], products: [], directions: [], mixedDates: false }, aliases: [], rules: [], notes: [], reviews: [], legacy: { recordCount: 0, note: '' }, privacy: { notice: '' }, features: { aiImportEnabled: false, aiProcessorName: '', aiConsentCurrent: false }, boundary: '' }; }
 function newProfile() { return { purpose: '', scopeType: 'PARTIAL', trackingMode: 'FROM_NOW', baseCurrency: 'CNY', horizonStatus: 'TARGET_YEAR', targetYears: 10, expectedUseOn: '', reserveStatus: 'UNSPECIFIED', contributionMethod: 'FIXED', fixedAmount: '', frequency: 'MONTHLY', surplusRatio: '', totalBudget: '', targetLabelsText: '', reviewFrequency: 'MONTHLY', firstAction: '', sensitiveDataConsent: false }; }
 function newRecord(currency) { return { editingId: '', revisionReason: '', recordType: 'EXTERNAL_CONTRIBUTION', occurredOn: localDate(), amount: '', currency: currency || 'CNY', sourceCategory: '', channelLabel: '', note: '', paidOutsidePlan: false, clientRequestId: requestId() }; }
-function newSnapshot(currency) { return { editingId: '', revisionReason: '', snapshotKind: 'PLAN_TOTAL', valuedOn: localDate(), amount: '', currency: currency || 'CNY', coverage: '本计划全部已纳入资产及现金', clientRequestId: requestId() }; }
+function newSnapshot(currency) { return { editingId: '', revisionReason: '', snapshotKind: 'PLAN_TOTAL', valuedOn: localDate(), amount: '', currency: currency || 'CNY', coverage: '本计划内的全部投资和现金', clientRequestId: requestId() }; }
 function newHolding(currency) { return { editingId: '', revisionReason: '', valuedOn: localDate(), amount: '', currency: currency || 'CNY', channelLabel: '', productName: '', directionName: '', shareClass: '', category: '', userMaxPercent: '', classificationStatus: 'USER_ENTERED', clientRequestId: requestId() }; }
 function newRule(method) { return { contributionMethod: method || 'FIXED', effectiveOn: localDate(), decidedOn: localDate(), currency: 'CNY', fixedAmount: '', frequency: 'MONTHLY', surplusRatio: '', totalBudget: '', targetLabelsText: '', reviewFrequency: 'MONTHLY', returnDisposition: '', userLimits: '', changeReason: '' }; }
 
@@ -196,7 +196,7 @@ export default {
 	},
 	computed: {
 		profileTargets() { return String(this.profileDraft.targetLabelsText || '').split(/\r?\n|[,，]+/).map(item => item.trim()).filter(Boolean).slice(0, 12); },
-		profileFirstAction() { return { FROM_NOW: '记录基准日的计划总资产，并确认第一笔实际投入', HISTORY: '补录第一笔外部投入和对应历史市值', PLAN_ONLY: '发生第一次实际投入后确认记录' }[this.profileDraft.trackingMode] || '确认第一笔实际资金记录'; },
+		profileFirstAction() { return { FROM_NOW: '记录今天的计划总金额，并确认第一笔实际投入', HISTORY: '补录过去的投入和当时总金额', PLAN_ONLY: '第一次实际投入后再开始记录' }[this.profileDraft.trackingMode] || '确认第一笔实际资金记录'; },
 		profileInitialRuleReady() { if (this.data.profile) return true; const d = this.profileDraft; if (!this.profileTargets.length || !d.frequency) return false; if (d.contributionMethod === 'FIXED') return Number(d.fixedAmount) > 0; if (d.contributionMethod === 'SURPLUS_RATIO') return Number(d.surplusRatio) > 0 && Number(d.surplusRatio) <= 100; if (d.contributionMethod === 'BATCHED_LUMP_SUM') return Number(d.totalBudget) > 0; return false; },
 		canSaveProfile() { const years = Number(this.profileDraft.targetYears); return Boolean(this.profileDraft.purpose.trim() && Number.isInteger(years) && years >= 1 && years <= 60 && this.profileInitialRuleReady && (this.data.profile || this.profileDraft.sensitiveDataConsent)); },
 		canSaveRule() {
@@ -206,12 +206,12 @@ export default {
 			if (this.ruleDraft.contributionMethod === 'BATCHED_LUMP_SUM') return Boolean(this.ruleDraft.totalBudget);
 			return true;
 		},
-		editorTitle() { return { RECORD: '记录资金事件', SNAPSHOT: '记录市值快照', HOLDING: '增加持有明细', ALIAS: '确认别名映射', RULE: '保存一版自己的规则', NOTE: '留下当时判断', REVIEW: '完成一次低频核对', IMPORT: 'AI 生成可确认草稿', DELETE: '删除本计划的财务数据' }[this.editor] || ''; },
+		editorTitle() { return { RECORD: '记一笔资金变动', SNAPSHOT: '记录某天的总金额', HOLDING: '增加持有明细', ALIAS: '确认别名映射', RULE: '保存一版自己的规则', NOTE: '留下当时判断', REVIEW: '检查是否按计划', IMPORT: 'AI 生成可确认草稿', DELETE: '清空本计划的金额数据' }[this.editor] || ''; },
 		executionClass() { return String(this.data.execution.status || '').toLowerCase(); }
 	},
 	onLoad(query) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.threadId = query.id || ''; this.load(); },
 	methods: {
-		async load() { if (!this.threadId) { this.loading = false; this.loadError = '缺少财务计划标识'; return; } this.loading = true; this.loadError = ''; try { const response = await this.$http.get(financialPlan(this.threadId)); this.data = { ...emptyData(), ...(response.data || {}) }; if (!this.data.profile) this.profileDraft = { ...newProfile(), purpose: this.data.thread.desiredOutcome || this.data.thread.title || '' }; } catch (error) { this.loadError = error.message || '私人台账暂时没有读到'; } finally { this.loading = false; } },
+		async load() { if (!this.threadId) { this.loading = false; this.loadError = '缺少投资计划标识'; return; } this.loading = true; this.loadError = ''; try { const response = await this.$http.get(financialPlan(this.threadId)); this.data = { ...emptyData(), ...(response.data || {}) }; if (!this.data.profile) this.profileDraft = { ...newProfile(), purpose: this.data.thread.desiredOutcome || this.data.thread.title || '' }; } catch (error) { this.loadError = error.message || '投资计划暂时没有读到'; } finally { this.loading = false; } },
 		editProfile() { const item = this.data.profile; this.profileDraft = { ...newProfile(), ...item, sensitiveDataConsent: true }; this.editor = 'PROFILE'; this.scrollTop(); },
 		changeSensitiveConsent(event) { this.profileDraft.sensitiveDataConsent = this.checkboxValue(event); },
 			checkboxValue(event) { return Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
@@ -233,7 +233,7 @@ export default {
 		editSnapshot(item) { this.snapshotDraft = { ...newSnapshot(item.currency), ...item.payload, editingId: item.id, revisionReason: '', snapshotKind: item.snapshotKind, valuedOn: item.valuedOn, amount: this.amountFrom(item), currency: item.currency }; this.editor = 'SNAPSHOT'; this.scrollTop(); },
 		editHolding(item) { this.holdingDraft = { ...newHolding(item.currency), ...item.payload, editingId: item.id, revisionReason: '', valuedOn: item.valuedOn, amount: item.amount, currency: item.currency, classificationStatus: item.classificationStatus }; this.editor = 'HOLDING'; this.scrollTop(); },
 		async saveRecord() { await this.submit(this.recordDraft.editingId ? financialRecord(this.threadId, this.recordDraft.editingId) : financialRecords(this.threadId), { ...this.recordDraft, confirmed: true }, '资金记录已确认', this.recordDraft.editingId ? 'patch' : 'post'); },
-		async saveSnapshot() { await this.submit(this.snapshotDraft.editingId ? financialSnapshot(this.threadId, this.snapshotDraft.editingId) : financialSnapshots(this.threadId), { ...this.snapshotDraft, confirmed: true }, '市值快照已确认', this.snapshotDraft.editingId ? 'patch' : 'post'); },
+		async saveSnapshot() { await this.submit(this.snapshotDraft.editingId ? financialSnapshot(this.threadId, this.snapshotDraft.editingId) : financialSnapshots(this.threadId), { ...this.snapshotDraft, confirmed: true }, '这一天的总金额已确认', this.snapshotDraft.editingId ? 'patch' : 'post'); },
 		async saveHolding() { await this.submit(this.holdingDraft.editingId ? financialHolding(this.threadId, this.holdingDraft.editingId) : financialHoldings(this.threadId), { ...this.holdingDraft, confirmed: true }, '持有明细已确认', this.holdingDraft.editingId ? 'patch' : 'post'); },
 		async saveAlias() { await this.submit(financialAliases(this.threadId), this.aliasDraft, '别名映射已保存'); },
 		async saveRule() { await this.submit(financialRules(this.threadId), this.ruleDraft, '规则版本已保存'); },
@@ -241,7 +241,7 @@ export default {
 		async saveReview() { await this.submit(financialReviews(this.threadId), this.reviewDraft, '本期核对已保存'); },
 		async submit(url, payload, success, method) { if (this.saving) return; this.saving = true; try { if (method === 'patch') await this.$http.patch(url, payload); else await this.$http.post(url, payload); this.editor = ''; await this.load(); uni.showToast({ title: success, icon: 'success' }); } catch (error) { uni.showToast({ title: error.message || '没有保存成功', icon: 'none' }); } finally { this.saving = false; } },
 		voidRecord(item) { this.confirmVoid('资金记录', financialRecord(this.threadId, item.id)); },
-		voidSnapshot(item) { this.confirmVoid('市值快照', financialSnapshot(this.threadId, item.id)); },
+		voidSnapshot(item) { this.confirmVoid('总金额记录', financialSnapshot(this.threadId, item.id)); },
 		voidHolding(item) { this.confirmVoid('持有明细', financialHolding(this.threadId, item.id)); },
 		confirmVoid(label, url) { uni.showModal({ title: '作废' + label, content: '不会物理删除，原记录和作废原因会继续保留，并立即重算统计。', confirmText: '确认作废', confirmColor: '#8a4b43', success: async result => { if (!result.confirm || this.saving) return; this.saving = true; try { await this.$http.delete(url, { reason: '用户在财务台账页面主动作废' }); await this.load(); } catch (error) { uni.showToast({ title: error.message || '没有作废成功', icon: 'none' }); } finally { this.saving = false; } } }); },
 		async prepareImport() { if (this.saving) return; this.saving = true; try { const response = await this.$http.post(financialImportDrafts(this.threadId), { text: this.importText, aiProcessingConsent: this.importConsent }); if (response.data.draft.status !== 'DRAFT') { this.editor = ''; await this.load(); return uni.showToast({ title: '相同内容已处理，没有重复入账', icon: 'none' }); } this.importDraft = response.data.draft; if (response.data.duplicate) uni.showToast({ title: '相同内容没有重复分析', icon: 'none' }); } catch (error) { uni.showToast({ title: error.message || 'AI 草稿没有生成', icon: 'none' }); } finally { this.saving = false; } },
@@ -293,7 +293,7 @@ export default {
 		horizonLabel(profile) { if (profile.horizonStatus === 'TARGET_YEAR' && profile.targetYears) return '计划 ' + profile.targetYears + ' 年'; return profile.horizonStatus === 'TARGET_DATE' && profile.expectedUseOn ? '预计使用 ' + profile.expectedUseOn : '期限尚未确定'; },
 		reviewFrequencyLabel(value) { return { MONTHLY: '每月', QUARTERLY: '每季度', HALF_YEARLY: '每半年', YEARLY: '每年' }[value] || '每月'; },
 			ruleDescription(item) { if (item.fixedAmount) return this.frequencyLabel(item.frequency) + ' ' + this.formatMoney(this.minorMoney(item.fixedAmount.amountMinor), item.fixedAmount.currency); if (item.surplusRatio !== null && item.surplusRatio !== undefined) return '按可投资结余的 ' + item.surplusRatio + '%'; if (item.totalBudget) return '分批总预算 ' + this.formatMoney(this.minorMoney(item.totalBudget.amountMinor), item.totalBudget.currency); return '不设固定金额，逐次记录决定和理由'; },
-		candidateKind(item) { return { RECORD: '资金事件', SNAPSHOT: '计划总资产', HOLDING: '持有明细' }[item.kind] || item.kind; },
+		candidateKind(item) { return { RECORD: '资金变动', SNAPSHOT: '某天总金额', HOLDING: '持有明细' }[item.kind] || item.kind; },
 		confidenceLabel(value) { return { HIGH: '字段较明确，仍需确认', MEDIUM: '存在不确定', LOW: '需要仔细核对' }[value] || '需要确认'; },
 		scrollTop() { setTimeout(() => uni.pageScrollTo({ scrollTop: 260, duration: 220 }), 40); },
 		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack(); else uni.navigateTo({ url: '/pages/shroom/compound' }); }
@@ -341,6 +341,27 @@ input, textarea { box-sizing: border-box; width: 100%; color: #172019; font-size
 .plan-summary { display: flex; padding: 30rpx; flex-direction: column; gap: 9rpx; border-radius: 29rpx; background: #172019; color: #fff; }.plan-summary .kicker { color: #94a196; }.plan-summary > text:nth-child(2) { font-family: Georgia, 'Songti SC', serif; font-size: 27rpx; font-weight: 720; line-height: 1.4; }.plan-summary > view { display: flex; gap: 7rpx; flex-wrap: wrap; }.plan-summary > view text { padding: 7rpx 10rpx; border-radius: 999rpx; background: rgba(255,255,255,.1); color: #cad2cb; font-size: 12rpx; }.plan-summary button { align-self: flex-start; margin-top: 7rpx; color: #dce6dc; font-weight: 700; }
 .rule-row, .note-row, .review-row { display: flex; padding: 18rpx 0; flex-direction: column; gap: 7rpx; border-top: 1rpx solid #e8ede6; }.rule-row > view { display: flex; justify-content: space-between; gap: 12rpx; }.rule-row > view text:first-child { font-size: 16rpx; font-weight: 710; }.rule-row > view text:last-child, .note-row text:first-child, .review-row text:first-child { color: #7d877f; font-size: 12rpx; }.rule-row > text, .note-row text:nth-child(2), .review-row text:nth-child(2) { color: #566259; font-size: 15rpx; line-height: 1.55; }.rule-row small, .note-row small { color: #8b938d; font-size: 11rpx; }
 .money-fields { display: flex; gap: 10rpx; }.money-fields .field { flex: 1; }.money-fields .currency { flex: 0 0 150rpx; }.danger-box, .ignored-box { display: flex; margin-top: 19rpx; padding: 20rpx; flex-direction: column; gap: 7rpx; border-radius: 18rpx; background: #f4e5df; color: #76534b; font-size: 14rpx; line-height: 1.55; }.danger-box text:first-child, .ignored-box text:first-child, .warning-card text:first-child { font-weight: 730; }.candidate-list { display: flex; margin-top: 17rpx; flex-direction: column; }.candidate-list label { display: flex; align-items: flex-start; gap: 10rpx; padding: 16rpx 0; border-top: 1rpx solid #e7ece5; }.candidate-list checkbox { transform: scale(.8); }.candidate-list label > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }.candidate-list label > view text:first-child { font-size: 15rpx; font-weight: 710; }.candidate-list label > view text:nth-child(2) { font-size: 17rpx; }.candidate-list small { color: #7d877f; font-size: 11rpx; line-height: 1.4; }
+
+/* Mobile-first financial plan: plain language and comfortable tap/read sizes. */
+input, textarea { font-size: 30rpx; }
+.page-shell { padding: 24rpx 28rpx 150rpx; }
+.kicker { font-size: 22rpx; letter-spacing: 1.4rpx; }.page-title { font-size: 39rpx; }.private-mark { font-size: 24rpx; }
+.boundary-strip { padding: 20rpx 22rpx; }.boundary-strip text:first-child { font-size: 29rpx; }.boundary-strip text:last-child { font-size: 26rpx; }
+.setup-card, .editor-card, .section-card { padding: 27rpx; border-radius: 27rpx; }.section-head > view text:last-child { font-size: 36rpx; }.section-head > text { font-size: 24rpx; }.section-head > button { display: flex; min-width: 68rpx; min-height: 68rpx; align-items: center; justify-content: center; font-size: 40rpx; }
+.setup-copy { font-size: 28rpx; }.field > text, .choice-field > text { font-size: 28rpx; }.field input, .field textarea, .date-input { min-height: 88rpx; padding: 21rpx; font-size: 30rpx; }.field textarea { min-height: 130rpx; }
+.choice-field { gap: 13rpx; }.choice-field > view { gap: 12rpx; }.choice-field button { min-height: 76rpx; padding: 16rpx 20rpx; font-size: 27rpx; }
+.next-action-preview text:first-child { font-size: 23rpx; }.next-action-preview text:last-child { font-size: 28rpx; }.privacy-box > text:first-child { font-size: 29rpx; }.privacy-box > text:nth-child(2), .privacy-box button { font-size: 26rpx; }.consent label { font-size: 27rpx; }.consent checkbox { transform: scale(1); }.primary { min-height: 92rpx; font-size: 30rpx; }
+.tabs { position: sticky; z-index: 2; top: 0; gap: 5rpx; padding: 7rpx; }.tabs button { min-height: 82rpx; font-size: 27rpx; }
+.overview-hero { padding: 31rpx 28rpx; }.overview-hero > text { color: #c1cbc2; font-size: 28rpx; line-height: 1.55; }.overview-hero .kicker { color: #9aa79b; font-size: 21rpx; }.overview-title { color: #fff !important; font-size: 40rpx !important; }.pending-pill { font-size: 24rpx; }
+.empty-card text:first-child { font-size: 34rpx; }.empty-card text:nth-child(2), .empty-card button { font-size: 28rpx; }
+.currency-head > view text:first-child { font-size: 32rpx; }.currency-head > view text:last-child { font-size: 23rpx; }.currency-head > text { font-size: 30rpx; }.metric-grid text:first-child { font-size: 24rpx; line-height: 1.35; }.metric-grid text:last-child { font-size: 29rpx; }.detail-metric text:first-child, .missing-list { font-size: 25rpx; }.detail-metric text:nth-child(2) { font-size: 29rpx; }.detail-metric small { font-size: 23rpx; }
+.execution-card > view:first-child text:first-child { font-size: 30rpx; }.execution-card > view:first-child text:last-child { font-size: 23rpx; }.execution-card > text { font-size: 27rpx; }.execution-numbers text { font-size: 23rpx; }
+.quick-actions { grid-template-columns: 1fr; gap: 12rpx; }.quick-actions button, .quick-actions button:last-child { min-height: 100rpx; padding: 19rpx 21rpx; grid-column: auto; }.quick-actions button > text { width: 48rpx; height: 48rpx; flex-basis: 48rpx; font-size: 27rpx; }.quick-actions button > view text:first-child { font-size: 29rpx; }.quick-actions button > view text:last-child { font-size: 25rpx; }
+.action-row { gap: 12rpx; overflow: visible; flex-wrap: wrap; }.action-row button { min-height: 74rpx; padding: 17rpx 20rpx; font-size: 27rpx; }.ai-disabled-note { font-size: 25rpx; }.definition-note, .warning-card, .legacy-note, .danger-box, .ignored-box { padding: 20rpx 22rpx; font-size: 27rpx; }.definition-note text:first-child, .legacy-note text:first-child { font-size: 29rpx; }
+.inline-empty { font-size: 27rpx; }.ledger-row { min-height: 84rpx; }.ledger-row > view text:first-child { font-size: 29rpx; }.ledger-row > view text:last-child { font-size: 23rpx; }.row-actions button, .holding-tags button { min-height: 54rpx; font-size: 24rpx; }
+.holding-total text:first-child { font-size: 23rpx; }.holding-total text:last-child { font-size: 29rpx; }.holding-top text:first-child, .direction-row text:first-child { font-size: 29rpx; }.holding-top text:last-child, .direction-row text:last-child { font-size: 23rpx; }.holding-tags text { font-size: 22rpx; }.alias-row small { font-size: 22rpx; }
+.plan-summary > text:nth-child(2) { font-size: 37rpx; }.plan-summary > view text { font-size: 23rpx; }.plan-summary button { min-height: 65rpx; font-size: 27rpx; }.rule-row > view text:first-child { font-size: 29rpx; }.rule-row > view text:last-child, .note-row text:first-child, .review-row text:first-child { font-size: 23rpx; }.rule-row > text, .note-row text:nth-child(2), .review-row text:nth-child(2) { font-size: 27rpx; }.rule-row small, .note-row small { font-size: 22rpx; }
+.candidate-list label > view text:first-child { font-size: 27rpx; }.candidate-list label > view text:nth-child(2) { font-size: 29rpx; }.candidate-list small { font-size: 23rpx; }
 /* #ifdef H5 */
 @media (min-width: 980px) { .finance-page { box-sizing: border-box; padding-left: 96px; }.status-bar { display: none; }.page-shell { max-width: 980px; margin: 0 auto; padding: 52px 42px 120px; }.metric-grid { grid-template-columns: repeat(4,1fr); }.quick-actions { grid-template-columns: repeat(3,1fr); }.quick-actions button:last-child { grid-column: auto; }.setup-card, .editor-card, .section-card, .currency-card { padding: 34px; } }
 /* #endif */
