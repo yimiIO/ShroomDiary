@@ -638,7 +638,7 @@ router.post('/threads', asyncRoute(async (req, res) => {
   if ((!key && !archetype) || !desiredOutcome || !currentStep) {
     return fail(res, 400, isFinancialCompound(archetype)
       ? '请选择财务本金复利，并确认长期目的和第一项核对行动'
-      : '请选择一种复利原型，并确认 12 周结果和现在的最小一步');
+      : '请选择一种复利原型，并确认首个观察周期的结果和现在的最小一步');
   }
   const title = text(req.body.title, 240);
   const setup = archetype?.setup || {};
@@ -1776,7 +1776,7 @@ function compoundMarkdown(payload) {
       `- 本金：${thread.principalDefinition || '待补充'}`,
       `- 回报：${thread.returnDefinition || '待补充'}`,
       `- 再投入：${thread.reinvestmentDefinition || '待补充'}`,
-      `- 12 周目标：${thread.desiredOutcome}`,
+      `- 首个观察周期目标：${thread.desiredOutcome}`,
       `- 做到：${thread.lastCompleted || '尚未记录'}`,
       `- 下一步：${thread.currentStep || '待确认'}`,
       `- 计划状态：${thread.status}`);

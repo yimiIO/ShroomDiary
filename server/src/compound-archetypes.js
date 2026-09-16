@@ -1,14 +1,14 @@
 'use strict';
 
-const CATALOG_VERSION = '2026-09-15-v3';
+const CATALOG_VERSION = '2026-09-17-v4';
 
 const DEFAULT_SETUP = Object.freeze({
   titleLabel: '这项积累在你的生活里叫什么？',
   titlePlaceholder: '例如：让专业能力能解决更难的真实问题',
   commitmentLabel: '你准备持续投入什么？',
   commitmentPlaceholder: '写一种能反复发生的投入，不用解释复利理论',
-  outcomeLabel: '12 周后看到什么，说明它值得继续？',
-  outcomePlaceholder: '写一个你能亲自核对的变化或结果',
+  outcomeLabel: '首个观察周期结束时，你希望能观察或感受到什么？',
+  outcomePlaceholder: '写一个能亲自核对的变化，也可以是一种反复出现的真实感受',
   nextStepLabel: '下一次最小的具体动作是什么？',
   nextStepPlaceholder: '写下离开页面后就能开始的一步',
   reinvestmentSummary: '系统会在进展回看时确认，真实回报是否进入了下一轮。',
@@ -16,7 +16,67 @@ const DEFAULT_SETUP = Object.freeze({
   weeklyTimeBudgetMinutes: 120,
   principalMetricTarget: 4,
   returnMetricTarget: 1,
+  defaultCycleWeeks: 12,
   currentMilestone: '四周内完成第一轮真实投入，并留下可以核对的结果'
+});
+
+function starterPlan(key, title, summary, observableEvidence, feltChange, firstStep, cycleWeeks = 12, extra = {}) {
+  return Object.freeze({ key, title, summary, observableEvidence, feltChange, firstStep, cycleWeeks, ...extra });
+}
+
+const STARTER_PLANS_BY_KEY = Object.freeze({
+  capability_feedback: [
+    starterPlan('real_work_skill', '把一项工作能力练稳定', '在重复出现的真实任务里练同一项关键能力，并接受外部反馈。', '同类任务连续完成 3 次，返工次数减少，别人能指出你稳定做对了什么。', '面对同类任务不再慌乱，能解释自己的选择，也更容易发现错误。', '选一个本周会真实发生的任务，写下要练的一个动作。', 8, { principalDefinition: '每周在真实任务中练习一次关键能力，并获得一次可核对反馈', desiredOutcome: '同类任务连续完成 3 次，返工减少；我能更从容地解释自己的选择', principalMetricName: '真实练习与反馈', principalMetricTarget: 8, returnMetricName: '稳定迁移到新任务', returnMetricTarget: 3 }),
+    starterPlan('sport_technique', '让一项运动技术变得稳定', '用录像、教练或训练结果反复校正一个关键动作。', '录像或教练连续 3 次看到关键动作稳定出现，失误后也能恢复。', '动作更顺、更省力，注意力能从“怎么做”转向环境和节奏。', '拍一次基线录像，或请可信教练指出一个最小修正点。', 8, { principalDefinition: '每周完成有录像或教练反馈的专项练习', desiredOutcome: '关键动作连续 3 次稳定出现，身体感觉更顺、更省力', principalMetricName: '有反馈的专项练习', principalMetricTarget: 8, returnMetricName: '稳定动作证据', returnMetricTarget: 3 })
+  ],
+  knowledge_network: [
+    starterPlan('knowledge_for_work', '让读过的东西解决真实问题', '每次学习都连接一个正在发生的问题，并留下可以再次调用的解释。', '旧笔记至少 3 次直接帮助完成新任务或回答新问题。', '遇到问题不再从零搜索，能更快找到已有线索。', '选一个当前问题，把已有的 3 条知识连接成一页解释。', 8, { principalDefinition: '围绕真实问题建立可解释、可链接的知识笔记', desiredOutcome: '旧知识至少 3 次帮助解决新问题，我不再每次从零开始', principalMetricName: '完成连接的知识节点', principalMetricTarget: 8, returnMetricName: '在新问题中成功调用', returnMetricTarget: 3 }),
+    starterPlan('explanatory_model', '建立一个能讲明白的知识模型', '围绕一个长期主题不断解释、应用和修正，而不是只收藏资料。', '能向两类不同的人讲清楚，并用它处理一个从未见过的问题。', '原本模糊的部分变得有结构，知道自己还不懂什么。', '用自己的话画出当前模型，并标出一个最不确定的连接。', 12, { principalDefinition: '每周解释、应用或修正一次核心知识模型', desiredOutcome: '能向不同对象讲清楚，并成功迁移到一个新问题', principalMetricName: '模型修订', principalMetricTarget: 12, returnMetricName: '跨场景调用', returnMetricTarget: 3 })
+  ],
+  decision_calibration: [
+    starterPlan('repeat_decisions', '减少重复犯同一种决策错误', '在结果出现前写下预期和改变条件，结果出现后对照。', '至少 4 个决策能对照预期与结果，并找出一条反复偏差。', '做决定时更少纠结，也更能接受“不确定但已足够”。', '选一个正在犹豫的决定，先写预期、风险和什么情况会改变主意。', 12, { principalDefinition: '记录重要决策的事前预期、改变条件和事后结果', desiredOutcome: '完成 4 次可对照复盘，发现并减少一种重复偏差', principalMetricName: '有事前预期的决策', principalMetricTarget: 4, returnMetricName: '被后续决策复用', returnMetricTarget: 2 }),
+    starterPlan('project_priority', '更稳定地判断项目优先级', '先预测项目价值与成本，再用真实结果校准选择标准。', '一轮项目结束后能看出哪些判断准确，低价值事项明显减少。', '更容易对不重要的事说“不”，注意力更集中。', '列出当前 3 个候选项目，并在行动前写下价值、成本和放弃条件。', 8, { principalDefinition: '对候选项目做事前价值、成本和放弃条件判断', desiredOutcome: '低价值事项减少，我能更容易拒绝不重要的项目', principalMetricName: '事前评估的项目', principalMetricTarget: 6, returnMetricName: '被验证的选择规则', returnMetricTarget: 2 })
+  ],
+  reusable_assets: [
+    starterPlan('report_template', '把重复报告做成可复用资产', '把重复收集、整理和表达的步骤沉淀成模板或数据管线。', '同一资产被真实复用 3 次，并记录每次节省的时间和遗漏。', '下一次开始更轻松，不再面对空白页面。', '找出最近重复做过两次的报告，圈出完全相同的步骤。', 8, { principalDefinition: '把重复交付沉淀为能独立复用的模板或流程', desiredOutcome: '同一资产真实复用 3 次，开始更快且遗漏更少', principalMetricName: '可复用资产', principalMetricTarget: 2, returnMetricName: '真实复用', returnMetricTarget: 3 }),
+    starterPlan('checklist_asset', '建立一份真的会用的检查清单', '从真实遗漏中更新清单，并在下一次交付前调用。', '清单连续使用 4 次，同类遗漏减少。', '交付前更安心，不需要反复靠记忆确认。', '从最近一次遗漏或返工中提取第一条检查项。', 8, { principalDefinition: '从真实错误中更新并使用交付检查清单', desiredOutcome: '清单连续使用 4 次，同类遗漏明显减少', principalMetricName: '清单更新与使用', principalMetricTarget: 6, returnMetricName: '避免的重复遗漏', returnMetricTarget: 2 })
+  ],
+  automation_system: [
+    starterPlan('monthly_reconciliation', '让月度对账稳定运行', '把重复核对变成标准流程，只把异常留给人处理。', '流程连续运行 3 次，异常能被指出，人工逐行检查明显减少。', '月底不再害怕遗漏，也不需要每次重新想步骤。', '完整走一次现有对账，并标记最重复、最容易错的一步。', 12, { principalDefinition: '把月度对账步骤标准化并逐步自动化', desiredOutcome: '流程连续稳定运行 3 次，只需人工处理异常', principalMetricName: '流程改进与运行', principalMetricTarget: 6, returnMetricName: '稳定运行并节省人工', returnMetricTarget: 3 }),
+    starterPlan('followup_sop', '建立不靠记忆的跟进流程', '把触发、负责人、时间和异常处理写进可重复流程。', '流程被 2 个人或同一个人 4 次独立使用，关键跟进没有遗漏。', '脑子里少挂一件事，交接时不用从头解释。', '选一个最近遗漏过的跟进，写下触发条件和完成标准。', 8, { principalDefinition: '把高频跟进沉淀为可执行、可交接的流程', desiredOutcome: '流程独立运行 4 次，关键跟进不再依赖记忆', principalMetricName: '流程运行', principalMetricTarget: 4, returnMetricName: '避免遗漏或节省时间', returnMetricTarget: 2 })
+  ],
+  product_feedback: [
+    starterPlan('core_flow', '改好一个核心使用流程', '围绕一个真实用户任务收集使用证据，逐轮改进。', '至少 5 个真实用户完成流程，重复出现的问题减少。', '决定改什么时更有底气，不再只靠自己的感觉。', '选一个最重要的用户任务，观察一位用户从头完成。', 12, { principalDefinition: '观察真实使用并完成小步产品改进', desiredOutcome: '5 位用户完成核心流程，重复问题减少', principalMetricName: '被验证的改进', principalMetricTarget: 4, returnMetricName: '有效使用证据', returnMetricTarget: 5 }),
+    starterPlan('onboarding', '让新用户更容易第一次成功', '记录新人在哪里卡住，用最小改动降低理解成本。', '相同问题被问得更少，新人能更独立完成第一次关键动作。', '不用每次亲自解释，也更清楚产品哪里难懂。', '找一位新用户，记录他第一次使用时停顿最久的地方。', 8, { principalDefinition: '观察新人首次使用并修正一个阻碍', desiredOutcome: '新人更独立完成第一次关键动作，重复提问减少', principalMetricName: '新手阻碍改进', principalMetricTarget: 4, returnMetricName: '独立完成首次关键动作', returnMetricTarget: 5 })
+  ],
+  work_distribution: [
+    starterPlan('evergreen_article', '写一篇持续有用的作品', '围绕长期存在的问题创作，并根据搜索、引用和反馈持续修订。', '旧作品在不重新发布时仍带来搜索、回访、引用或询问。', '过去的工作还在帮自己，新作品不再每次从零找受众。', '选一个被反复问到的问题，整理成可长期更新的作品。', 12, { principalDefinition: '创作并持续修订能长期解决问题的公开作品', desiredOutcome: '旧作品持续带来搜索、引用、回访或真实询问', principalMetricName: '持续有用的作品', principalMetricTarget: 3, returnMetricName: '旧作品带来的回访或机会', returnMetricTarget: 5 }),
+    starterPlan('content_series', '建立一组互相增值的内容', '围绕一个稳定主题连续创作，让旧内容成为新内容的上下文。', '新内容能引用旧内容，旧内容持续带来收藏、留言或私信。', '发布下一篇时更有基础，表达越来越顺。', '确定一个能连续回答 6 次的主题，写下第一篇和它要连接的下一篇。', 12, { principalDefinition: '围绕稳定主题创作能互相连接的内容', desiredOutcome: '形成至少 6 篇互相连接的内容，旧内容仍带来反馈', principalMetricName: '主题作品', principalMetricTarget: 6, returnMetricName: '旧作品带来的反馈', returnMetricTarget: 6 })
+  ],
+  reputation_trust: [
+    starterPlan('delivery_promises', '用稳定交付积累专业信誉', '只承诺能验收的结果，并持续记录是否按时兑现。', '连续 4 次按约定验收，出现至少一次复购、转介或更深合作。', '沟通更坦然，不需要靠夸张包装证明自己。', '选一个正在进行的交付，和对方确认结果、时间与验收标准。', 12, { principalDefinition: '明确并兑现可验收的专业承诺', desiredOutcome: '连续 4 次按约定验收，并出现复购、转介或更深合作', principalMetricName: '按约验收的交付', principalMetricTarget: 4, returnMetricName: '因旧信誉产生的机会', returnMetricTarget: 1 }),
+    starterPlan('evidence_cases', '让真实案例替自己建立信任', '把过程、限制与结果整理成可核对案例，而不是只做自我宣传。', '新的询问或合作明确提到过去案例，并更快进入实质讨论。', '更少需要“推销自己”，也更敢讲清楚边界。', '选一个已完成项目，写出问题、做法、结果和未解决部分。', 8, { principalDefinition: '把真实交付整理为透明、可核对的案例', desiredOutcome: '新的询问会引用旧案例，信任沟通更直接', principalMetricName: '公开且可核对的案例', principalMetricTarget: 3, returnMetricName: '案例带来的有效机会', returnMetricTarget: 2 })
+  ],
+  collaboration_context: [
+    starterPlan('partner_workflow', '和核心合作者建立稳定配合', '在重复合作中保留决定、接口和复盘，逐步减少返工。', '连续 3 次合作的交付更顺，重复解释和返工减少。', '合作时更有默契，问题出现后也知道怎么修复。', '和一位核心合作者复盘最近一次返工，确认一个共同规则。', 12, { principalDefinition: '和同一核心合作者完成交付并沉淀共同规则', desiredOutcome: '连续 3 次合作更顺，重复解释和返工减少', principalMetricName: '完成验收的共同成果', principalMetricTarget: 3, returnMetricName: '被复用的共同上下文', returnMetricTarget: 3 }),
+    starterPlan('team_weekly_rhythm', '建立不消耗人的团队周节奏', '让决定、阻碍和责任有稳定去处，减少无效会议。', '关键决定能被找到，阻碍按时解决，会议时长或重复讨论减少。', '开会后更清楚，而不是更疲惫。', '记录本周一个重复讨论的问题，决定它以后固定在哪里被处理。', 8, { principalDefinition: '运行并修正团队每周决定与阻碍处理节奏', desiredOutcome: '决定可追溯、阻碍更快解决，会议不再反复消耗', principalMetricName: '有效周节奏', principalMetricTarget: 8, returnMetricName: '减少的重复沟通', returnMetricTarget: 4 })
+  ],
+  financial_capital: [
+    starterPlan('fixed_contribution', '固定周期投入计划', '按自己设定的金额和周期记录计划与实际，不由系统推荐标的或时点。', '能清楚看到计划投入、实际投入、当前余额与投资损益是否一致。', '不再每天靠涨跌决定要不要行动，对自己的规则更有把握。', '先确定长期目的、年限和每期能承受的金额。', 12, { financialContributionMethod: 'FIXED', financialFrequency: 'MONTHLY' }),
+    starterPlan('batched_lump_sum', '一笔资金分批投入计划', '先限定总预算和复核周期，再记录每批实际发生；系统不判断买卖时点。', '能清楚看到已投入批次、剩余预算、当前余额和计划偏离。', '减少一次性决定的压力，也不会因为短期波动临时改规则。', '先确定可承受的总预算、长期目的和复核频率。', 12, { financialContributionMethod: 'BATCHED_LUMP_SUM', financialFrequency: 'MONTHLY' })
+  ],
+  body_capacity: [
+    starterPlan('sleep_recovery', '建立更稳定的睡眠与恢复节奏', '先观察个人基线，再小步调整睡眠、负荷和恢复，不追求完美打卡。', '入睡与起床更规律，白天精力和中断天数能被记录比较。', '早上更有恢复感，疲惫时更知道该调整什么。', '连续 7 天只记录睡眠时间、白天精力和一次身体感受。', 8, { principalDefinition: '记录个人基线，并每周执行一个可承受的睡眠或恢复调整', desiredOutcome: '睡眠与白天精力更稳定，中断后能更快恢复', principalMetricName: '符合个人基线的稳定周', principalMetricTarget: 6, returnMetricName: '恢复感改善或中断减少', returnMetricTarget: 3 }),
+    starterPlan('sustainable_movement', '建立身体愿意继续的活动习惯', '选择可恢复的活动量，用完成度和身体反馈调整，不追求无限加量。', '每周活动稳定完成，恢复时间和被迫中断次数可比较。', '日常移动更轻松，运动后不是持续透支。', '选一种最容易开始的活动，完成一次并记录前后身体感受。', 8, { principalDefinition: '每周完成可恢复的活动，并根据身体反馈调整', desiredOutcome: '活动能稳定持续，日常移动更轻松且不过度透支', principalMetricName: '可恢复的活动周', principalMetricTarget: 6, returnMetricName: '精力或活动能力改善', returnMetricTarget: 3 })
+  ],
+  attention_capacity: [
+    starterPlan('focus_blocks', '保护真正能完成事情的专注时段', '固定少量不被打断的时段，并记录其中产生的真实成果。', '每周有 3 个专注时段产出可见结果，切换次数下降。', '开始重要工作更快，做完后脑子更完整。', '在日历里保护本周第一个 45 分钟，并写明唯一产出。', 8, { principalDefinition: '每周保护少量无打扰时段，并只完成一个重要产出', desiredOutcome: '每周稳定产生 3 个可见成果，切换明显减少', principalMetricName: '被保护的专注时段', principalMetricTarget: 24, returnMetricName: '完成的重要结果', returnMetricTarget: 8 }),
+    starterPlan('notification_boundary', '减少通知和反复查看', '关闭非必要即时入口，用固定时间集中处理。', '解锁或检查次数下降，重要消息仍能在约定时间处理。', '脑子更安静，和人相处或休息时更在场。', '关闭一个最常打断你的非必要通知，设定固定查看时间。', 4, { principalDefinition: '建立并执行通知与信息查看边界', desiredOutcome: '反复查看减少，重要消息仍被及时处理，心理空间更完整', principalMetricName: '执行边界的天数', principalMetricTarget: 20, returnMetricName: '完整专注或休息时段', returnMetricTarget: 12 })
+  ],
+  safety_buffer: [
+    starterPlan('cash_buffer', '建立必要开支缓冲', '逐步积累能覆盖必要开支的现金缓冲，并定期核对可用性。', '可覆盖月数从当前基线稳定上升，临时支出不会立刻打断长期计划。', '面对突发开支更少恐慌，也更敢做长期选择。', '算出一个月必要开支，并记录当前可立即使用的缓冲。', 24, { principalDefinition: '定期把可承受金额转入独立的必要开支缓冲', desiredOutcome: '必要开支可覆盖月数上升，突发支出不再立刻打断长期计划', principalMetricName: '完成缓冲投入的周期', principalMetricTarget: 6, returnMetricName: '可覆盖必要开支月数', returnMetricTarget: 1 }),
+    starterPlan('backup_restore', '让关键资料真的能恢复', '建立备份并定期做恢复演练，而不是只相信“已经同步”。', '从备份成功恢复一次关键资料，并知道最后成功时间。', '设备故障时不再只剩恐惧，知道下一步怎么做。', '选一类最不能丢的资料，确认它现在有几个独立副本。', 4, { principalDefinition: '为关键资料建立独立备份并实际演练恢复', desiredOutcome: '关键资料能从备份成功恢复，最后成功时间清楚可见', principalMetricName: '备份检查与演练', principalMetricTarget: 4, returnMetricName: '成功恢复', returnMetricTarget: 1 })
+  ]
 });
 
 const SETUP_BY_KEY = Object.freeze({
@@ -182,9 +242,10 @@ const ARCHETYPES = [
     mechanism: '它不追求无限增长，而是维持可恢复的身体能力，保护其他长期投入。',
     fits: '任何需要保护长期身体容量的人，尤其是睡眠、恢复或症状已影响生活时。',
     notThis: '追求无限运动量、将症状自动解释为诊断，或用连续打卡代替身体反馈。',
+    healthBoundary: '持续症状的原因、加重与减轻条件应进入身心记录的健康长期观察；本方向不提供医学诊断。',
     defaultPrincipalMetric: '符合个人基线的稳定周',
     defaultReturnMetric: '少发生的中断或更快的恢复',
-    examples: ['用 12 周建立稳定睡眠、训练与恢复基线']
+    examples: ['建立更稳定的睡眠与恢复节奏', '建立身体愿意继续的活动习惯']
   },
   {
     key: 'attention_capacity',
@@ -219,7 +280,13 @@ const ARCHETYPES = [
     ...specificSetup,
     returnDefinition: specificSetup.returnDefinition || item.mechanism
   };
-  return { ...item, setup, version: CATALOG_VERSION, order: index + 1 };
+  return {
+    ...item,
+    setup,
+    starterPlans: STARTER_PLANS_BY_KEY[item.key] || [],
+    version: CATALOG_VERSION,
+    order: index + 1
+  };
 });
 
 const ARCHETYPE_MAP = new Map(ARCHETYPES.map(item => [item.key, item]));
@@ -229,7 +296,12 @@ function archetypeByKey(value) {
 }
 
 function listArchetypes() {
-  return ARCHETYPES.map(item => ({ ...item, examples: [...item.examples], setup: { ...item.setup } }));
+  return ARCHETYPES.map(item => ({
+    ...item,
+    examples: [...item.examples],
+    setup: { ...item.setup },
+    starterPlans: item.starterPlans.map(plan => ({ ...plan }))
+  }));
 }
 
 module.exports = { ARCHETYPES, CATALOG_VERSION, archetypeByKey, listArchetypes };
