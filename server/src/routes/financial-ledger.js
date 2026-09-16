@@ -493,6 +493,7 @@ router.get('/plans/:threadId', asyncRoute(async (req, res) => {
 router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
   const thread = await ownedFinancialThread(req.user.id, req.params.threadId);
   if (!thread) return fail(res, 404, '财务计划不存在');
+  const title = req.body.title === undefined ? thread.title : text(req.body.title, 240);
   const existing = await profileFor(db, req.user.id, thread.id);
   const existingPrivate = existing ? decrypt(existing) : {};
   if (!existing && req.body.sensitiveDataConsent !== true) {
@@ -526,14 +527,14 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
     (profile.horizonStatus === 'TARGET_YEAR' && (!Number.isInteger(profile.targetYears) || profile.targetYears < 1 || profile.targetYears > 60))) {
     return fail(res, 400, '请检查币种和计划期限');
   }
-  if (!profile.purpose || !profile.firstAction) return fail(res, 400, '请填写计划目的和第一项核对行动');
+  if (!title || !profile.purpose || !profile.firstAction) return fail(res, 400, '请填写计划名称、计划目的和第一项核对行动');
   if (!existing && (!initialRule ||
     !['FIXED', 'SURPLUS_RATIO', 'BATCHED_LUMP_SUM'].includes(initialRule.contributionMethod) ||
     !initialRule.frequency ||
     !initialRule.targetLabels.length)) {
     return fail(res, 400, '首次建立资金计划时，请填写期限、投入规则、金额或比例，以及自己选择的标的或方向');
   }
-  if (sensitiveInput({ profile, initialRule: req.body.initialRule })) return fail(res, 400, '请删除账户号、密码、验证码等敏感凭证后再保存');
+  if (sensitiveInput({ title, profile, initialRule: req.body.initialRule })) return fail(res, 400, '请删除账户号、密码、验证码等敏感凭证后再保存');
   const payload = encryptFinancialPayload({
     purpose: profile.purpose,
     contributionMethod: profile.contributionMethod,
@@ -560,10 +561,9 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
     );
     await client.query(
       `UPDATE compound_threads
-          SET desired_outcome=$3,current_step=$4,principal_definition=$5,updated_at=now()
+          SET title=$3,desired_outcome=$4,current_step=$5,updated_at=now()
         WHERE id=$1 AND user_id=$2`,
-      [thread.id, req.user.id, profile.purpose, profile.firstAction,
-        profile.scopeType === 'ALL_LONG_TERM' ? '全部长期投资' : '一部分长期资金']
+      [thread.id, req.user.id, title, profile.purpose, profile.firstAction]
     );
     if (!existing) {
       const initialRuleInput = req.body.initialRule || {};
@@ -589,7 +589,7 @@ router.put('/plans/:threadId/profile', asyncRoute(async (req, res) => {
       );
     }
   });
-  return ok(res, { profile: mapProfile(await profileFor(db, req.user.id, thread.id)) }, '资金计划设置已保存');
+  return ok(res, { thread: { id: thread.id, title }, profile: mapProfile(await profileFor(db, req.user.id, thread.id)) }, '资金计划设置已保存');
 }));
 
 router.post('/plans/:threadId/records', asyncRoute(async (req, res) => {

@@ -84,6 +84,19 @@ test('financial product exposes four tabs without adding a bottom navigation ite
   assert.equal(pages.tabBar.list.length, 4);
 });
 
+test('financial plan settings can rename a plan and omit non-calculating setup fields', () => {
+  const page = source('src/pages/shroom/financial-ledger.vue');
+  const compoundPage = source('src/pages/shroom/compound.vue');
+  const route = source('server/src/routes/financial-ledger.js');
+
+  assert.match(page, /计划名称/);
+  assert.match(page, /profileDraft\.title/);
+  assert.match(route, /const title = req\.body\.title === undefined \? thread\.title/);
+  assert.match(route, /SET title=\$3,desired_outcome=\$4,current_step=\$5/);
+  assert.doesNotMatch(page, /计划范围|从哪里开始记|生活与经营周转资金/);
+  assert.doesNotMatch(compoundPage, /从哪里开始记录|这份计划覆盖/);
+});
+
 test('first financial setup persists a complete plan and rule instead of an empty ledger', () => {
   const route = source('server/src/routes/financial-ledger.js');
   const compoundPage = source('src/pages/shroom/compound.vue');
