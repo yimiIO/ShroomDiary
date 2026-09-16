@@ -7,6 +7,11 @@ const config = require('../config');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 const { hashToken } = require('../security');
 const {
+  buildCodexConnectCommand,
+  connectorSource,
+  installerScript
+} = require('../codex-connector-install');
+const {
   listDiarySourceActivities,
   normalizeCodexActivity,
   normalizeSyncInterval,
@@ -47,6 +52,27 @@ async function sourceConnection(req, { lock = false } = {}) {
   );
   return result.rows[0] || null;
 }
+
+async function invalidateDailyReviewsUsingCodex(queryable, userId, reason) {
+  await queryable.query(
+    `UPDATE daily_reviews SET status = 'FAILED', result = '{}'::jsonb, source_refs = '[]'::jsonb,
+       source_fingerprint = '', error_message = $2,
+       email_status = CASE WHEN email_status IN ('PENDING', 'PROCESSING', 'FAILED') THEN 'SKIPPED' ELSE email_status END,
+       email_claimed_at = NULL, email_next_attempt_at = NULL, updated_at = now()
+     WHERE user_id = $1 AND source_refs @> '[{"type":"CODEX_TASK"}]'::jsonb`,
+    [userId, reason]
+  );
+}
+
+router.get('/codex/install', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.type('text/x-shellscript').send(installerScript(config.publicOrigin));
+});
+
+router.get('/codex/connector', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.type('text/javascript').send(connectorSource());
+});
 
 router.post('/codex/pair', asyncRoute(async (req, res) => {
   checkPairRate(req);
@@ -161,9 +187,8 @@ router.post('/codex/connections', asyncRoute(async (req, res) => {
   const origin = String(config.publicOrigin || '').replace(/\/$/, '');
   return ok(res, {
     connection: publicConnection(result.rows[0]),
-    pairingCode: code,
     expiresInMinutes: 10,
-    command: `shroom-codex connect --server ${origin} --code ${code}`
+    command: buildCodexConnectCommand(origin, code)
   }, '请在这台电脑上完成 Codex 配对');
 }));
 
@@ -189,6 +214,9 @@ router.patch('/connections/:id', asyncRoute(async (req, res) => {
       typeof req.body.aiAllowed === 'boolean' ? req.body.aiAllowed : row.ai_allowed,
       requestedStatus]
   );
+  if (row.ai_allowed && req.body.aiAllowed === false) {
+    await invalidateDailyReviewsUsingCodex(db, req.user.id, 'Codex 的 AI 使用权限已撤回，这份旧每日总结已失效');
+  }
   return ok(res, publicConnection(result.rows[0]), requestedStatus === 'PAUSED' ? '已暂停菇日记的 Codex 同步' : '数据源设置已更新');
 }));
 
@@ -217,6 +245,7 @@ router.delete('/connections/:id', asyncRoute(async (req, res) => {
           [req.user.id, affected.rows.map(item => item.id)]
         );
       }
+      await invalidateDailyReviewsUsingCodex(client, req.user.id, 'Codex 数据源已删除，这份旧每日总结已失效');
       await client.query(
         'DELETE FROM external_activity_events WHERE connection_id = $1 AND user_id = $2',
         [req.params.id, req.user.id]

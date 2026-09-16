@@ -1,7 +1,7 @@
 'use strict';
 
 const db = require('./db');
-const { hashToken, verifyAccessToken } = require('./security');
+const { hashToken, verifyAccessToken, verifyAdminToken } = require('./security');
 
 function ok(res, data = null, message = 'ok') {
   return res.json({ code: 200, message, data });
@@ -17,7 +17,7 @@ async function resolveUser(req) {
   const payload = verifyAccessToken(token);
   if (payload) {
     const result = await db.query(
-      'SELECT id, mobile, nickname, avatar_url FROM users WHERE id = $1',
+      'SELECT id, mobile, nickname, avatar_url, role FROM users WHERE id = $1',
       [payload.sub]
     );
     req.authKind = 'session';
@@ -28,7 +28,7 @@ async function resolveUser(req) {
        FROM users u
       WHERE t.token_hash = $1 AND t.user_id = u.id
         AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now())
-      RETURNING u.id, u.mobile, u.nickname, u.avatar_url, t.scopes`,
+      RETURNING u.id, u.mobile, u.nickname, u.avatar_url, u.role, t.scopes`,
     [hashToken(token)]
   );
   const user = result.rows[0];
@@ -54,6 +54,15 @@ async function requireUser(req, res, next) {
   } catch (error) {
     return next(error);
   }
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'ADMIN') return fail(res, 403, '仅管理员可访问');
+  if (req.authKind === 'api-token') return next();
+  const payload = verifyAdminToken(req.get('x-shroom-admin-token'), req.user.id);
+  if (!payload) return fail(res, 403, '请重新验证管理员密码', { reason: 'ADMIN_UNLOCK_REQUIRED' });
+  req.adminSession = payload;
+  return next();
 }
 
 function optionalUser(req, res, next) {
@@ -92,6 +101,7 @@ module.exports = {
   ok,
   optionalUser,
   pageParams,
+  requireAdmin,
   requireUser,
   stringArray,
   text,

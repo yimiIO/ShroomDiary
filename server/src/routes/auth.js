@@ -15,6 +15,7 @@ const {
 } = require('../security');
 const { asyncRoute, fail, ok, text } = require('../http');
 const { ensureDefaultObservers } = require('../observer-store');
+const { setupNewUser } = require('../billing-store');
 
 const router = express.Router();
 const MOBILE_PATTERN = /^1[3-9]\d{9}$/;
@@ -24,7 +25,8 @@ function member(user) {
     id: user.id,
     mobile: user.mobile,
     nickname: user.nickname,
-    avatar: user.avatar_url || ''
+    avatar: user.avatar_url || '',
+    role: user.role || 'USER'
   };
 }
 
@@ -51,6 +53,7 @@ router.post('/register', asyncRoute(async (req, res) => {
   const nickname = text(req.body.nickname, 80) || `Shroom ${mobile.slice(-4)}`;
   if (!MOBILE_PATTERN.test(mobile)) return fail(res, 400, '手机号格式不正确');
   if (password.length < 6 || password.length > 72) return fail(res, 400, '密码需要 6–72 位');
+  if (req.body.acceptedTerms !== true) return fail(res, 400, '请先阅读并同意用户服务协议与隐私政策');
 
   const existing = await db.query('SELECT id FROM users WHERE mobile = $1', [mobile]);
   if (existing.rowCount) return fail(res, 400, '这个手机号已经注册');
@@ -59,10 +62,16 @@ router.post('/register', asyncRoute(async (req, res) => {
     const result = await client.query(
       `INSERT INTO users (id, mobile, nickname, password_hash)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, mobile, nickname, avatar_url`,
+       RETURNING id, mobile, nickname, avatar_url, role`,
       [crypto.randomUUID(), mobile, nickname, hashPassword(password)]
     );
     await ensureDefaultObservers(result.rows[0].id, client);
+    await setupNewUser(client, result.rows[0].id);
+    await client.query(
+      `INSERT INTO daily_review_preferences (user_id, inbox_enabled)
+       VALUES ($1, true) ON CONFLICT (user_id) DO NOTHING`,
+      [result.rows[0].id]
+    );
     return result.rows[0];
   });
   return ok(res, member(user), '账号已创建');
@@ -72,7 +81,7 @@ router.post('/login', asyncRoute(async (req, res) => {
   const mobile = text(req.body.mobile, 32);
   const password = String(req.body.password || '');
   const result = await db.query(
-    'SELECT id, mobile, nickname, avatar_url, password_hash FROM users WHERE mobile = $1',
+    'SELECT id, mobile, nickname, avatar_url, password_hash, role FROM users WHERE mobile = $1',
     [mobile]
   );
   const user = result.rows[0];
@@ -94,7 +103,7 @@ router.post('/refresh', asyncRoute(async (req, res) => {
   if (!refreshToken) return fail(res, 401, '刷新凭证无效');
   const session = await db.transaction(async client => {
     const result = await client.query(
-      `SELECT rt.id AS refresh_id, u.id, u.mobile, u.nickname, u.avatar_url
+      `SELECT rt.id AS refresh_id, u.id, u.mobile, u.nickname, u.avatar_url, u.role
          FROM refresh_tokens rt
          JOIN users u ON u.id = rt.user_id
         WHERE rt.token_hash = $1 AND rt.expires_at > now()

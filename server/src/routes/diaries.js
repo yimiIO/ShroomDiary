@@ -14,6 +14,7 @@ const { enqueueFriendSync, removeDiaryFriendEffects } = require('../friend-sync'
 const { invalidateDiaryInquiryEvidence } = require('../inquiry-store');
 const { listDiarySourceActivities } = require('../data-sources');
 const { asyncRoute, fail, ok, pageParams, requireUser, text, visibility } = require('../http');
+const { maybeAwardSevenDayReward } = require('../billing-store');
 
 const router = express.Router();
 router.use(requireUser);
@@ -306,6 +307,7 @@ router.post('/create', asyncRoute(async (req, res) => {
     await enqueueDiaryIndex(client, inserted.rows[0]);
     await enqueueFriendSync(client, inserted.rows[0]);
     await bumpCorpusRevision(client, req.user.id);
+    await maybeAwardSevenDayReward(client, req.user.id);
     return inserted;
   });
   return ok(res, mapDiary(result.rows[0]), '日记已保存');

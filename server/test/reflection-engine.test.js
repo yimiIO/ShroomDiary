@@ -40,6 +40,21 @@ test('uncited personal claims and fabricated source references are removed', () 
   assert.equal(result.sources[0].sourceVersion, 2);
 });
 
+test('reflection results lead with one sentence and give every observation a scannable headline', () => {
+  const result = normalizeReflection({
+    summary: '最重要的发现是你的处理方式已经变了。这里还有很多解释，不应该堆在第一层。',
+    observations: [
+      { headline: '你开始先保护结果', text: '过去你会先证明自己，这次则先处理了现实风险。', evidence: ['S1'] },
+      { text: '你对同类问题的反应已经不同。第二句是详细解释。', evidence: ['S1'] }
+    ]
+  }, retrieval, 'change');
+
+  assert.equal(result.summary, '最重要的发现是你的处理方式已经变了。');
+  assert.equal(result.observations[0].headline, '你开始先保护结果');
+  assert.equal(result.observations[0].text, '过去你会先证明自己，这次则先处理了现实风险。');
+  assert.equal(result.observations[1].headline, '你对同类问题的反应已经不同。');
+});
+
 test('a reusable card draft needs both an insight and concrete usage', () => {
   const result = normalizeReflection({
     observations: [{ text: '观察', evidence: ['S1'] }],

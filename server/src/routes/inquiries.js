@@ -17,6 +17,7 @@ const {
   normalizeInquiryType
 } = require('../inquiry-health');
 const { resetInquirySyntheses } = require('../inquiry-store');
+const { requireFeature } = require('../billing-store');
 const { mapCandidate } = require('../inquiry-candidates');
 const {
   analysisCursor,
@@ -28,6 +29,13 @@ const {
 
 const router = express.Router();
 router.use(requireUser);
+const requireInquiryFeature = requireFeature('inquiries');
+router.use((req, res, next) => {
+  // Diary saving stays free. Its optional link reconciliation must not turn a
+  // normal diary save into a paid-feature prompt or delete historical links.
+  if (req.path.startsWith('/diary-links/')) return next();
+  return requireInquiryFeature(req, res, next);
+});
 
 function uuid(value) {
   const id = String(value || '');
@@ -729,7 +737,7 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
     healthReview ? (reviewMode === 'FULL' ? '健康长期观察全量复盘' : '健康长期观察增量更新') : '未解之问复盘', {
     temperature: 0.15,
     maxTokens: 4500,
-    usageContext: { userId: req.user.id, inquiryId, feature: healthReview ? `health_inquiry_review_${reviewMode.toLowerCase()}` : 'inquiry_review' }
+    usageContext: { userId: req.user.id, billable: true, inquiryId, feature: healthReview ? `health_inquiry_review_${reviewMode.toLowerCase()}` : 'inquiry_review' }
   });
   let synthesis = healthReview
     ? normalizeHealthInquiryReview(raw, evidence, {

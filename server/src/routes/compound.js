@@ -5,16 +5,12 @@ const express = require('express');
 const config = require('../config');
 const db = require('../db');
 const { DAILY_YOGA_PRACTICE, bodyStreak, loadCompoundStats, shanghaiDate } = require('../compound-system');
+const { requireFeature } = require('../billing-store');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 
 const router = express.Router();
 router.use(requireUser);
-router.use((req, res, next) => {
-  if (!config.compound.ownerUserIds.includes(req.user.id)) {
-    return fail(res, 403, '复利系统仅对指定账号开放');
-  }
-  return next();
-});
+router.use(requireFeature('compound'));
 
 function monthKey(today) {
   return today.slice(0, 7);

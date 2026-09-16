@@ -176,6 +176,10 @@
 		</view>
 		</view>
 
+		<!-- #ifdef H5 -->
+		<view class="icp-footer" @tap="openIcpRecord">琼ICP备2020004041号-1</view>
+		<!-- #endif -->
+
 
 		<!-- 全屏日历弹窗 -->
 		<view class="full-calendar-mask" v-if="showFullCalendarView" @click="closeFullCalendar">
@@ -316,6 +320,11 @@ export default {
 		this.loadWellbeingOverview();
 	},
 	methods: {
+		openIcpRecord() {
+			// #ifdef H5
+			window.location.href = 'https://beian.miit.gov.cn/';
+			// #endif
+		},
 		// 初始化日期选择器
 		initDates() {
 			const selected = moment(this.selectedDate);
@@ -821,6 +830,16 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.icp-footer {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 30rpx 24rpx calc(154rpx + env(safe-area-inset-bottom));
+	font-size: 20rpx;
+	line-height: 1.5;
+	text-align: center;
+	color: #7d887f;
+}
+
 .diary-page {
 	display: block;
 	min-height: 100vh;

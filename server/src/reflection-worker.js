@@ -250,6 +250,7 @@ async function processOne() {
         history: conversation.history,
         usageContext: {
           userId: context.user_id,
+          billable: true,
           feature: 'reflection_planning',
           conversationId: context.conversation_id,
           taskId: task.id,
@@ -287,6 +288,7 @@ async function processOne() {
         plan,
         usageContext: {
           userId: context.user_id,
+          billable: true,
           feature: 'reflection_census',
           conversationId: context.conversation_id,
           taskId: task.id,
@@ -319,6 +321,7 @@ async function processOne() {
         plan,
         usageContext: {
           userId: context.user_id,
+          billable: true,
           feature: 'reflection_answer',
           conversationId: context.conversation_id,
           taskId: task.id,

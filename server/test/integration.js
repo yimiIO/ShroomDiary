@@ -52,11 +52,11 @@ async function run() {
   try {
     expectCode(await api('/api/auth/v1/register', {
       method: 'POST',
-      body: { mobile: mobileA, password, nickname: 'Integration A' }
+      body: { mobile: mobileA, password, nickname: 'Integration A', acceptedTerms: true }
     }));
     expectCode(await api('/api/auth/v1/register', {
       method: 'POST',
-      body: { mobile: mobileB, password, nickname: 'Integration B' }
+      body: { mobile: mobileB, password, nickname: 'Integration B', acceptedTerms: true }
     }));
 
     const sessionA = expectCode(await api('/api/auth/v1/login', {
@@ -582,6 +582,12 @@ async function run() {
     assert.equal(compoundPlan.leadingMetric.target, 3);
     assert.equal(compoundPlan.cycleStart, '2026-09-01');
     assert.equal(compoundPlan.cycleEnd, '2026-11-23');
+    const renamedCompoundPlan = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}`, {
+      method: 'PATCH', token: tokenA, body: { title: '我的交付飞轮' }
+    }));
+    assert.equal(renamedCompoundPlan.title, '我的交付飞轮');
+    assert.equal(renamedCompoundPlan.currentStep, '先列出现有的前后证据');
+    assert.equal(renamedCompoundPlan.leadingMetric.target, 3);
     const compoundWeek = expectCode(await api(`/api/compound/v2/plans/${compoundThread.id}/week`, {
       method: 'PUT', token: tokenA, body: {
         plannedMinutes: 180,

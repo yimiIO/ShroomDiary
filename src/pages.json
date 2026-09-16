@@ -100,10 +100,69 @@
 			}
 		},
 		{
+			"path": "pages/admin/ai-company",
+			"style": {
+				"navigationBarTitleText": "Shroom AI 公司",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/wallet",
+			"style": {
+				"navigationBarTitleText": "菇点与账单",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/legal",
+			"style": {
+				"navigationBarTitleText": "服务协议",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/seven-day-share",
+			"style": {
+				"navigationBarTitleText": "我的七日变化",
+				"navigationStyle": "custom",
+				"enableShareAppMessage": true,
+				"enableShareTimeline": true,
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/data-sources",
 			"style": {
 				"navigationBarTitleText": "数据与连接",
 				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/data-sources/codex",
+			"style": {
+				"navigationBarTitleText": "Codex 连接",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/daily-review",
+			"style": {
+				"navigationBarTitleText": "菇每日总结",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
+			"path": "pages/shroom/inbox",
+			"style": {
+				"navigationBarTitleText": "收件箱",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true,
 				"app-plus": { "titleNView": false }
 			}
 		},

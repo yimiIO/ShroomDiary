@@ -224,7 +224,9 @@ export default {
 		costText() {
 			const cost = this.inquiry && this.inquiry.costSummary;
 			if (!cost || !cost.calls) return '';
-			const money = cost.costCny === null ? '费用以供应商账单为准' : `约 ¥${Number(cost.costCny).toFixed(4)}`;
+			const money = Number(cost.chargedPoints || 0) > 0
+				? `已扣 ${Number(cost.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`
+				: (cost.costCny === null ? '费用以供应商账单为准' : `约 ¥${Number(cost.costCny).toFixed(4)}`);
 			return `${cost.calls} 次 · ${cost.totalTokens} tokens · ${money}`;
 		}
 	},

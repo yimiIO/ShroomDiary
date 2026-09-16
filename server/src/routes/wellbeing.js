@@ -13,9 +13,11 @@ const {
   mapHypothesis,
   refreshWellbeingHypotheses
 } = require('../wellbeing-hypotheses');
+const { requireFeature } = require('../billing-store');
 
 const router = express.Router();
 router.use(requireUser);
+router.use(requireFeature('wellbeing'));
 
 const DISMISS_REASONS = new Set([
   'OTHER_PERSON',
@@ -197,7 +199,7 @@ router.post('/hypotheses/refresh', asyncRoute(async (req, res) => {
   if (req.body.healthConsent !== true) {
     return fail(res, 400, '请确认允许 AI 基于你的私密身心记录整理可能问题');
   }
-  const refreshed = await refreshWellbeingHypotheses(req.user.id, config.aiModel);
+  const refreshed = await refreshWellbeingHypotheses(req.user.id, config.aiModel, { aiOptions: { billable: true } });
   return ok(res, {
     ...(await hypothesisList(req.user.id)),
     reviewedSourceCount: refreshed.sourceCount,

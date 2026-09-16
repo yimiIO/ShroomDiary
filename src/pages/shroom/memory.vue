@@ -65,7 +65,7 @@
 					</view>
 					<view class="usage-strip" v-if="visibleCost && visibleCost.calls">
 						<view><text>本次回看用量</text><text>{{ visibleCost.calls }} 次调用 · {{ formatTokens(visibleCost.totalTokens) }} tokens</text></view>
-						<view><text>{{ formatCost(visibleCost) }}</text><text>预计花费 · 最终以 DeepSeek 账单为准</text></view>
+						<view><text>{{ formatBilling(visibleCost) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
 					</view>
 
 					<view class="processing-panel" v-if="isProcessing">
@@ -92,7 +92,15 @@
 									<text>{{ resultStatus(message.result.status) }}</text>
 									<text>{{ resultCoverage(message.result.coverage) }}</text>
 									</view>
-									<text class="result-summary">{{ message.result.summary || message.content }}</text>
+									<text class="result-summary">{{ summaryLead(message.result.summary || message.content) }}</text>
+									<button
+										v-if="hasSummaryDetail(message.result.summary || message.content)"
+										class="summary-toggle"
+										@tap="toggleSummary(message.id)"
+									>
+										{{ isSummaryExpanded(message.id) ? '收起完整回答' : '展开完整回答' }}
+									</button>
+									<text v-if="isSummaryExpanded(message.id)" class="result-summary-detail">{{ summaryDetail(message.result.summary || message.content) }}</text>
 
 									<view class="analysis-stat" v-if="message.result.analysisStats">
 										<view class="analysis-stat-main">
@@ -138,12 +146,16 @@
 									</view>
 
 								<view class="result-section" v-if="message.result.observations && message.result.observations.length">
-									<text class="section-kicker">OBSERVATIONS</text>
-					<view class="observation" v-for="(item, index) in message.result.observations" :key="index">
-										<text class="observation-index">{{ index + 1 }}</text>
-										<view class="observation-copy">
-											<text class="observation-text">{{ item.text }}</text>
-											<text class="observation-boundary" v-if="item.boundary">{{ item.boundary }}</text>
+									<text class="section-kicker">这次回看到的 {{ message.result.observations.length }} 件事</text>
+									<view class="observation" v-for="(item, index) in message.result.observations" :key="index">
+										<button class="observation-toggle" @tap="toggleObservation(message.id, index)">
+											<text class="observation-index">{{ index + 1 }}</text>
+											<text class="observation-headline">{{ observationHeadline(item) }}</text>
+											<text class="observation-arrow" :class="{ expanded: isObservationExpanded(message.id, index) }">›</text>
+										</button>
+										<view class="observation-detail" v-if="isObservationExpanded(message.id, index)">
+											<text class="observation-text" v-if="observationDetail(item)">{{ observationDetail(item) }}</text>
+											<text class="observation-boundary" v-if="item.boundary">解释边界：{{ item.boundary }}</text>
 											<view class="evidence-row">
 												<button v-for="ref in item.evidenceRefs" :key="ref" @tap="openSource(sourceFor(message.result, ref))">
 													{{ sourceLabel(sourceFor(message.result, ref)) }}
@@ -153,7 +165,19 @@
 									</view>
 								</view>
 
-								<view class="result-section timeline-section" v-if="message.result.timeline && message.result.timeline.length">
+								<button
+									v-if="hasSupplement(message.result)"
+									class="supplement-toggle"
+									@tap="toggleSupplement(message.id)"
+								>
+									<view>
+										<text>时间线与全部来源</text>
+										<text>{{ supplementLabel(message.result) }}</text>
+									</view>
+									<text class="supplement-arrow" :class="{ expanded: isSupplementExpanded(message.id) }">›</text>
+								</button>
+
+								<view class="result-section timeline-section" v-if="isSupplementExpanded(message.id) && message.result.timeline && message.result.timeline.length">
 									<text class="section-kicker">TIMELINE</text>
 					<view class="timeline-item" v-for="(item, index) in message.result.timeline" :key="index">
 										<view class="timeline-rail"><view></view></view>
@@ -167,7 +191,7 @@
 									</view>
 								</view>
 
-								<view class="source-section" v-if="message.result.presentation !== 'evidence_list' && message.result.sources && message.result.sources.length">
+								<view class="source-section" v-if="isSupplementExpanded(message.id) && message.result.presentation !== 'evidence_list' && message.result.sources && message.result.sources.length">
 									<text class="section-kicker">SOURCE NOTES</text>
 									<scroll-view class="source-scroll" scroll-x :show-scrollbar="false">
 										<view class="source-list">
@@ -234,6 +258,7 @@
 
 <script>
 import moment from '@/common/moment.js';
+import reflectionPreviewUtils from '@/utils/reflection-preview.js';
 import {
 	memoryCancel,
 	memoryCard,
@@ -262,6 +287,9 @@ export default {
 				pollFailures: 0,
 			scrollTarget: '',
 			savedCards: {},
+			expandedSummaries: {},
+			expandedObservations: {},
+			expandedSupplements: {},
 			modes: [
 				{ value: 'related', label: '找关联' },
 				{ value: 'change', label: '看变化' },
@@ -344,7 +372,56 @@ export default {
 			const cost = Number(summary.costCny);
 			return '约 ¥' + cost.toFixed(cost >= 0.01 ? 2 : 4);
 		},
-			modeForQuestion(question) {
+		formatBilling(summary) {
+			if (summary && Number(summary.chargedPoints || 0) > 0) return `已扣 ${Number(summary.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`;
+			return this.formatCost(summary);
+		},
+		summaryLead(value) {
+			return reflectionPreviewUtils.firstSentencePreview(value, 64);
+		},
+		summaryDetail(value) {
+			return reflectionPreviewUtils.remainingDetail(value, this.summaryLead(value));
+		},
+		hasSummaryDetail(value) {
+			return this.summaryDetail(value).length > 0;
+		},
+		isSummaryExpanded(messageId) {
+			return Boolean(this.expandedSummaries[messageId]);
+		},
+		toggleSummary(messageId) {
+			this.$set(this.expandedSummaries, messageId, !this.isSummaryExpanded(messageId));
+		},
+		observationHeadline(item) {
+			return reflectionPreviewUtils.observationHeadline(item, 52);
+		},
+		observationDetail(item) {
+			return reflectionPreviewUtils.observationDetail(item, 52);
+		},
+		observationKey(messageId, index) {
+			return `${messageId}:${index}`;
+		},
+		isObservationExpanded(messageId, index) {
+			return Boolean(this.expandedObservations[this.observationKey(messageId, index)]);
+		},
+		toggleObservation(messageId, index) {
+			const key = this.observationKey(messageId, index);
+			this.$set(this.expandedObservations, key, !this.expandedObservations[key]);
+		},
+		hasSupplement(result) {
+			return Boolean((result && result.timeline && result.timeline.length) || (result && result.presentation !== 'evidence_list' && result.sources && result.sources.length));
+		},
+		supplementLabel(result) {
+			const timelineCount = (result && result.timeline && result.timeline.length) || 0;
+			const sourceCount = (result && result.sources && result.sources.length) || 0;
+			return `${timelineCount} 个时间节点 · ${sourceCount} 条来源`;
+		},
+		isSupplementExpanded(messageId) {
+			return Boolean(this.expandedSupplements[messageId]);
+		},
+		toggleSupplement(messageId) {
+			this.$set(this.expandedSupplements, messageId, !this.isSupplementExpanded(messageId));
+		},
+		modeForQuestion(question) {
 				if (this.seedDiaryId) return 'related';
 				return this.selectedMode;
 		},
@@ -594,7 +671,9 @@ button::after { border: 0; }
 .assistant-result { padding: 34rpx; border-radius: 36rpx; background: #fff; box-shadow: 0 20rpx 56rpx rgba(59,77,57,.07); }
 .result-status { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
 .result-status text { padding: 9rpx 13rpx; border-radius: 999rpx; background: #edf2e8; font-size: 18rpx; color: #667463; }
-.result-summary { display: block; margin-top: 26rpx; font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; line-height: 1.7; color: #283229; }
+.result-summary { display: block; margin-top: 26rpx; font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; line-height: 1.6; color: #283229; }
+.summary-toggle { margin-top: 14rpx; font-size: 18rpx; color: #71806e; }
+.result-summary-detail { display: block; margin-top: 18rpx; padding: 19rpx 21rpx; border-radius: 19rpx; background: #f5f7f1; font-size: 21rpx; line-height: 1.65; color: #586456; }
 .analysis-stat { margin-top: 30rpx; padding: 29rpx; overflow: hidden; border-radius: 29rpx; background: #172019; color: #fff; }
 .analysis-stat-main { display: flex; align-items: center; gap: 20rpx; }
 .analysis-number { font-family: Georgia, serif; font-size: 86rpx; line-height: .9; color: #ddec8c; }
@@ -624,14 +703,22 @@ button::after { border: 0; }
 .analysis-evidence-quote { margin-top: 12rpx; font-family: Georgia, 'Songti SC', serif; font-size: 19rpx; line-height: 1.55; color: rgba(255,255,255,.58); }
 .result-section, .source-section, .feedback-row, .card-draft, .follow-up-list { margin-top: 38rpx; }
 .section-kicker { display: block; color: #899486; }
-.observation { display: flex; gap: 18rpx; margin-top: 23rpx; }
+.observation { margin-top: 13rpx; overflow: hidden; border: 1rpx solid #e4e9e0; border-radius: 23rpx; background: #fbfcf9; }
+.observation-toggle { width: 100%; padding: 21rpx 20rpx; display: flex; align-items: center; gap: 15rpx; text-align: left; box-sizing: border-box; }
 .observation-index { width: 43rpx; height: 43rpx; flex: 0 0 43rpx; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #ebf0e5; font-size: 19rpx; color: #61705d; }
-.observation-copy { min-width: 0; flex: 1; }
+.observation-headline { min-width: 0; flex: 1; font-size: 24rpx; font-weight: 680; line-height: 1.45; color: #2f3930; }
+.observation-arrow, .supplement-arrow { flex: 0 0 auto; font-size: 36rpx; line-height: 1; color: #8d998a; transform: rotate(0); transition: transform .2s ease; }
+.observation-arrow.expanded, .supplement-arrow.expanded { transform: rotate(90deg); }
+.observation-detail { padding: 0 20rpx 22rpx 78rpx; }
 .observation-text, .observation-boundary { display: block; }
-.observation-text { font-size: 25rpx; line-height: 1.72; color: #2f3930; }
+.observation-text { font-size: 22rpx; line-height: 1.65; color: #4e5b4e; }
 .observation-boundary { margin-top: 10rpx; font-size: 20rpx; line-height: 1.55; color: #8a9388; }
 .evidence-row { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 13rpx; }
 .evidence-row button, .timeline-source { padding: 9rpx 13rpx; border-radius: 999rpx; background: #f0f4ec; font-size: 18rpx; color: #60705d; }
+.supplement-toggle { width: 100%; margin-top: 26rpx; padding: 20rpx 22rpx; display: flex; align-items: center; justify-content: space-between; gap: 16rpx; border-radius: 21rpx; background: #f1f4ed; text-align: left; box-sizing: border-box; }
+.supplement-toggle > view { display: flex; min-width: 0; flex-direction: column; gap: 6rpx; }
+.supplement-toggle > view text:first-child { font-size: 20rpx; font-weight: 680; color: #4b594b; }
+.supplement-toggle > view text:last-child { font-size: 17rpx; color: #899487; }
 .timeline-item { display: flex; gap: 19rpx; }
 .timeline-rail { width: 22rpx; display: flex; justify-content: center; border-left: 2rpx solid #dce4d7; }
 .timeline-rail view { width: 13rpx; height: 13rpx; margin-left: -2rpx; border: 3rpx solid #fff; border-radius: 50%; background: #6e805f; box-shadow: 0 0 0 2rpx #6e805f; }

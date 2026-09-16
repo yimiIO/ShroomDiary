@@ -37,6 +37,16 @@ function createAccessToken(userId, expiresInSeconds = config.accessTokenSeconds)
   return `${payload}.${hmac(payload)}`;
 }
 
+function createAdminToken(userId, expiresInSeconds = 15 * 60) {
+  const payload = base64url(JSON.stringify({
+    sub: userId,
+    type: 'admin',
+    exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+    nonce: crypto.randomBytes(16).toString('hex')
+  }));
+  return `${payload}.${hmac(payload)}`;
+}
+
 function verifyAccessToken(token) {
   const [payload, signature] = String(token || '').split('.');
   if (!payload || !signature) return null;
@@ -46,6 +56,21 @@ function verifyAccessToken(token) {
   try {
     const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (value.type !== 'access' || !value.sub || value.exp <= Math.floor(Date.now() / 1000)) return null;
+    return value;
+  } catch (error) {
+    return null;
+  }
+}
+
+function verifyAdminToken(token, userId) {
+  const [payload, signature] = String(token || '').split('.');
+  if (!payload || !signature) return null;
+  const expected = Buffer.from(hmac(payload));
+  const actual = Buffer.from(signature);
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
+  try {
+    const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (value.type !== 'admin' || value.sub !== userId || value.exp <= Math.floor(Date.now() / 1000)) return null;
     return value;
   } catch (error) {
     return null;
@@ -72,6 +97,7 @@ function verifyMediaSignature(mediaId, expires, signature) {
 }
 
 module.exports = {
+  createAdminToken,
   createAccessToken,
   createMediaSignature,
   createRefreshToken,
@@ -79,6 +105,7 @@ module.exports = {
   hashToken,
   isLegacyPasswordHash,
   verifyAccessToken,
+  verifyAdminToken,
   verifyMediaSignature,
   verifyPassword
 };

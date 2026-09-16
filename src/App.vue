@@ -2,11 +2,21 @@
 /* global wx */
 import Vue from 'vue';
 import { verifyAccessToken } from '@/api/login';
+import { dailyReviewInboxUnread } from '@/api/daily-review';
+import { handleInboxSnapshot, setInboxBadge } from '@/utils/inbox-notifications';
 
 export default {
 	async onLaunch() {
 		this.initSystemInfo();
 		await this.restoreSession();
+		await this.refreshInbox(false);
+		this.inboxTimer = setInterval(() => this.refreshInbox(true), 60000);
+	},
+	onShow() {
+		this.refreshInbox(true);
+	},
+	beforeDestroy() {
+		if (this.inboxTimer) clearInterval(this.inboxTimer);
 	},
 	methods: {
 		initSystemInfo() {
@@ -35,6 +45,19 @@ export default {
 				if (!response.data || !response.data.token) this.$mStore.commit('logout');
 			} catch (error) {
 				// 网络异常不应直接抹掉本地会话；真正的 401 会由请求层统一处理。
+			}
+		},
+		async refreshInbox(notify) {
+			if (this.inboxRefreshing) return;
+			if (!this.$mStore.getters.hasLogin) { setInboxBadge(0); return; }
+			this.inboxRefreshing = true;
+			try {
+				const response = await this.$http.get(dailyReviewInboxUnread);
+				handleInboxSnapshot(response.data || {}, { notify: Boolean(notify) });
+			} catch (error) {
+				// 收件箱提醒失败不能影响登录、写日记或其他核心操作。
+			} finally {
+				this.inboxRefreshing = false;
 			}
 		}
 	}

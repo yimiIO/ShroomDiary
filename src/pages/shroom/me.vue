@@ -37,7 +37,7 @@
 				</view>
 			</view>
 
-			<view v-if="hasLogin" class="compound-entry" @tap="openCompoundSystem">
+			<view v-if="hasLogin" class="compound-entry" :class="{ locked: !featureActive('compound') }" @tap="openCompoundSystem">
 				<view class="compound-symbol">∞</view>
 				<view class="compound-copy">
 					<text class="compound-kicker">PERSONAL OPERATING RHYTHM</text>
@@ -46,7 +46,8 @@
 					<view class="compound-accounts"><text>发现复利</text><text>控制投入</text><text>验证回报</text></view>
 				</view>
 				<view class="compound-progress">
-					<text v-if="compoundOverview && compoundOverview.current">继续</text>
+					<text v-if="!featureActive('compound')">10 菇点解锁</text>
+					<text v-else-if="compoundOverview && compoundOverview.current">继续</text>
 					<text v-else>进入</text>
 					<text class="compound-arrow">›</text>
 				</view>
@@ -67,21 +68,21 @@
 							</view>
 							<text class="menu-arrow">›</text>
 						</view>
-						<view class="menu-item" @tap="openWellbeing">
+						<view class="menu-item" :class="{ locked: !featureActive('wellbeing') }" @tap="openWellbeing">
 							<view class="menu-icon green">◌</view>
 							<view class="menu-copy">
 								<text class="menu-title">身心记录</text>
 								<text class="menu-description">{{ wellbeingDescription }}</text>
 							</view>
-							<text class="menu-arrow">›</text>
+							<text v-if="!featureActive('wellbeing')" class="lock-price">10 菇点</text><text v-else class="menu-arrow">›</text>
 						</view>
-						<view class="menu-item" @tap="openInquiries">
+						<view class="menu-item" :class="{ locked: !featureActive('inquiries') }" @tap="openInquiries">
 							<view class="menu-icon green">?</view>
 							<view class="menu-copy">
 								<text class="menu-title">未解之问</text>
 								<text class="menu-description">{{ inquiryDescription }}</text>
 							</view>
-							<text class="menu-arrow">›</text>
+							<text v-if="!featureActive('inquiries')" class="lock-price">10 菇点</text><text v-else class="menu-arrow">›</text>
 						</view>
 						<view class="menu-item" @tap="openCards">
 							<view class="menu-icon yellow">◇</view>
@@ -113,6 +114,16 @@
 				<view class="menu-section">
 					<text class="section-label">理解与复盘</text>
 					<view class="menu-card">
+						<view class="menu-item" data-testid="me-inbox" @tap="openInbox">
+							<view class="menu-icon green">信</view>
+							<view class="menu-copy"><text class="menu-title">收件箱</text><text class="menu-description">每日总结与来自菇的私人提醒</text></view>
+							<text v-if="inboxUnreadCount" class="unread-count">{{ inboxUnreadCount > 99 ? '99+' : inboxUnreadCount }}</text><text v-else class="menu-arrow">›</text>
+						</view>
+						<view class="menu-item" data-testid="me-daily-review" @tap="openDailyReview">
+							<view class="menu-icon green">日</view>
+							<view class="menu-copy"><text class="menu-title">菇每日总结</text><text class="menu-description">事实、人生 OS、复利与委派建议</text></view>
+							<text class="menu-arrow">›</text>
+						</view>
 						<view class="menu-item" @tap="openObservers">
 							<view class="menu-icon green">◉</view>
 							<view class="menu-copy"><text class="menu-title">我的观察席</text><text class="menu-description">选择谁来陪你重新看见日记</text></view>
@@ -144,6 +155,9 @@ import { lifeOsConfig } from '@/api/shroom-system';
 import { compoundHome } from '@/api/compound-system';
 import { inquirySummary } from '@/api/inquiry';
 import { wellbeingSummary } from '@/api/wellbeing';
+import { billingOverview } from '@/api/billing';
+import { dailyReviewInboxUnread } from '@/api/daily-review';
+import { handleInboxSnapshot } from '@/utils/inbox-notifications';
 
 export default {
 	data() {
@@ -153,7 +167,9 @@ export default {
 			lifeOs: null,
 			inquiryOverview: null,
 			wellbeingOverview: null,
-			compoundOverview: null
+			compoundOverview: null,
+			billing: null,
+			inboxUnreadCount: 0
 		};
 	},
 	computed: {
@@ -164,6 +180,7 @@ export default {
 			return this.$mStore.state.userInfo || {};
 		},
 		compoundDescription() {
+			if (!this.featureActive('compound')) return '10 菇点一次解锁 · AI 调用另行扣点';
 			if (!this.compoundOverview || !this.compoundOverview.current) return '从通用复利机会地图中，找到适合自己的积累';
 			return `正在验证：${this.compoundOverview.current.title || this.compoundOverview.current.itemName}`;
 		},
@@ -188,12 +205,14 @@ export default {
 			return `V${this.lifeOs.version} · ${clauseCount} 条当前原则${pending}`;
 		},
 		inquiryDescription() {
+			if (!this.featureActive('inquiries')) return '10 菇点一次解锁 · AI 调用另行扣点';
 			if (!this.hasLogin) return '把暂时想不明白的事留给时间';
 			if (!this.inquiryOverview || !this.inquiryOverview.openCount) return '留下问题，让日记慢慢提供线索';
 			const due = Number(this.inquiryOverview.reviewDueCount || 0);
 			return `${this.inquiryOverview.openCount} 个正在想${due ? ` · ${due} 个适合再看看` : ''}`;
 		},
 		wellbeingDescription() {
+			if (!this.featureActive('wellbeing')) return '10 菇点一次解锁 · 不构成医疗诊断';
 			if (!this.hasLogin) return '心理、身体、睡眠与生活变化';
 			if (!this.wellbeingOverview) return '正在整理你的长期变化';
 			const pending = Number(this.wellbeingOverview.pendingCount || 0);
@@ -206,16 +225,42 @@ export default {
 		const systemInfo = uni.getSystemInfoSync();
 		this.statusBarHeight = systemInfo.statusBarHeight || 0;
 	},
-	onShow() {
+	async onShow() {
 		if (this.hasLogin) {
+			await this.loadBilling();
 			this.loadDiaryStats();
 			this.loadLifeOs();
-			this.loadInquiries();
-			this.loadWellbeing();
-			this.loadCompoundOverview();
+			if (this.featureActive('inquiries')) this.loadInquiries();
+			if (this.featureActive('wellbeing')) this.loadWellbeing();
+			if (this.featureActive('compound')) this.loadCompoundOverview();
+			this.loadInboxUnread();
 		}
 	},
 	methods: {
+		async loadBilling() {
+			try { this.billing = (await this.$http.get(billingOverview)).data || null; }
+			catch (error) { this.billing = null; }
+		},
+		featureActive(key) {
+			if (!this.billing || !this.billing.enabled) return true;
+			const feature = (this.billing.features || []).find(item => item.key === key);
+			return Boolean(feature && feature.active);
+		},
+		openPaidFeature(key, path) {
+			if (this.featureActive(key)) {
+				uni.navigateTo({ url: path });
+				return;
+			}
+			const feature = (this.billing.features || []).find(item => item.key === key);
+			uni.showModal({
+				title: `解锁${feature ? feature.name : '高级功能'}`,
+				content: '10 菇点一次解锁，长期使用。功能内 AI 分析按成功调用另行扣点。',
+				cancelText: '暂不',
+				confirmText: '去解锁',
+				confirmColor: '#42634a',
+				success: result => { if (result.confirm) uni.navigateTo({ url: `/pages/shroom/wallet?feature=${key}` }); }
+			});
+		},
 		async loadDiaryStats() {
 			try {
 				const response = await this.$http.get(diaryStats);
@@ -252,6 +297,13 @@ export default {
 				this.compoundOverview = null;
 			}
 		},
+		async loadInboxUnread() {
+			try {
+				const response = await this.$http.get(dailyReviewInboxUnread);
+				this.inboxUnreadCount = Number(response.data && response.data.unreadCount || 0);
+				handleInboxSnapshot(response.data || {}, { notify: false });
+			} catch (error) { this.inboxUnreadCount = 0; }
+		},
 		goLogin() {
 			uni.navigateTo({ url: '/pages/public/login' });
 		},
@@ -262,10 +314,10 @@ export default {
 			uni.switchTab({ url: '/pages/shroom/cards' });
 		},
 		openInquiries() {
-			uni.navigateTo({ url: '/pages/shroom/inquiries' });
+			this.openPaidFeature('inquiries', '/pages/shroom/inquiries');
 		},
 		openWellbeing() {
-			uni.navigateTo({ url: '/pages/shroom/wellbeing' });
+			this.openPaidFeature('wellbeing', '/pages/shroom/wellbeing');
 		},
 		openFriends() {
 			uni.navigateTo({ url: '/pages/shroom/friends' });
@@ -276,11 +328,17 @@ export default {
 		openLifeOs() {
 			uni.navigateTo({ url: '/pages/shroom/life-os' });
 		},
+		openDailyReview() {
+			uni.navigateTo({ url: '/pages/shroom/daily-review' });
+		},
+		openInbox() {
+			uni.navigateTo({ url: '/pages/shroom/inbox' });
+		},
 		openObservers() {
 			uni.navigateTo({ url: '/pages/shroom/observers' });
 		},
 		openCompoundSystem() {
-			uni.navigateTo({ url: '/pages/shroom/compound' });
+			this.openPaidFeature('compound', '/pages/shroom/compound');
 		},
 		openReminders() {
 			uni.navigateTo({ url: '/pages/shroom/reminders' });
@@ -507,6 +565,10 @@ export default {
 	color: #fff;
 }
 
+.compound-entry.locked {
+	background: #34463a;
+}
+
 .compound-symbol {
 	display: flex;
 	align-items: center;
@@ -705,6 +767,21 @@ export default {
 	font-size: 39rpx;
 	font-weight: 300;
 	color: #9ba49d;
+}
+.unread-count { display: flex; min-width: 42rpx; height: 42rpx; padding: 0 8rpx; align-items: center; justify-content: center; border-radius: 999rpx; background: #a45e50; color: #fff; font-size: 17rpx; font-weight: 750; }
+
+.menu-item.locked .menu-icon {
+	filter: saturate(.7);
+}
+
+.lock-price {
+	flex: 0 0 auto;
+	padding: 8rpx 12rpx;
+	border-radius: 999rpx;
+	background: #f4edcf;
+	font-size: 17rpx;
+	font-weight: 700;
+	color: #786741;
 }
 
 .version {

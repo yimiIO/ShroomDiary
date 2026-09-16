@@ -35,7 +35,7 @@ async function run() {
     for (const [index, mobile] of mobiles.entries()) {
       await api('/api/auth/v1/register', {
         method: 'POST',
-        body: { mobile, password, nickname: `Card Social ${index + 1}` }
+        body: { mobile, password, nickname: `Card Social ${index + 1}`, acceptedTerms: true }
       });
     }
     const authorSession = await api('/api/auth/v1/login', {

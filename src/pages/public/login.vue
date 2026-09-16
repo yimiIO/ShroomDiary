@@ -68,12 +68,22 @@
 						<text class="field-label">确认密码</text>
 						<input class="field-input" type="password" v-model="registerParams.passwordRepetition" maxlength="20" placeholder="再次输入密码" />
 					</view>
+					<view class="terms-row" @tap="registerTermsAccepted = !registerTermsAccepted">
+						<view class="terms-check" :class="{ checked: registerTermsAccepted }">{{ registerTermsAccepted ? '✓' : '' }}</view>
+						<view class="terms-copy">我已阅读并同意
+							<text @tap.stop="openLegal('terms')">《菇用户服务协议》</text>和
+							<text @tap.stop="openLegal('privacy')">《菇隐私政策》</text>
+						</view>
+					</view>
 					<button class="primary-button" :disabled="btnLoading" :loading="btnLoading" @tap="submitRegister">创建 Shroom 账号</button>
-					<text class="agreement">注册即表示你同意妥善使用 Shroom，并尊重自己与他人的隐私。</text>
+					<text class="agreement">注册和写日记免费；付费功能会在扣费前另行确认。</text>
 				</view>
 			</view>
 
 			<view class="home-link" @tap="goHome">暂不登录，回到日记</view>
+			<!-- #ifdef H5 -->
+			<view class="icp-footer" @tap="openIcpRecord">琼ICP备2020004041号-1</view>
+			<!-- #endif -->
 		</view>
 	</view>
 </template>
@@ -115,6 +125,7 @@ export default {
 				passwordRepetition: '',
 				nickname: ''
 			},
+			registerTermsAccepted: false,
 			btnLoading: false
 		};
 	},
@@ -139,6 +150,11 @@ export default {
 		uni.showTabBar({ animation: false, fail: () => {} });
 	},
 	methods: {
+		openIcpRecord() {
+			// #ifdef H5
+			window.location.href = 'https://beian.miit.gov.cn/';
+			// #endif
+		},
 		setTab(tab) {
 			this.activeTab = tab;
 		},
@@ -186,7 +202,8 @@ export default {
 				mobile: this.registerParams.mobile,
 				password: this.registerParams.password,
 				password_repetition: this.registerParams.passwordRepetition,
-				nickname: this.registerParams.nickname
+				nickname: this.registerParams.nickname,
+				acceptedTerms: this.registerTermsAccepted
 			};
 			if (!this.$mGraceChecker.check(params, this.$mFormRule.registerRule)) {
 				this.$mHelper.toast(this.$mGraceChecker.error);
@@ -194,6 +211,10 @@ export default {
 			}
 			if (params.password !== params.password_repetition) {
 				this.$mHelper.toast('两次输入的密码不一致');
+				return;
+			}
+			if (!this.registerTermsAccepted) {
+				this.$mHelper.toast('请先阅读并同意用户服务协议与隐私政策');
 				return;
 			}
 
@@ -209,6 +230,9 @@ export default {
 			} finally {
 				this.btnLoading = false;
 			}
+		},
+		openLegal(type) {
+			uni.navigateTo({ url: `/pages/shroom/legal?type=${type}` });
 		},
 		goAfterLogin() {
 			// #ifdef H5
@@ -470,6 +494,42 @@ export default {
 	background: #687469;
 }
 
+.terms-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 13rpx;
+	margin-top: 28rpx;
+}
+
+.terms-check {
+	display: flex;
+	width: 32rpx;
+	height: 32rpx;
+	flex: 0 0 32rpx;
+	align-items: center;
+	justify-content: center;
+	border: 1rpx solid #a8b1a7;
+	border-radius: 8rpx;
+	font-size: 20rpx;
+}
+
+.terms-check.checked {
+	border-color: #4e6a55;
+	background: #4e6a55;
+	color: #fff;
+}
+
+.terms-copy {
+	font-size: 19rpx;
+	line-height: 1.6;
+	color: #727c74;
+}
+
+.terms-copy text {
+	color: #42634a;
+	text-decoration: underline;
+}
+
 .agreement {
 	display: block;
 	padding: 26rpx 14rpx 0;
@@ -484,6 +544,14 @@ export default {
 	font-size: 23rpx;
 	text-align: center;
 	color: #617063;
+}
+
+.icp-footer {
+	padding: 24rpx 0 0;
+	font-size: 19rpx;
+	line-height: 1.5;
+	text-align: center;
+	color: #7d887f;
 }
 
 /* #ifdef H5 */

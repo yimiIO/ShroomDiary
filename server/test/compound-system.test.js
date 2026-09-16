@@ -55,24 +55,51 @@ test('body streak keeps yesterday alive until today is checked in', () => {
 
 test('daily yoga is taught as short movement lessons followed by self practice', () => {
   assert.match(DAILY_YOGA_PRACTICE.title, /分段|动作/);
-  assert.ok(DAILY_YOGA_PRACTICE.segments.length >= 5);
+  assert.equal(DAILY_YOGA_PRACTICE.durationMinutes, 10);
+  assert.equal(DAILY_YOGA_PRACTICE.selectionVersion, '2026-09-14');
+  assert.deepEqual(
+    DAILY_YOGA_PRACTICE.segments.map(segment => segment.id),
+    ['side-reach', 'forward-fold', 'downward-dog', 'low-lunge', 'gentle-cobra', 'supine-twist', 'child-pose']
+  );
+  assert.deepEqual(
+    DAILY_YOGA_PRACTICE.segments.map(segment => [segment.id, segment.startSeconds, segment.endSeconds]),
+    [
+      ['side-reach', 694, 719],
+      ['forward-fold', 82, 104],
+      ['downward-dog', 374, 386],
+      ['low-lunge', 509, 534],
+      ['gentle-cobra', 615, 623],
+      ['supine-twist', 1239, 1296],
+      ['child-pose', 1413, 1440]
+    ]
+  );
   for (const segment of DAILY_YOGA_PRACTICE.segments) {
     assert.ok(segment.endSeconds > segment.startSeconds);
     assert.ok(segment.endSeconds - segment.startSeconds <= 120, `${segment.title} is still a follow-along block`);
     assert.ok(segment.practiceSeconds >= 30);
     assert.ok(segment.steps.length >= 2);
+    assert.ok(segment.targets.length >= 2);
   }
+  const targetAreas = new Set(DAILY_YOGA_PRACTICE.segments.flatMap(segment => segment.targets));
+  assert.ok(targetAreas.has('肩背'));
+  assert.ok(targetAreas.has('胸腹前侧'));
+  assert.ok(targetAreas.has('躯干两侧'));
+  assert.ok(targetAreas.has('脊柱'));
+  assert.ok(targetAreas.has('髋前侧'));
+  assert.ok(targetAreas.has('大腿后侧'));
+  assert.ok(targetAreas.has('小腿'));
   assert.ok(DAILY_YOGA_PRACTICE.videoKeys.zh);
   assert.ok(DAILY_YOGA_PRACTICE.videoKeys.en);
   assert.ok(DAILY_YOGA_PRACTICE.segments.some(segment => segment.id === 'child-pose'));
   assert.ok(!DAILY_YOGA_PRACTICE.segments.some(segment => segment.id === 'plank-transition'));
+  assert.ok(!DAILY_YOGA_PRACTICE.segments.some(segment => segment.id === 'bridge'));
   for (const segment of DAILY_YOGA_PRACTICE.segments) {
     assert.ok(segment.titleEn);
     assert.ok(segment.focusEn);
     assert.ok(segment.stepsEn.length >= 2);
     assert.ok(segment.cautionEn);
-    assert.ok(segment.captions.length >= 3);
-    assert.ok(segment.captions.every(caption => caption.zh && caption.en));
+    assert.ok(segment.captions.length >= 1);
+    assert.ok(segment.captions.every(caption => caption.zh && caption.en && caption.atSeconds < segment.endSeconds - segment.startSeconds));
   }
   const selection = normalizeYogaSelection([
     DAILY_YOGA_PRACTICE.segments[0].id,
@@ -85,7 +112,7 @@ test('daily yoga is taught as short movement lessons followed by self practice',
 
 test('daily yoga presents expiring media URLs without exposing storage keys', async () => {
   const practice = await presentYogaPractice(async key => `signed://${key}`);
-  assert.match(practice.videoUrls.zh, /fit-for-duty-yoga-24min-zh\.mp4/);
+  assert.match(practice.videoUrls.zh, /fit-for-duty-yoga-7-movement-zh\.mp4/);
   assert.match(practice.videoUrls.en, /fit-for-duty-yoga-24min-en\.mp4/);
   assert.match(practice.posterUrl, /fit-for-duty-yoga-poster\.jpg/);
   assert.equal(practice.videoKeys, undefined);

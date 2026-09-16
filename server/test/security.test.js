@@ -7,12 +7,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const {
+  createAdminToken,
   createAccessToken,
   createMediaSignature,
   hashPassword,
   hashToken,
   isLegacyPasswordHash,
   verifyAccessToken,
+  verifyAdminToken,
   verifyMediaSignature,
   verifyPassword
 } = require('../src/security');
@@ -36,6 +38,15 @@ test('access tokens reject tampering', () => {
   const token = createAccessToken('d04d85d3-4ef8-4b3f-9415-60c2e338d4f8');
   assert.equal(verifyAccessToken(token).sub, 'd04d85d3-4ef8-4b3f-9415-60c2e338d4f8');
   assert.equal(verifyAccessToken(`${token}tampered`), null);
+});
+
+test('admin tokens are short-purpose credentials bound to one administrator', () => {
+  const userId = 'd04d85d3-4ef8-4b3f-9415-60c2e338d4f8';
+  const token = createAdminToken(userId, 60);
+  assert.equal(verifyAdminToken(token, userId).type, 'admin');
+  assert.equal(verifyAdminToken(token, '718dd538-c101-4d50-84e8-d06146579fc7'), null);
+  assert.equal(verifyAdminToken(`${token}tampered`, userId), null);
+  assert.equal(verifyAdminToken(createAdminToken(userId, -1), userId), null);
 });
 
 test('refresh token hashing is deterministic and one-way shaped', () => {
