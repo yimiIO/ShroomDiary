@@ -19,8 +19,12 @@ test('compound home keeps mobile information progressive instead of expanding ev
   assert.match(page, /financialPlanStep === 2/);
   assert.match(page, /financialPlanStep === 3/);
   assert.match(page, /4 \/ 4/);
-  assert.match(page, /input, textarea \{ font-size: 30rpx; \}/);
-  assert.match(page, /\.primary-action \{ min-height: 92rpx; font-size: 30rpx; \}/);
+  assert.match(page, /input, textarea \{ font-size: 28rpx; \}/);
+  assert.match(page, /\.topbar-kicker, \.eyebrow \{ font-size: 18rpx;/);
+  assert.match(page, /\.portfolio-title \{[^}]*font-size: 36rpx;/);
+  assert.match(page, /\.plan-outcome \{[^}]*font-size: 24rpx;/);
+  assert.match(page, /\.primary-action \{ min-height: 88rpx; font-size: 27rpx; \}/);
+  assert.doesNotMatch(page, /打开后能看到/);
 });
 
 test('financial plan uses plain user language for records and total value', () => {

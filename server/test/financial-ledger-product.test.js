@@ -68,7 +68,7 @@ test('financial product exposes four tabs without adding a bottom navigation ite
 	assert.match(page, /具体产品（可选）/);
 	assert.match(page, /在哪个平台（可选）/);
 	assert.match(page, /recordContext\(item\)/);
-	assert.match(page, /总投入、现在余额和涨跌/);
+	assert.match(page, /当前资金概览/);
 	assert.match(page, /按渠道/);
 	assert.match(page, /按标的/);
 	assert.match(page, /投入本金/);
@@ -106,6 +106,6 @@ test('legacy financial progress verdicts are blocked instead of influencing ledg
   const page = source('src/pages/shroom/compound.vue');
   assert.match(route, /财务计划不再使用“线性／复利已出现”判断/);
   assert.match(route, /财务金额和结果必须进入可核对的资金台账/);
-	assert.match(page, /查看我的投资计划/);
+	assert.match(page, /打开资金计划/);
 	assert.match(page, /每月检查一次/);
 });
