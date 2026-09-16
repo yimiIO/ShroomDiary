@@ -199,7 +199,7 @@ function newRule(method) { return { contributionMethod: method || 'FIXED', effec
 export default {
 	data() {
 		return {
-			statusBarHeight: 0, threadId: '', loading: true, saving: false, loadError: '', data: emptyData(), holdingView: 'TOTAL',
+			statusBarHeight: 0, threadId: '', loading: true, saving: false, loadError: '', data: emptyData(), holdingView: 'TOTAL', openPlanEditorOnLoad: false,
 			activeTab: 'OVERVIEW', editor: '', profileDraft: newProfile(), recordDraft: newRecord(), snapshotDraft: newSnapshot(), holdingDraft: newHolding(), aliasDraft: { sourceAlias: '', productName: '', directionName: '', batchScope: '' }, ruleDraft: newRule(), noteDraft: { decidedOn: localDate(), noteType: 'JUDGMENT', body: '', evidence: '' }, reviewDraft: { reviewType: 'MONTHLY', scopeStart: monthStart(), scopeEnd: localDate(), userExplanation: '', pendingQuestions: '', nextActions: '' }, importText: '', importConsent: false, importDraft: null, importCandidateIds: [], deleteConfirm: '',
 			tabs: [{ value: 'OVERVIEW', label: '概览' }, { value: 'RECORDS', label: '记录' }, { value: 'HOLDINGS', label: '持有' }, { value: 'PLAN', label: '计划' }],
 			holdingViews: [{ value: 'TOTAL', label: '总览' }, { value: 'CHANNEL', label: '按渠道' }, { value: 'PRODUCT', label: '按标的' }],
@@ -230,9 +230,9 @@ export default {
 		projection() { return (this.data.overview && this.data.overview.projection) || { status: 'NOT_READY' }; },
 		projectionMessage() { return { MISSING_ASSUMPTION: '填写一个自己的年化收益率假设，才能看到期限结束时的数学情景。系统不会替你预填。', MISSING_HORIZON: '先确认计划期限。', UNSUPPORTED_RULE: '当前投入规则不是固定金额，无法可靠计算单一结果；计划和真实记录仍然有效。', CURRENCY_MISMATCH: '当前持有与计划币种不同，系统不会强行合并测算。', INVALID_ASSUMPTION: '收益率假设应填写 0—100 之间的数字。', OUT_OF_RANGE: '当前条件超出可安全展示的测算范围。', HORIZON_REACHED: '这份计划已经到达原定期限。请先回看实际结果，再由你决定是否建立下一段计划。' }[this.projection.status] || '先补充期限、投入周期和收益率假设。'; }
 	},
-	onLoad(query) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.threadId = query.id || ''; this.load(); },
+	onLoad(query) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.threadId = query.id || ''; this.activeTab = this.tabs.some(item => item.value === query.tab) ? query.tab : 'OVERVIEW'; this.openPlanEditorOnLoad = query.edit === '1'; this.load(); },
 	methods: {
-		async load() { if (!this.threadId) { this.loading = false; this.loadError = '缺少投资计划标识'; return; } this.loading = true; this.loadError = ''; try { const response = await this.$http.get(financialPlan(this.threadId)); this.data = { ...emptyData(), ...(response.data || {}) }; if (!this.data.profile) this.profileDraft = { ...newProfile(), purpose: this.data.thread.desiredOutcome || this.data.thread.title || '' }; } catch (error) { this.loadError = error.message || '投资计划暂时没有读到'; } finally { this.loading = false; } },
+		async load() { if (!this.threadId) { this.loading = false; this.loadError = '缺少投资计划标识'; return; } this.loading = true; this.loadError = ''; try { const response = await this.$http.get(financialPlan(this.threadId)); this.data = { ...emptyData(), ...(response.data || {}) }; if (!this.data.profile) this.profileDraft = { ...newProfile(), purpose: this.data.thread.desiredOutcome || this.data.thread.title || '' }; if (this.openPlanEditorOnLoad && this.data.profile) { this.openPlanEditorOnLoad = false; this.activeTab = 'PLAN'; this.editProfile(); } } catch (error) { this.loadError = error.message || '投资计划暂时没有读到'; } finally { this.loading = false; } },
 		editProfile() { const item = this.data.profile; this.profileDraft = { ...newProfile(), ...item, assumedAnnualReturnPercent: item.assumedAnnualReturnPercent === null || item.assumedAnnualReturnPercent === undefined ? '' : item.assumedAnnualReturnPercent, sensitiveDataConsent: true }; this.editor = 'PROFILE'; this.scrollToSelector('.setup-card'); },
 		changeSensitiveConsent(event) { this.profileDraft.sensitiveDataConsent = this.checkboxValue(event); },
 			checkboxValue(event) { return Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },

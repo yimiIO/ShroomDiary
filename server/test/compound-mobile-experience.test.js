@@ -36,3 +36,20 @@ test('financial plan uses plain user language for records and total value', () =
   assert.match(page, /为什么要记两种数据/);
   assert.doesNotMatch(page, /资金实践|资金事件|市值快照|资产快照|私人台账/);
 });
+
+test('each compound plan owns its edit, review and secondary delete actions', () => {
+  const page = source('src/pages/shroom/compound.vue');
+  const ledger = source('src/pages/shroom/financial-ledger.vue');
+
+  assert.match(page, /@tap\.stop="togglePlanMenu\(plan\)"/);
+  assert.match(page, /@tap="editPlan\(plan\)"/);
+  assert.match(page, /@tap="openPlanReview\(plan\)"/);
+  assert.match(page, /@tap="openDeletePlan\(plan\)"/);
+  assert.match(page, /life-os-weekly\?threadId=/);
+  assert.match(page, /financial-ledger\?id=.*&tab=PLAN&edit=1/);
+  assert.match(ledger, /query\.edit === '1'/);
+  assert.match(ledger, /this\.editProfile\(\)/);
+
+  assert.doesNotMatch(page, /class="secondary-links"/);
+  assert.doesNotMatch(page, /openYogaPractice|openPrinciples/);
+});

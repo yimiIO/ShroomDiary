@@ -228,6 +228,7 @@ function mapDiarySuggestion(row) {
 function mapReview(row) {
   return {
     id: row.id,
+    threadId: row.thread_id || null,
     scopeStart: String(row.scope_start).slice(0, 10),
     scopeEnd: String(row.scope_end).slice(0, 10),
     status: row.status,
@@ -1636,9 +1637,11 @@ router.post('/threads/:id/diary-links/:linkId/dismiss', asyncRoute(async (req, r
   return ok(res, { linkId }, '已忽略，不会再把这篇日记推进到这件事');
 }));
 
-async function reviewSources(userId, scopeStart, scopeEnd) {
+async function reviewSources(userId, scopeStart, scopeEnd, threadId = null) {
+  const values = [userId, scopeStart, scopeEnd];
+  const threadFilter = threadId ? ` AND e.thread_id = $${values.push(threadId)}` : '';
   const result = await db.query(
-    `SELECT e.id, e.kind, e.summary, e.payload, e.source_diary_id, e.source_valid,
+    `SELECT e.id, e.thread_id, e.kind, e.summary, e.payload, e.source_diary_id, e.source_valid,
             e.created_at, i.stable_key, COALESCE(i.name, t.title) AS item_name,
             t.progress_mode, t.archetype_key
        FROM compound_events e
@@ -1648,12 +1651,14 @@ async function reviewSources(userId, scopeStart, scopeEnd) {
         AND e.created_at >= $2::date
         AND e.created_at < ($3::date + 1)
         AND (e.source_diary_id IS NULL OR e.source_valid)
+        ${threadFilter}
       ORDER BY e.created_at`,
-    [userId, scopeStart, scopeEnd]
+    values
   );
   return result.rows.map((row, index) => ({
     sourceKey: `E${index + 1}`,
     eventId: row.id,
+    threadId: row.thread_id,
     itemKey: row.stable_key,
     itemName: row.item_name,
     progressMode: row.progress_mode,
@@ -1667,25 +1672,36 @@ async function reviewSources(userId, scopeStart, scopeEnd) {
 
 router.get('/reviews', asyncRoute(async (req, res) => {
   const { page, pageSize, offset } = pageParams(req.query);
+  const threadId = req.query.threadId ? uuid(req.query.threadId) : null;
+  if (req.query.threadId && !threadId) return fail(res, 400, '复利计划标识不正确');
+  if (threadId && !await ownedThread(req.user.id, threadId)) return fail(res, 404, '复利计划不存在');
+  const where = threadId ? 'user_id = $1 AND thread_id = $4' : 'user_id = $1 AND thread_id IS NULL';
+  const values = threadId ? [req.user.id, pageSize, offset, threadId] : [req.user.id, pageSize, offset];
+  const countWhere = threadId ? 'user_id = $1 AND thread_id = $2' : 'user_id = $1 AND thread_id IS NULL';
+  const countValues = threadId ? [req.user.id, threadId] : [req.user.id];
   const [rows, count] = await Promise.all([
-    db.query(`SELECT * FROM compound_reviews WHERE user_id = $1 ORDER BY scope_end DESC, created_at DESC LIMIT $2 OFFSET $3`, [req.user.id, pageSize, offset]),
-    db.query(`SELECT count(*)::int AS total FROM compound_reviews WHERE user_id = $1`, [req.user.id])
+    db.query(`SELECT * FROM compound_reviews WHERE ${where} ORDER BY scope_end DESC, created_at DESC LIMIT $2 OFFSET $3`, values),
+    db.query(`SELECT count(*)::int AS total FROM compound_reviews WHERE ${countWhere}`, countValues)
   ]);
   return ok(res, { list: rows.rows.map(mapReview), page, pageSize, total: count.rows[0].total });
 }));
 
 router.post('/reviews/draft', asyncRoute(async (req, res) => {
+  const threadId = req.body.threadId ? uuid(req.body.threadId) : null;
+  if (req.body.threadId && !threadId) return fail(res, 400, '复利计划标识不正确');
+  const thread = threadId ? await ownedThread(req.user.id, threadId) : null;
+  if (threadId && !thread) return fail(res, 404, '复利计划不存在');
   const scopeEnd = /^\d{4}-\d{2}-\d{2}$/.test(req.body.scopeEnd || '') ? req.body.scopeEnd : shanghaiDate();
   const scopeStart = /^\d{4}-\d{2}-\d{2}$/.test(req.body.scopeStart || '')
     ? req.body.scopeStart : new Date(Date.parse(`${scopeEnd}T12:00:00+08:00`) - 29 * 86400000).toISOString().slice(0, 10);
   if (scopeEnd < scopeStart) return fail(res, 400, '回看开始日期不能晚于结束日期');
-  const sources = await reviewSources(req.user.id, scopeStart, scopeEnd);
+  const sources = await reviewSources(req.user.id, scopeStart, scopeEnd, threadId);
   if (!sources.length) return fail(res, 400, '这个阶段还没有已确认的推进或结果');
   const reviewId = crypto.randomUUID();
   const includesFinancialPlan = sources.some(source => isFinancialCompound(source));
   const generated = await aiOrFallback({
     prompt: STAGE_REVIEW_PROMPT,
-    input: { scopeStart, scopeEnd, sources },
+    input: { scopeStart, scopeEnd, planTitle: thread ? (thread.title || thread.item_name || '') : '', sources },
     label: '复利系统·阶段回看',
     normalizer: raw => normalizeStageReview(raw, sources),
     fallback: sources,
@@ -1703,13 +1719,17 @@ router.post('/reviews/draft', asyncRoute(async (req, res) => {
   }
   const costSummary = generated.calledAi ? await usageSummary(req.user.id, { taskId: reviewId }) : null;
   const inserted = await db.transaction(async client => {
-    await client.query(`UPDATE compound_reviews SET status = 'SUPERSEDED', updated_at = now() WHERE user_id = $1 AND status = 'DRAFT'`, [req.user.id]);
+    await client.query(
+      `UPDATE compound_reviews SET status = 'SUPERSEDED', updated_at = now()
+        WHERE user_id = $1 AND thread_id IS NOT DISTINCT FROM $2::uuid AND status = 'DRAFT'`,
+      [req.user.id, threadId]
+    );
     return client.query(
       `INSERT INTO compound_reviews
-        (id, user_id, scope_start, scope_end, status, result, source_refs, model_version, cost_summary)
-       VALUES ($1, $2, $3::date, $4::date, 'DRAFT', $5::jsonb, $6::jsonb, $7, $8::jsonb)
+        (id, user_id, thread_id, scope_start, scope_end, status, result, source_refs, model_version, cost_summary)
+       VALUES ($1, $2, $3, $4::date, $5::date, 'DRAFT', $6::jsonb, $7::jsonb, $8, $9::jsonb)
        RETURNING *`,
-      [reviewId, req.user.id, scopeStart, scopeEnd, JSON.stringify(value), JSON.stringify(sources),
+      [reviewId, req.user.id, threadId, scopeStart, scopeEnd, JSON.stringify(value), JSON.stringify(sources),
         generated.usedAi
           ? (includesFinancialPlan ? `compound-progress-financial-${FINANCIAL_COMPOUND_POLICY_VERSION}` : 'compound-progress-v1')
           : (generated.policyBlocked ? `financial-policy-blocked-${FINANCIAL_COMPOUND_POLICY_VERSION}` : 'evidence-fallback-v1'),

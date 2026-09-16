@@ -132,8 +132,10 @@ test('todo management and project creation use large cross-platform sheets', () 
 
 test('compound system keeps segmented self-paced yoga as an optional body tool', () => {
   const compound = source('src/pages/shroom/compound.vue');
+  const archetypes = source('server/src/compound-archetypes.js');
   const yoga = source('src/pages/shroom/yoga-practice.vue');
-  assert.match(compound, /身体练习/);
+  assert.match(archetypes, /身体与恢复底盘/);
+  assert.doesNotMatch(compound, /openYogaPractice|pages\/shroom\/yoga-practice/);
   assert.match(yoga, /initial-time/);
   assert.match(yoga, /:controls="false"/);
   assert.match(yoga, /暂停视频/);

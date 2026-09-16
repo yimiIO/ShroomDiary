@@ -2,7 +2,7 @@
 	<view class="page">
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
 		<view class="shell">
-			<view class="header"><button class="back" aria-label="返回" @tap="goBack">‹</button><view><text class="kicker">EVIDENCE REVIEW</text><text class="title">阶段回看</text><text class="subtitle">只看真实做过和留下的结果，再决定继续、调整或停止。</text></view></view>
+			<view class="header"><button class="back" aria-label="返回" @tap="goBack">‹</button><view><text class="kicker">EVIDENCE REVIEW</text><text class="title">{{ planTitle ? planTitle + ' · 阶段回看' : '阶段回看' }}</text><text class="subtitle">只回看这项计划真实做过和留下的结果，再决定继续、调整或停止。</text></view></view>
 
 			<view class="scope-card">
 				<view class="scope-heading"><view><text>回看范围</text><text>默认最近 30 天，也可以自己选择。</text></view></view>
@@ -37,8 +37,8 @@
 				<text v-else class="empty history-empty">完成一次真实推进并记录结果后，再来主动回看。</text>
 			</view>
 
-			<view class="export-row"><button @tap="exportData('json')">导出 JSON</button><button @tap="exportData('markdown')">导出 Markdown</button></view>
-			<text class="privacy">导出只包含复利方向、推进、结果、引用和回看；不包含无关日记全文。</text>
+			<view v-if="!threadId" class="export-row"><button @tap="exportData('json')">导出 JSON</button><button @tap="exportData('markdown')">导出 Markdown</button></view>
+			<text class="privacy">{{ threadId ? '这次页面只读取当前复利项的推进、结果和回看。' : '导出只包含复利方向、推进、结果、引用和回看；不包含无关日记全文。' }}</text>
 		</view>
 	</view>
 </template>
@@ -54,6 +54,8 @@ export default {
 		const start = new Date(end.getTime() - 29 * 86400000);
 		return {
 			statusBarHeight: 0,
+			threadId: '',
+			planTitle: '',
 			scopeStart: shanghaiDate(start),
 			scopeEnd: shanghaiDate(end),
 			generating: false,
@@ -69,11 +71,13 @@ export default {
 			decisions: [{ value: 'CONTINUE', label: '继续' }, { value: 'ADJUST', label: '调整' }, { value: 'STOP', label: '停止' }]
 		};
 	},
-	onLoad() { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.loadHistory(); },
+	onLoad(query) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.threadId = query.threadId || ''; this.planTitle = query.title || ''; this.loadHistory(); },
 	methods: {
 		async loadHistory() {
 			try {
-				const response = await this.$http.get(compoundReviews, { page: 1, pageSize: 30 });
+				const params = { page: 1, pageSize: 30 };
+				if (this.threadId) params.threadId = this.threadId;
+				const response = await this.$http.get(compoundReviews, params);
 				const rows = response.data && response.data.list ? response.data.list : [];
 				this.draft = rows.find(item => item.status === 'DRAFT') || null;
 				this.history = rows.filter(item => item.status === 'CONFIRMED');
@@ -83,7 +87,7 @@ export default {
 			if (this.generating) return;
 			this.generating = true;
 			try {
-				const response = await this.$http.post(compoundReviewDraft, { scopeStart: this.scopeStart, scopeEnd: this.scopeEnd });
+				const response = await this.$http.post(compoundReviewDraft, { scopeStart: this.scopeStart, scopeEnd: this.scopeEnd, threadId: this.threadId || undefined });
 				this.draft = response.data;
 			} catch (error) { uni.showToast({ title: '这个阶段还没有足够的已确认记录', icon: 'none' }); }
 			finally { this.generating = false; }
