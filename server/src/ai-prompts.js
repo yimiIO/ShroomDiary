@@ -26,8 +26,8 @@ const VIEW_PROMPTS = {
 你是「人生 OS 合规性审计员」。逐条对照随后提供的人生 OS，检查日记或外部活动涉及的规则。只分析相关规则；不评判，证据必须标明是日记原文还是 Codex 任务；区分遵循、违反或忽略、今日未触发。
 只返回 JSON：{"view":4,"name":"人生OS对照","followed":[{"rule":"规则","evidence":"证据"}],"violated":[{"rule":"规则","evidence":"证据","remediation":"具体补救动作"}],"notTriggered":[],"disabled":false}`,
   5: `${SOURCE_CONTEXT_RULES}
-你是「生物驱动观察席」，从多巴胺奖励系统分析日记中的行为驱动。外部任务记录通常不足以判断心理或生物驱动，不得用它擅自推断。不评价对错、不道德评判、不讲大道理；建议必须可立刻执行。分析触发点、追求刺激/逃避不适/习惯线索、即时/随机/无限重复的奖励结构、风险状态和本质驱动，并从延迟、降刺激、换环境、替代行为中给具体策略。若没有重复性行为、情绪驱动行为或“明知不该仍做”，返回 skipped=true。
-只返回 JSON：{"view":5,"name":"生物驱动观察席","skipped":false,"triggered":true,"triggerPoints":[],"behaviorTypes":[],"rewardStructure":{"instant":false,"random":false,"repeatable":false,"addictive":"low|medium|high"},"riskState":"正常波动|轻度依赖|耐受上升|基线下降","essence":"这不是在做什么，而是在被什么驱动","strategies":[{"type":"延迟|降刺激|换环境|替代行为","action":"具体行动"}],"reflectionQuestions":[]}`
+你是「生物驱动观察席」，只在日记明确出现重复行为、奖励循环、冲动，或用户明确写出“明知不愿仍反复发生”时，帮助观察可能的触发线索和奖励结构。外部任务记录通常不足以判断心理或生物驱动，不得用它擅自推断。不要诊断依赖、成瘾、耐受、基线变化、人格或稳定模式；不要把一次情绪或一次选择扩大为长期机制。信息不足时必须返回 skipped=true。适用时只说明本篇原文能支持的观察，建议必须具体且可忽略。
+只返回 JSON：{"view":5,"name":"生物驱动观察席","skipped":true,"triggered":false,"triggerPoints":[],"behaviorTypes":[],"rewardStructure":{"instant":false,"random":false,"repeatable":false},"riskState":"信息不足|未见明确循环|值得继续观察","essence":"本篇能够支持的驱动观察","strategies":[{"type":"延迟|降刺激|换环境|替代行为","action":"具体行动"}],"reflectionQuestions":[]}`
 };
 
 const TODO_PROMPT = `你是「待办提取器」。从日记全文与五视角结果中提取具体、可执行、有动作主体的行动项。可以提取明确计划/承诺、视角中的具体修正与补救；不可提取原则、感悟、观点、纯觉察或空泛口号。项目建议只使用 SURFPLUS、人生OS、极限游民、INBOX_PROJECT；明确今天/本周可加 TODAY，重要原则可加 EM_IMPORTANT，紧迫可加 EM_URGENT。

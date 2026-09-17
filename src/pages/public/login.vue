@@ -80,7 +80,12 @@
 				</view>
 			</view>
 
+			<!-- #ifdef MP-WEIXIN -->
+			<view class="home-link" @tap="goPublicDiscover">暂不登录，浏览公开菇卡</view>
+			<!-- #endif -->
+			<!-- #ifndef MP-WEIXIN -->
 			<view class="home-link" @tap="goHome">暂不登录，回到日记</view>
+			<!-- #endif -->
 			<!-- #ifdef H5 -->
 			<view class="icp-footer" @tap="openIcpRecord">琼ICP备2020004041号-1</view>
 			<!-- #endif -->
@@ -90,7 +95,7 @@
 
 <script>
 /* global document, getCurrentPages */
-import { loginByPass, registerByPass } from '@/api/login';
+import { acquisitionTouch, loginByPass, registerByPass } from '@/api/login';
 
 const SHROOM_HOME = '/pages/shroom/me';
 const SHROOM_TABS = [
@@ -126,6 +131,8 @@ export default {
 				nickname: ''
 			},
 			registerTermsAccepted: false,
+			campaignContentCode: '',
+			acquisitionTouchId: '',
 			btnLoading: false
 		};
 	},
@@ -135,6 +142,9 @@ export default {
 		this.activeTab = String(options.type || '') === '1' ? 'register' : 'login';
 		this.loginParams.mobile = uni.getStorageSync('loginMobile') || '';
 		this.loginParams.password = uni.getStorageSync('loginPassword') || '';
+		this.campaignContentCode = String(options.cid || '').toLowerCase();
+		this.acquisitionTouchId = uni.getStorageSync('shroomAcquisitionTouchId') || '';
+		this.captureAcquisition(options);
 	},
 	onShow() {
 		// #ifdef H5
@@ -150,6 +160,22 @@ export default {
 		uni.showTabBar({ animation: false, fail: () => {} });
 	},
 	methods: {
+		async captureAcquisition(options = {}) {
+			const contentCode = String(options.cid || '').toLowerCase();
+			if (!/^[a-z0-9][a-z0-9_-]{2,79}$/.test(contentCode)) return;
+			try {
+				const response = await this.$http.post(acquisitionTouch, {
+					contentCode,
+					visitorId: uni.getStorageSync('shroomAcquisitionVisitorId') || ''
+				});
+				this.acquisitionTouchId = response.data.touchId;
+				uni.setStorageSync('shroomAcquisitionTouchId', response.data.touchId);
+				uni.setStorageSync('shroomAcquisitionVisitorId', response.data.visitorId);
+				uni.setStorageSync('shroomAcquisitionContentCode', response.data.contentCode);
+			} catch (error) {
+				this.$mHelper.log(error);
+			}
+		},
 		openIcpRecord() {
 			// #ifdef H5
 			window.location.href = 'https://beian.miit.gov.cn/';
@@ -172,6 +198,10 @@ export default {
 			// #endif
 			uni.showTabBar({ animation: false, fail: () => {} });
 			uni.switchTab({ url: '/pages/diary/index' });
+		},
+		goPublicDiscover() {
+			uni.showTabBar({ animation: false, fail: () => {} });
+			uni.switchTab({ url: '/pages/shroom/discover' });
 		},
 		async submitLogin() {
 			const params = {
@@ -203,7 +233,8 @@ export default {
 				password: this.registerParams.password,
 				password_repetition: this.registerParams.passwordRepetition,
 				nickname: this.registerParams.nickname,
-				acceptedTerms: this.registerTermsAccepted
+				acceptedTerms: this.registerTermsAccepted,
+				acquisitionTouchId: this.acquisitionTouchId || uni.getStorageSync('shroomAcquisitionTouchId') || ''
 			};
 			if (!this.$mGraceChecker.check(params, this.$mFormRule.registerRule)) {
 				this.$mHelper.toast(this.$mGraceChecker.error);

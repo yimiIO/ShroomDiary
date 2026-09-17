@@ -101,7 +101,7 @@ async function syncDiaryLifeOsLinks(client, { userId, diary, analysisId, items, 
       `INSERT INTO life_os_item_links
         (id, user_id, item_id, diary_id, analysis_id, record_type, evidence_excerpt, summary,
          suggested_next_step, origin, user_confirmed, status, source_version, source_valid)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AI', false, 'ACTIVE', $10, true)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'AI', false, 'PENDING', $10, true)
        ON CONFLICT (user_id, item_id, diary_id, record_type)
          WHERE status = 'ACTIVE' AND source_valid DO NOTHING`,
       [crypto.randomUUID(), userId, item.id, diary.id, analysisId, link.recordType,
@@ -117,7 +117,7 @@ async function listDiaryLifeOsLinks(queryable, userId, diaryId) {
        FROM life_os_item_links l
        JOIN life_os_items i ON i.id = l.item_id AND i.user_id = l.user_id
        LEFT JOIN diaries d ON d.id = l.diary_id AND d.user_id = l.user_id
-      WHERE l.user_id = $1 AND l.diary_id = $2 AND l.status = 'ACTIVE' AND l.source_valid
+      WHERE l.user_id = $1 AND l.diary_id = $2 AND l.status IN ('PENDING', 'ACTIVE') AND l.source_valid
       ORDER BY i.priority, i.original_number`,
     [userId, diaryId]
   );
@@ -133,7 +133,8 @@ async function listDiaryLifeOsLinks(queryable, userId, diaryId) {
     summary: row.summary || '',
     suggestedNextStep: row.suggested_next_step || '',
     origin: row.origin,
-    userConfirmed: Boolean(row.user_confirmed)
+    userConfirmed: Boolean(row.user_confirmed),
+    status: row.status
   }));
 }
 

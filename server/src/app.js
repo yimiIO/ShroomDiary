@@ -27,6 +27,7 @@ const dataSourceRoutes = require('./routes/data-sources');
 const dailyReviewRoutes = require('./routes/daily-reviews');
 const billingRoutes = require('./routes/billing');
 const adminCompanyRoutes = require('./routes/admin-company');
+const acquisitionRoutes = require('./routes/acquisition');
 const { isAiConfigured } = require('./ai-engine');
 const { embeddingProfile, isEmbeddingConfigured } = require('./embedding-provider');
 const { isTranscriptionConfigured } = require('./transcription');
@@ -129,6 +130,7 @@ app.get('/api/health', asyncRoute(async (req, res) => {
   });
 }));
 app.use('/api/auth/v1', authRoutes);
+app.use('/api/acquisition/v1', acquisitionRoutes);
 app.use('/api/diaries/v1', diaryRoutes);
 app.use('/api/todos/v1', todoRoutes);
 app.use('/api/cards/v1', cardRoutes);

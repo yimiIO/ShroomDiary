@@ -19,6 +19,7 @@ const { setupNewUser } = require('../billing-store');
 
 const router = express.Router();
 const MOBILE_PATTERN = /^1[3-9]\d{9}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function member(user) {
   return {
@@ -51,6 +52,9 @@ router.post('/register', asyncRoute(async (req, res) => {
   const mobile = text(req.body.mobile, 32);
   const password = String(req.body.password || '');
   const nickname = text(req.body.nickname, 80) || `Shroom ${mobile.slice(-4)}`;
+  const acquisitionTouchId = UUID_PATTERN.test(String(req.body.acquisitionTouchId || ''))
+    ? String(req.body.acquisitionTouchId)
+    : null;
   if (!MOBILE_PATTERN.test(mobile)) return fail(res, 400, '手机号格式不正确');
   if (password.length < 6 || password.length > 72) return fail(res, 400, '密码需要 6–72 位');
   if (req.body.acceptedTerms !== true) return fail(res, 400, '请先阅读并同意用户服务协议与隐私政策');
@@ -72,6 +76,14 @@ router.post('/register', asyncRoute(async (req, res) => {
        VALUES ($1, true) ON CONFLICT (user_id) DO NOTHING`,
       [result.rows[0].id]
     );
+    if (acquisitionTouchId) {
+      await client.query(
+        `UPDATE acquisition_touchpoints
+            SET user_id = $2, registered_at = COALESCE(registered_at, now()), updated_at = now()
+          WHERE id = $1 AND user_id IS NULL`,
+        [acquisitionTouchId, result.rows[0].id]
+      );
+    }
     return result.rows[0];
   });
   return ok(res, member(user), '账号已创建');

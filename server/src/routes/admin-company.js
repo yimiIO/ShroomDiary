@@ -66,6 +66,10 @@ function mapAgent(row) {
   };
 }
 
+function mapOperatingSystem(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 function mapRun(row) {
   return {
     id: row.id,
@@ -113,8 +117,27 @@ function decisionOptions(value) {
   })).filter(item => item.label);
 }
 
+function mapAcquisitionCampaign(row) {
+  return {
+    contentCode: row.content_code,
+    name: row.name,
+    source: row.source,
+    campaign: row.campaign,
+    status: row.status,
+    landingPath: row.landing_path,
+    publishedAt: row.published_at,
+    visitors: Number(row.visitors || 0),
+    visits: Number(row.visits || 0),
+    registrations: Number(row.registrations || 0),
+    firstDiaries: Number(row.first_diaries || 0),
+    firstReflections: Number(row.first_reflections || 0),
+    activations: Number(row.activations || 0),
+    sevenDayReturns: Number(row.seven_day_returns || 0)
+  };
+}
+
 async function companyOverview() {
-  const [departments, agents, runs, decisions, summary] = await Promise.all([
+  const [departments, agents, runs, decisions, summary, acquisition] = await Promise.all([
     db.query('SELECT * FROM ai_company_departments ORDER BY sort_order, created_at'),
     db.query('SELECT * FROM ai_company_agents ORDER BY department_key, sort_order, created_at'),
     db.query(
@@ -140,6 +163,42 @@ async function companyOverview() {
          (SELECT count(*)::int FROM ai_company_runs
            WHERE run_date >= current_date - 29 AND result_state = 'REAL_WORLD') AS real_world_runs,
          (SELECT max(updated_at) FROM ai_company_runs) AS last_run_at`
+    ),
+    db.query(
+      `SELECT c.*,
+         count(t.id)::int AS visitors,
+         COALESCE(sum(t.visit_count), 0)::int AS visits,
+         count(t.user_id)::int AS registrations,
+         count(t.user_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM diaries d
+            WHERE d.user_id = t.user_id AND d.deleted_at IS NULL
+              AND d.created_at >= t.registered_at
+         ))::int AS first_diaries,
+         count(t.user_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM reflection_conversations r
+            WHERE r.user_id = t.user_id AND r.created_at >= t.registered_at
+         ))::int AS first_reflections,
+         count(t.user_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM diaries d
+            WHERE d.user_id = t.user_id AND d.deleted_at IS NULL
+              AND d.created_at >= t.registered_at
+         ) AND EXISTS (
+           SELECT 1 FROM reflection_conversations r
+            WHERE r.user_id = t.user_id AND r.created_at >= t.registered_at
+         ))::int AS activations,
+         count(t.user_id) FILTER (WHERE EXISTS (
+           SELECT 1 FROM diaries d
+            WHERE d.user_id = t.user_id AND d.deleted_at IS NULL
+              AND d.created_at >= t.registered_at + interval '7 days'
+         ) OR EXISTS (
+           SELECT 1 FROM reflection_conversations r
+            WHERE r.user_id = t.user_id
+              AND r.created_at >= t.registered_at + interval '7 days'
+         ))::int AS seven_day_returns
+       FROM acquisition_campaigns c
+       LEFT JOIN acquisition_touchpoints t ON t.content_code = c.content_code
+      GROUP BY c.content_code
+      ORDER BY c.created_at DESC`
     )
   ]);
 
@@ -164,6 +223,10 @@ async function companyOverview() {
       realWorldRuns30d: Number(count.real_world_runs || 0),
       lastRunAt: count.last_run_at || null
     },
+    acquisition: {
+      privacy: '只记录内容编号、渠道、活动、访问与产品激活，不记录日记正文、IP、健康或人脉数据。',
+      campaigns: acquisition.rows.map(mapAcquisitionCampaign)
+    },
     departments: departments.rows.map(row => ({
       key: row.stable_key,
       name: row.name,
@@ -171,6 +234,7 @@ async function companyOverview() {
       status: row.status,
       cadence: row.cadence,
       reportChannel: row.report_channel,
+      operatingSystem: mapOperatingSystem(row.operating_system),
       agents: agentsByDepartment.get(row.stable_key) || []
     })),
     recentRuns: runs.rows.map(mapRun),

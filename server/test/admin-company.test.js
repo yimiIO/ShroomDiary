@@ -10,6 +10,7 @@ const source = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('AI company storage separates roles, agents, evidence runs and CEO decisions', () => {
   const migration = source('server/sql/041_ai_company.sql');
+  const operations = source('server/sql/042_operations_department.sql');
   assert.match(migration, /ADD COLUMN IF NOT EXISTS role/);
   assert.match(migration, /role IN \('USER', 'ADMIN'\)/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS ai_company_departments/);
@@ -23,6 +24,12 @@ test('AI company storage separates roles, agents, evidence runs and CEO decision
   }
   assert.match(migration, /独立门禁/);
   assert.match(migration, /隐私与安全 Agent/);
+  assert.match(operations, /ADD COLUMN IF NOT EXISTS operating_system jsonb/);
+  assert.match(operations, /'operations', '运营与获客部门'/);
+  assert.match(operations, /'new-media-operator', 'operations', '新媒体运营 Agent'/);
+  assert.match(operations, /'content-compliance', 'operations', '内容事实与合规 Agent', '独立门禁'/);
+  assert.match(operations, /默认不得自动发布/);
+  assert.match(operations, /首次价值激活/);
 });
 
 test('admin authorization is checked from the database on every request', () => {
@@ -51,6 +58,7 @@ test('admin authorization is checked from the database on every request', () => 
 
 test('management API records evidence and keeps high-impact decisions with the CEO', () => {
   const route = source('server/src/routes/admin-company.js');
+  assert.match(route, /operatingSystem: mapOperatingSystem\(row\.operating_system\)/);
   assert.match(route, /ON CONFLICT \(department_key, run_date\) DO UPDATE/);
   assert.match(route, /req\.authKind === 'api-token' \? 'AUTOMATION' : 'MANUAL'/);
   assert.match(route, /runDate: dateOnly\(row\.run_date\)/);
@@ -83,6 +91,9 @@ test('AI company page is admin-only, responsive and reachable from settings', ()
   assert.match(page, /v-for="agent in teamAgents" :key="agent\.key"/);
   assert.match(page, /v-for="department in company\.departments" :key="department\.key"/);
   assert.match(page, /item\.departmentKey === this\.primaryDepartment\.key/);
+  assert.match(page, /primaryDepartment\.operatingSystem/);
+  assert.match(page, /AGENT WORKFLOW/);
+  assert.match(page, /90 DAY PLAN/);
   assert.match(page, /@media \(min-width: 920px\)/);
   assert.match(settings, /v-if="adminAllowed"/);
   assert.match(settings, /data-testid="settings-ai-company"/);

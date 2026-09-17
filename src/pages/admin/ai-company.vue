@@ -75,6 +75,100 @@
 					</view>
 				</view>
 
+				<view v-if="hasOperatingSystem" class="section-block playbook-section" data-testid="department-playbook">
+					<view class="section-heading">
+						<view><text class="section-kicker">DEPARTMENT PLAYBOOK</text><text class="section-title">从方向到每天怎么做</text></view>
+						<text class="section-note">{{ operatingSystem.version || 'CURRENT' }}</text>
+					</view>
+
+					<view v-if="operatingSystem.positioning" class="positioning-panel">
+						<text class="positioning-label">{{ operatingSystem.positioning.category }}</text>
+						<text class="positioning-promise">{{ operatingSystem.positioning.promise }}</text>
+						<text class="positioning-audience">首批用户 · {{ operatingSystem.positioning.firstAudience }}</text>
+						<text class="positioning-boundary">边界 · {{ operatingSystem.positioning.boundary }}</text>
+					</view>
+
+					<view v-if="operatingSystem.principles && operatingSystem.principles.length" class="playbook-unit">
+						<view class="unit-heading"><text>OPERATING PRINCIPLES</text><text>运营原则</text></view>
+						<view class="principle-grid">
+							<view v-for="(principle, index) in operatingSystem.principles" :key="principle.title" class="principle-card">
+								<text class="playbook-index">0{{ index + 1 }}</text>
+								<text class="playbook-name">{{ principle.title }}</text>
+								<text class="playbook-copy">{{ principle.description }}</text>
+							</view>
+						</view>
+					</view>
+
+					<view v-if="operatingSystem.channels && operatingSystem.channels.length" class="playbook-unit">
+						<view class="unit-heading"><text>CHANNEL FOCUS</text><text>渠道分工</text></view>
+						<view class="channel-list">
+							<view v-for="channel in operatingSystem.channels" :key="channel.name" class="channel-row">
+								<view class="channel-title"><text>{{ channel.name }}</text><text>{{ channel.role }}</text></view>
+								<view class="channel-meta"><text>{{ channel.cadence }}</text><text>{{ channel.content }}</text></view>
+							</view>
+						</view>
+					</view>
+
+					<view v-if="operatingSystem.phases && operatingSystem.phases.length" class="playbook-unit">
+						<view class="unit-heading"><text>90 DAY PLAN</text><text>三阶段运营计划</text></view>
+						<view class="phase-list">
+							<view v-for="(phase, index) in operatingSystem.phases" :key="phase.name" class="phase-card">
+								<view class="phase-top"><text>0{{ index + 1 }}</text><text>{{ phase.name }}</text></view>
+								<text class="phase-goal">{{ phase.goal }}</text>
+								<view class="phase-deliverables">
+									<text v-for="item in phase.deliverables" :key="item">· {{ item }}</text>
+								</view>
+							</view>
+						</view>
+					</view>
+
+					<view v-if="operatingSystem.workflow && operatingSystem.workflow.length" class="playbook-unit workflow-unit">
+						<view class="unit-heading"><text>AGENT WORKFLOW</text><text>从信号到复盘</text></view>
+						<view class="workflow-list">
+							<view v-for="item in operatingSystem.workflow" :key="item.step" class="workflow-row">
+								<view class="workflow-step">{{ formatStep(item.step) }}</view>
+								<view class="workflow-copy"><text>{{ item.name }} · {{ item.owner }}</text><text>{{ item.output }}</text></view>
+							</view>
+						</view>
+					</view>
+
+					<view v-if="operatingSystem.metrics && operatingSystem.metrics.length" class="playbook-unit">
+						<view class="unit-heading"><text>REAL METRICS</text><text>不让曝光冒充获客</text></view>
+						<view class="metric-list">
+							<view v-for="metric in operatingSystem.metrics" :key="metric.name" class="metric-row"><text>{{ metric.name }}</text><text>{{ metric.definition }}</text></view>
+						</view>
+					</view>
+
+					<view v-if="operatingSystem.guardrails && operatingSystem.guardrails.length" class="guardrail-panel">
+						<text class="guardrail-title">发布门禁</text>
+						<text v-for="item in operatingSystem.guardrails" :key="item" class="guardrail-item">· {{ item }}</text>
+					</view>
+				</view>
+
+				<view v-if="isOperationsDepartment" class="section-block acquisition-section" data-testid="acquisition-funnel">
+					<view class="section-heading">
+						<view><text class="section-kicker">ACQUISITION BASELINE</text><text class="section-title">从哪条内容来，是否得到第一次价值</text></view>
+						<text class="section-note">{{ acquisitionCampaigns.length }} 个实验</text>
+					</view>
+					<view class="acquisition-summary">
+						<view><text>{{ acquisitionTotal('visitors') }}</text><text>有效到访</text></view>
+						<view><text>{{ acquisitionTotal('registrations') }}</text><text>完成注册</text></view>
+						<view><text>{{ acquisitionTotal('activations') }}</text><text>首次价值激活</text></view>
+						<view><text>{{ acquisitionTotal('sevenDayReturns') }}</text><text>七日回访</text></view>
+					</view>
+					<view v-if="acquisitionCampaigns.length" class="campaign-list">
+						<view v-for="campaign in acquisitionCampaigns" :key="campaign.contentCode" class="campaign-card">
+							<view class="campaign-topline"><text>{{ campaign.source }} · {{ campaign.status }}</text><text>{{ campaign.contentCode }}</text></view>
+							<text class="campaign-name">{{ campaign.name }}</text>
+							<text class="campaign-link">{{ campaign.landingPath }}</text>
+							<view class="campaign-metrics">
+								<text>访问 {{ campaign.visits }}</text><text>注册 {{ campaign.registrations }}</text><text>写下首篇 {{ campaign.firstDiaries }}</text><text>首次回看 {{ campaign.firstReflections }}</text>
+							</view>
+						</view>
+					</view>
+					<text class="acquisition-privacy">{{ company.acquisition && company.acquisition.privacy }}</text>
+				</view>
+
 				<view class="section-block organization-section">
 					<view class="section-heading">
 						<view><text class="section-kicker">ORGANIZATION</text><text class="section-title">谁负责，必须拿到什么结果</text></view>
@@ -223,6 +317,22 @@ export default {
 		},
 		activeStageName() {
 			return this.stageName(this.activeStageKey);
+		},
+		operatingSystem() {
+			return this.primaryDepartment && this.primaryDepartment.operatingSystem
+				? this.primaryDepartment.operatingSystem
+				: {};
+		},
+		hasOperatingSystem() {
+			return Object.keys(this.operatingSystem).length > 0;
+		},
+		isOperationsDepartment() {
+			return Boolean(this.primaryDepartment && this.primaryDepartment.key === 'operations');
+		},
+		acquisitionCampaigns() {
+			return this.company && this.company.acquisition && Array.isArray(this.company.acquisition.campaigns)
+				? this.company.acquisition.campaigns
+				: [];
 		}
 	},
 	onLoad() {
@@ -387,6 +497,13 @@ export default {
 		resultClass(state) {
 			return String(state || 'none').toLowerCase().replace('_', '-');
 		},
+		formatStep(value) {
+			const number = Number(value) || 0;
+			return number < 10 ? `0${number}` : String(number);
+		},
+		acquisitionTotal(key) {
+			return this.acquisitionCampaigns.reduce((total, campaign) => total + Number(campaign[key] || 0), 0);
+		},
 		stageName(key) {
 			if (key === 'SAFETY') return '隐私与安全';
 			const stage = this.company && this.company.flywheelStages.find(item => item.key === key);
@@ -467,6 +584,56 @@ export default {
 .stage-index { font-family: Georgia, serif; font-size: 16rpx; color: #849088; }
 .stage-name { margin-top: 20rpx; font-size: 23rpx; font-weight: 720; }
 .stage-description { margin-top: 9rpx; font-size: 17rpx; line-height: 1.55; color: #748078; }
+.positioning-panel { display: flex; margin-top: 28rpx; padding: 31rpx; flex-direction: column; border-radius: 25rpx; background: #172019; color: #f4f7f2; }
+.positioning-label { font-size: 15rpx; font-weight: 760; letter-spacing: 2rpx; color: #d9ef63; }
+.positioning-promise { margin-top: 17rpx; font-family: Georgia, 'Songti SC', serif; font-size: 32rpx; font-weight: 700; line-height: 1.35; }
+.positioning-audience, .positioning-boundary { margin-top: 16rpx; font-size: 17rpx; line-height: 1.65; color: #c2cec3; }
+.positioning-boundary { margin-top: 6rpx; color: #98a89b; }
+.playbook-unit { margin-top: 31rpx; }
+.unit-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20rpx; padding-bottom: 13rpx; border-bottom: 1rpx solid #e1e7de; }
+.unit-heading text:first-child { font-size: 14rpx; font-weight: 780; letter-spacing: 2rpx; color: #6f7d72; }
+.unit-heading text:last-child { font-size: 18rpx; font-weight: 680; color: #29352c; }
+.principle-grid, .phase-list { display: flex; flex-wrap: wrap; gap: 11rpx; margin-top: 17rpx; }
+.principle-card { display: flex; box-sizing: border-box; min-width: 250rpx; padding: 22rpx; flex: 1 1 45%; flex-direction: column; border-radius: 20rpx; background: #f3f6f0; }
+.playbook-index { font-family: Georgia, serif; font-size: 15rpx; color: #8a968d; }
+.playbook-name { margin-top: 15rpx; font-size: 21rpx; font-weight: 730; }
+.playbook-copy { margin-top: 8rpx; font-size: 16rpx; line-height: 1.62; color: #69766c; }
+.channel-list, .workflow-list, .metric-list { display: flex; margin-top: 17rpx; flex-direction: column; gap: 9rpx; }
+.channel-row { display: flex; padding: 20rpx; align-items: flex-start; gap: 20rpx; border-radius: 18rpx; background: #f6f8f4; }
+.channel-title, .channel-meta { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }
+.channel-title text:first-child { font-size: 21rpx; font-weight: 730; }
+.channel-title text:last-child, .channel-meta text { font-size: 16rpx; line-height: 1.55; color: #6f7c72; }
+.phase-card { display: flex; box-sizing: border-box; min-width: 280rpx; padding: 23rpx; flex: 1 1 30%; flex-direction: column; border: 1rpx solid #e0e6dd; border-radius: 21rpx; background: #fbfcfa; }
+.phase-top { display: flex; align-items: baseline; gap: 11rpx; }
+.phase-top text:first-child { font-family: Georgia, serif; font-size: 15rpx; color: #94aa3c; }
+.phase-top text:last-child { font-size: 20rpx; font-weight: 730; }
+.phase-goal { margin-top: 14rpx; font-size: 17rpx; font-weight: 650; line-height: 1.55; color: #344137; }
+.phase-deliverables { display: flex; margin-top: 13rpx; flex-direction: column; gap: 7rpx; }
+.phase-deliverables text { font-size: 15rpx; line-height: 1.55; color: #6d796f; }
+.workflow-row { display: flex; padding: 18rpx 6rpx; align-items: flex-start; gap: 16rpx; border-bottom: 1rpx solid #e7ebe5; }
+.workflow-row:last-child { border-bottom: 0; }
+.workflow-step { display: flex; width: 43rpx; height: 43rpx; flex: 0 0 43rpx; align-items: center; justify-content: center; border-radius: 50%; background: #d9ef63; font-family: Georgia, serif; font-size: 14rpx; color: #263329; }
+.workflow-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }
+.workflow-copy text:first-child { font-size: 19rpx; font-weight: 710; line-height: 1.45; }
+.workflow-copy text:last-child { font-size: 16rpx; line-height: 1.58; color: #6f7c72; }
+.metric-row { display: flex; padding: 17rpx 19rpx; align-items: flex-start; gap: 18rpx; border-radius: 17rpx; background: #f3f6f0; }
+.metric-row text:first-child { width: 170rpx; flex: 0 0 170rpx; font-size: 17rpx; font-weight: 720; }
+.metric-row text:last-child { min-width: 0; flex: 1; font-size: 16rpx; line-height: 1.58; color: #6b786e; }
+.guardrail-panel { display: flex; margin-top: 31rpx; padding: 25rpx; flex-direction: column; gap: 9rpx; border-radius: 21rpx; background: #f6edcf; }
+.guardrail-title { margin-bottom: 5rpx; font-size: 21rpx; font-weight: 740; color: #584d2d; }
+.guardrail-item { font-size: 16rpx; line-height: 1.58; color: #796c48; }
+.acquisition-summary { display: flex; margin-top: 27rpx; flex-wrap: wrap; gap: 10rpx; }
+.acquisition-summary view { display: flex; box-sizing: border-box; min-width: calc(50% - 5rpx); padding: 23rpx 20rpx; flex: 1; flex-direction: column; border-radius: 19rpx; background: #172019; color: #f2f6ef; }
+.acquisition-summary text:first-child { font-family: Georgia, serif; font-size: 34rpx; font-weight: 700; color: #d9ef63; }
+.acquisition-summary text:last-child { margin-top: 6rpx; font-size: 15rpx; color: #aebcaf; }
+.campaign-list { display: flex; margin-top: 13rpx; flex-direction: column; gap: 10rpx; }
+.campaign-card { display: flex; padding: 23rpx; flex-direction: column; border: 1rpx solid #dfe6dc; border-radius: 20rpx; background: #f8faf6; }
+.campaign-topline { display: flex; justify-content: space-between; gap: 15rpx; font-size: 14rpx; font-weight: 700; letter-spacing: 1rpx; color: #748078; }
+.campaign-name { margin-top: 18rpx; font-size: 22rpx; font-weight: 730; }
+.campaign-link { margin-top: 8rpx; font-size: 15rpx; line-height: 1.5; color: #7b887e; word-break: break-all; }
+.campaign-metrics { display: flex; margin-top: 17rpx; flex-wrap: wrap; gap: 8rpx; }
+.campaign-metrics text { padding: 7rpx 10rpx; border-radius: 999rpx; background: #edf3e8; font-size: 14rpx; color: #526057; }
+.acquisition-privacy { display: block; margin-top: 17rpx; font-size: 15rpx; line-height: 1.6; color: #748078; }
 .org-tree { display: flex; margin-top: 30rpx; align-items: center; flex-direction: column; }
 .org-ceo, .org-lead { display: flex; box-sizing: border-box; width: 100%; max-width: 590rpx; padding: 26rpx; align-items: center; flex-direction: column; border-radius: 24rpx; text-align: center; }
 .org-ceo { background: #172019; color: #f3f7f0; }
@@ -535,6 +702,7 @@ export default {
 	.summary-item { min-width: 170px; }
 	.company-hero { padding: 48px; }
 	.section-block { padding: 34px; }
+	.principle-card { min-width: 310px; }
 }
 /* #endif */
 </style>

@@ -11,6 +11,7 @@ server/.env.*
 server/uploads/
 server/public/media/
 server/coverage/
+server/.local/
 server/*.log
 *.log
 *.pid
