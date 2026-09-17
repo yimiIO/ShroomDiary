@@ -49,6 +49,21 @@ test('wellbeing extraction ignores inquiry links and discards ungrounded red fla
   assert.deepEqual(result.redFlags, []);
 });
 
+test('grounded health evidence preserves and matches verbatim repeated whitespace', () => {
+  const evidenceExcerpt = '晚上想想真的是很失败了  真的几年的经历落下这个结果  很心酸';
+  const result = normalizeDiaryHealthExtraction({
+    psychologicalObservations: [{
+      observation: '晚上回想时感到失败和心酸',
+      aspect: 'EMOTION',
+      evidenceExcerpt,
+      certainty: 'EXPLICIT'
+    }]
+  }, { diaryContent: `白天先说无所谓\n\n${evidenceExcerpt}\n\n后来表达了委屈` });
+
+  assert.equal(result.psychologicalObservations.length, 1);
+  assert.equal(result.psychologicalObservations[0].evidenceExcerpt, evidenceExcerpt);
+});
+
 test('diary health extraction has a stable empty shape and legacy inquiry projection', () => {
   const empty = emptyDiaryHealthExtraction();
   assert.deepEqual(Object.keys(empty), [

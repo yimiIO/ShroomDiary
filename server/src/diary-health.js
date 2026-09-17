@@ -19,7 +19,7 @@ function boundedNumber(value, min, max) {
 }
 
 function groundedExcerpt(value, diaryContent) {
-  const excerpt = text(value, 600);
+  const excerpt = String(value || '').trim().slice(0, 600);
   return excerpt && String(diaryContent || '').includes(excerpt) ? excerpt : '';
 }
 
