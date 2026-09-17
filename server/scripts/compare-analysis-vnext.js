@@ -123,9 +123,9 @@ async function main() {
     new Date().toISOString().replace(/[:.]/gu, '-')
   ));
   fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
-  const caller = createExperimentCaller({ apiBaseUrl, apiKey });
-  const comparisons = [];
-  for (const fixture of fixtures) {
+  const concurrency = Math.max(1, Math.min(4, Number(options.concurrency || 1)));
+  const executeFixture = async fixture => {
+    const caller = createExperimentCaller({ apiBaseUrl, apiKey });
     const variants = [
       variant({
         id: 'A_CURRENT_MODEL_CURRENT_PROMPT', promptVersion: 'production-current', model: currentModel, caller,
@@ -162,8 +162,18 @@ async function main() {
         })
       })
     ];
-    comparisons.push(await runComparison({ fixture, variants, repetitions }));
-  }
+    return runComparison({ fixture, variants, repetitions });
+  };
+  const comparisons = new Array(fixtures.length);
+  let nextFixture = 0;
+  const workers = Array.from({ length: Math.min(concurrency, fixtures.length) }, async () => {
+    while (nextFixture < fixtures.length) {
+      const index = nextFixture;
+      nextFixture += 1;
+      comparisons[index] = await executeFixture(fixtures[index]);
+    }
+  });
+  await Promise.all(workers);
   const review = blindReview(comparisons);
   fs.writeFileSync(path.join(outputDir, 'comparison.json'), JSON.stringify({
     generatedAt: new Date().toISOString(),
