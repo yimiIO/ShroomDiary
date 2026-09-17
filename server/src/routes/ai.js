@@ -23,9 +23,49 @@ const { hasDiaryHealthExtraction, legacyHealthObservation, normalizeDiaryHealthE
 const { WELLBEING_REVIEW_VERSION, reviewDiaryWellbeing } = require('../wellbeing-review');
 const { listDiarySourceActivities } = require('../data-sources');
 const { ensureAiFunds } = require('../billing-store');
+const {
+  CLASSIC_VERSION,
+  COGNITION_VERSION,
+  EXPERIENCE_VERSIONS,
+  FEEDBACK_ACTIONS,
+  buildFeaturedInsights,
+  extractInsightCandidates,
+  feedbackProfile
+} = require('../analysis-experience');
 
 const router = express.Router();
 router.use(requireUser);
+
+async function analysisExperience(userId, queryable = db) {
+  const result = await queryable.query(
+    `SELECT version, can_switch AS "canSwitch", trial_started_at AS "trialStartedAt"
+       FROM analysis_experience_settings WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows[0] || { version: CLASSIC_VERSION, canSwitch: false, trialStartedAt: null };
+}
+
+async function insightPresentation(userId, analysisId, observations, queryable = db) {
+  const [currentResult, profileResult] = await Promise.all([
+    queryable.query(
+      `SELECT insight_key AS "insightKey", action, note
+         FROM analysis_insight_feedback
+        WHERE user_id = $1 AND analysis_id = $2`,
+      [userId, analysisId]
+    ),
+    queryable.query(
+      `SELECT observer_preset AS "observerPreset", action, count(*)::int AS count
+         FROM analysis_insight_feedback
+        WHERE user_id = $1 AND analysis_id <> $2
+        GROUP BY observer_preset, action`,
+      [userId, analysisId]
+    )
+  ]);
+  return buildFeaturedInsights(observations, {
+    currentFeedback: currentResult.rows,
+    profile: feedbackProfile(profileResult.rows)
+  });
+}
 
 function mapAnalysis(row) {
   const snapshot = Array.isArray(row.observer_snapshot) ? row.observer_snapshot.map(publicObserver) : [];
@@ -67,6 +107,7 @@ function mapAnalysis(row) {
 
 async function mapAnalysisWithCandidates(row, userId, queryable = db) {
   const analysis = mapAnalysis(row);
+  const experience = await analysisExperience(userId, queryable);
   const [inquiryCandidates, lifeOsLinks, wellbeingRecord] = row.status === 'done'
     ? await Promise.all([
       listDiaryCandidates(queryable, userId, row.diary_id),
@@ -78,6 +119,10 @@ async function mapAnalysisWithCandidates(row, userId, queryable = db) {
   analysis.wellbeingRecord = wellbeingRecord;
   analysis.lifeOsLinks = lifeOsLinks;
   analysis.compoundLinks = lifeOsLinks;
+  analysis.experienceVersion = experience.version;
+  analysis.experienceCanSwitch = Boolean(experience.canSwitch);
+  analysis.featuredInsights = row.status === 'done' && experience.version === COGNITION_VERSION
+    ? await insightPresentation(userId, row.id, analysis.observations, queryable) : [];
   return analysis;
 }
 
@@ -356,12 +401,79 @@ async function startAnalysis(req, res) {
   return ok(res, await mapAnalysisWithCandidates(result.rows[0], req.user.id), '分析任务已创建');
 }
 
-router.get('/status', asyncRoute(async (req, res) => ok(res, {
-  enabled: isAiConfigured(),
-  model: isAiConfigured() ? config.aiModel : null,
-  engineVersion: VERSION,
-  privacy: '只有用户主动发起分析时，日记正文、自己的菇卡摘要和当天已授权的数据源线索才会发送给已配置的模型服务。'
-})));
+router.get('/status', asyncRoute(async (req, res) => {
+  const experience = await analysisExperience(req.user.id);
+  return ok(res, {
+    enabled: isAiConfigured(),
+    model: isAiConfigured() ? config.aiModel : null,
+    engineVersion: VERSION,
+    experienceVersion: experience.version,
+    experienceCanSwitch: Boolean(experience.canSwitch),
+    availableExperienceVersions: experience.canSwitch
+      ? [CLASSIC_VERSION, COGNITION_VERSION] : [CLASSIC_VERSION],
+    privacy: '只有用户主动发起分析时，日记正文、自己的菇卡摘要和当天已授权的数据源线索才会发送给已配置的模型服务。'
+  });
+}));
+
+router.post('/experience', asyncRoute(async (req, res) => {
+  const version = text(req.body.version, 16);
+  if (!EXPERIENCE_VERSIONS.has(version)) return fail(res, 400, '分析体验版本不存在');
+  const current = await analysisExperience(req.user.id);
+  if (!current.canSwitch) return fail(res, 403, '当前账号未进入分析体验灰度');
+  const result = await db.query(
+    `UPDATE analysis_experience_settings
+        SET version = $2, updated_at = now()
+      WHERE user_id = $1 AND can_switch
+      RETURNING version, can_switch AS "canSwitch", trial_started_at AS "trialStartedAt"`,
+    [req.user.id, version]
+  );
+  return ok(res, result.rows[0], version === COGNITION_VERSION ? '已切换到认知闭环版' : '已切回经典版');
+}));
+
+router.post('/diary-flow/:taskId/insight-feedback', asyncRoute(async (req, res) => {
+  const action = text(req.body.action, 16).toUpperCase();
+  const insightKey = text(req.body.insightKey, 64);
+  const note = text(req.body.note, 500);
+  if (!FEEDBACK_ACTIONS.has(action)) return fail(res, 400, '理解反馈类型不存在');
+  const experience = await analysisExperience(req.user.id);
+  if (!experience.canSwitch || experience.version !== COGNITION_VERSION) {
+    return fail(res, 403, '当前未使用认知闭环版');
+  }
+  const result = await db.query(
+    `SELECT ${analysisFields} FROM diary_analysis
+      WHERE user_id = $1 AND id = $2 AND status = 'done'`,
+    [req.user.id, req.params.taskId]
+  );
+  if (!result.rowCount) return fail(res, 404, '已完成的分析任务不存在');
+  const candidates = extractInsightCandidates(mapAnalysis(result.rows[0]).observations);
+  const insight = candidates.find(item => item.key === insightKey);
+  if (!insight) return fail(res, 400, '这条理解不属于当前分析');
+  const observerId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(insight.sourceObserverId)
+    ? insight.sourceObserverId : null;
+  await db.query(
+    `INSERT INTO analysis_insight_feedback
+      (id, user_id, analysis_id, diary_id, insight_key, observer_id, observer_preset,
+       action, note, insight_snapshot)
+     VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::uuid, $7, $8, $9, $10::jsonb)
+     ON CONFLICT (user_id, analysis_id, insight_key) DO UPDATE SET
+       action = EXCLUDED.action, note = EXCLUDED.note,
+       insight_snapshot = EXCLUDED.insight_snapshot, updated_at = now()`,
+    [crypto.randomUUID(), req.user.id, result.rows[0].id, result.rows[0].diary_id,
+      insight.key, observerId, insight.sourcePreset, action, note,
+      JSON.stringify({
+        title: insight.title,
+        detail: insight.detail,
+        assumption: insight.assumption,
+        suggestion: insight.suggestion,
+        nature: insight.nature,
+        sourceName: insight.sourceName
+      })]
+  );
+  return ok(res, {
+    analysis: await mapAnalysisWithCandidates(result.rows[0], req.user.id),
+    feedback: { insightKey, action, note }
+  }, '理解反馈已保存');
+}));
 
 router.get('/observers', asyncRoute(async (req, res) => {
   return ok(res, await listObservers(req.user.id));

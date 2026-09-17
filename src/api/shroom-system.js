@@ -25,12 +25,16 @@ const aiStatus = '/ai/v1/status';
 const aiAnalyze = '/ai/v1/analyze';
 const aiAnalysis = '/ai/v1/analysis';
 const aiTask = '/ai/v1/diary-flow';
+const aiExperience = '/ai/v1/experience';
+const aiInsightFeedback = taskId => `/ai/v1/diary-flow/${taskId}/insight-feedback`;
 const aiObservers = '/ai/v1/observers';
 const aiObserver = id => `/ai/v1/observers/${id}`;
 
 export {
 	aiAnalysis,
 	aiAnalyze,
+	aiExperience,
+	aiInsightFeedback,
 	aiObserver,
 	aiObservers,
 	aiStatus,

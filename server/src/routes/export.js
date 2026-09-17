@@ -33,7 +33,8 @@ function financialRows(rows) {
 router.get('/all', asyncRoute(async (req, res) => {
   const redacted = ['1', 'true', 'yes'].includes(String(req.query.redacted || '').toLowerCase());
   const [diaries, todos, cards, practices, friends, interactions, scoreHistory, friendTodos, milestones,
-    lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses, friendSettings,
+    lifeOs, lifeOsVersions, lifeOsClauses, lifeOsProposals, reviews, analyses,
+    analysisExperience, analysisInsightFeedback, friendSettings,
     compoundSettings, compoundCheckins, observers, inquiries, inquiryEvidence, inquirySyntheses, wellbeingRecords, aiUsage,
     lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews,
     compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents,
@@ -66,6 +67,10 @@ router.get('/all', asyncRoute(async (req, res) => {
       result, created_at, resolved_at FROM life_os_review_proposals WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query('SELECT period, payload, created_at, updated_at FROM monthly_relationship_reviews WHERE user_id = $1 ORDER BY period', [req.user.id]),
     db.query('SELECT diary_id, engine_version, five_views, observer_snapshot, observations, source_activities, todo_candidates, card_suggestion, friend_changes, cost_summary, status, created_at, updated_at FROM diary_analysis WHERE user_id = $1 ORDER BY created_at', [req.user.id]),
+    db.query('SELECT version, can_switch, trial_started_at, updated_at FROM analysis_experience_settings WHERE user_id = $1', [req.user.id]),
+    db.query(`SELECT analysis_id, diary_id, insight_key, observer_id, observer_preset, action,
+      note, insight_snapshot, created_at, updated_at
+      FROM analysis_insight_feedback WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query('SELECT source_version, source_created_at, settings, updated_at FROM friend_asset_settings WHERE user_id = $1', [req.user.id]),
     db.query('SELECT morning_prayer, financial_plan, created_at, updated_at FROM compound_settings WHERE user_id = $1', [req.user.id]),
     db.query('SELECT ritual_key, period_key, checkin_date, mode, duration_minutes, note, created_at, updated_at FROM compound_checkins WHERE user_id = $1 ORDER BY checkin_date, ritual_key', [req.user.id]),
@@ -178,6 +183,8 @@ router.get('/all', asyncRoute(async (req, res) => {
     lifeOsWeeklyReviews: lifeOsWeeklyReviews.rows,
     monthlyRelationshipReviews: reviews.rows,
     diaryAnalysis: analyses.rows,
+    analysisExperience: analysisExperience.rows[0] || null,
+    analysisInsightFeedback: analysisInsightFeedback.rows,
     observers: observers.rows,
     inquiries: inquiries.rows,
     inquiryEvidence: inquiryEvidence.rows,

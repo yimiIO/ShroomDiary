@@ -5,6 +5,11 @@
 			<view class="header"><view class="back" @tap="goBack">‹</view><view class="heading"><text class="kicker">MY OBSERVERS</text><text class="title">重新看见这一天</text><text class="subtitle">让你选择的观察席，从不同机制理解同一段经历。</text></view></view>
 
 			<view class="privacy"><view class="privacy-dot"></view><text>观察席只在你主动开始时运行；本次使用哪些席位会随结果保存，之后修改设置不会改写历史分析。</text></view>
+			<view class="experience-switch" v-if="experienceCanSwitch">
+				<view><text>{{ experienceVersion }}</text><text>{{ isCognitionExperience ? '认知闭环体验版' : '经典分析版' }}</text></view>
+				<button :disabled="switchingExperience" @tap="prepareExperienceSwitch">{{ isCognitionExperience ? '切回 A1' : '体验 A1.1' }}</button>
+			</view>
+			<view class="experience-confirm" v-if="pendingExperienceTarget"><text>{{ pendingExperienceTarget === 'A1.1' ? 'A1.1 不会重跑或改写分析，只增加结果分层与理解反馈。' : '切回后已有日记、候选和理解反馈仍会保留。' }}</text><view><button @tap="pendingExperienceTarget = ''">暂不</button><button :disabled="switchingExperience" @tap="confirmExperienceSwitch">{{ pendingExperienceTarget === 'A1.1' ? '开始体验' : '确认切回' }}</button></view></view>
 
 			<view class="unavailable" v-if="capabilityKnown && !analysisEnabled">
 				<text class="state-index">AI · OFF</text><text class="state-title">观察席服务尚未启用</text><text class="state-copy">在模型配置完成前，日记不会被发送给任何模型。</text>
@@ -29,6 +34,21 @@
 					<view class="source-context-item" v-for="item in analysis.sourceActivities" :key="item.id"><text>{{ item.title }}</text><text>{{ sourceActivityMeta(item) }}</text></view>
 					<text class="source-context-note">它们是外部观测，不是你亲笔写下的日记；任务运行时间也不等于专注时间。</text>
 				</view>
+				<view class="insight-hero" v-if="isCognitionExperience && featuredInsights.length">
+					<view class="insight-heading"><view><text>TODAY'S UNDERSTANDING</text><text>今天最值得看见</text></view><text>{{ featuredInsights.length }}</text></view>
+					<text class="insight-note">这些是菇基于 A1 观察席提出的理解，不会因为你点选就自动变成事实。</text>
+					<view class="featured-insight" v-for="item in featuredInsights" :key="item.key">
+						<view class="insight-meta"><text>菇的理解</text><text>{{ item.sourceName }}</text></view>
+						<text class="insight-title">{{ item.title }}</text>
+						<text class="insight-detail" v-if="item.detail">{{ item.detail }}</text>
+						<view class="insight-assumption" v-if="item.assumption"><text>仍需验证</text><text>{{ item.assumption }}</text></view>
+						<view class="insight-next" v-if="item.suggestion"><text>可以尝试</text><text>{{ item.suggestion }}</text></view>
+						<view class="insight-feedback"><text>这条理解对吗？</text><view><button :class="{ active: item.feedback && item.feedback.action === 'HELPFUL' }" :disabled="processingInsightKey === item.key" @tap="setInsightFeedback(item, 'HELPFUL')">说中了</button><button :class="{ active: item.feedback && item.feedback.action === 'WRONG' }" :disabled="processingInsightKey === item.key" @tap="setInsightFeedback(item, 'WRONG')">不符合</button><button :class="{ active: item.feedback && item.feedback.action === 'WATCH' }" :disabled="processingInsightKey === item.key" @tap="setInsightFeedback(item, 'WATCH')">继续观察</button></view></view>
+					</view>
+				</view>
+
+				<view class="observer-disclosure" v-if="isCognitionExperience" @tap="showAllObservers = !showAllObservers"><view><text>完整观察席</text><text>查看五个角度的原始分析依据</text></view><text>{{ showAllObservers ? '收起' : '展开' }}　{{ showAllObservers ? '⌃' : '⌄' }}</text></view>
+				<view v-if="!isCognitionExperience || showAllObservers">
 				<scroll-view class="lens-scroll" scroll-x :show-scrollbar="false"><view class="lens-tabs"><view v-for="tab in tabs" :key="tab.id" :class="{ active: activeView === tab.id, disabled: tab.disabled }" @tap="selectView(tab)"><text>{{ tab.index }}</text><text>{{ tab.name }}</text></view></view></scroll-view>
 
 				<view class="view-sheet" v-if="viewType === 'first_principles'">
@@ -68,11 +88,13 @@
 					<view class="new-rules" v-if="currentView.questions && currentView.questions.length"><text>继续问自己</text><text v-for="(item,index) in currentView.questions" :key="index">{{ item }}</text></view>
 					<view class="action" v-if="currentView.nextStep"><text>可以尝试</text><text>{{ currentView.nextStep }}</text></view>
 				</view>
+				</view>
 
 				<view class="cost-card" v-if="analysis.costSummary && analysis.costSummary.calls">
 					<view><text>本次 AI 用量</text><text>{{ analysis.costSummary.calls }} 次调用 · {{ formatTokens(analysis.costSummary.totalTokens) }} tokens</text></view>
 					<view><text>{{ formatBilling(analysis.costSummary) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
 				</view>
+				<view class="keep-heading" v-if="isCognitionExperience && hasKeepableCandidates"><text>你想留下什么</text><text>行动、菇卡、身心变化与未解之问彼此独立；只有你单独确认的内容才进入正式记录。</text></view>
 
 				<view class="wellbeing-section" v-if="wellbeingRecord">
 					<view class="wellbeing-heading"><text>这篇留下了身心变化</text><text>先在综合分析中提取，再经过一次质量复核；调用与成本已计入本次 AI 用量。它与你是否创建未解之问无关，确认后才成为长期记录。</text></view>
@@ -166,15 +188,18 @@
 </template>
 
 <script>
-import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
+import { aiAnalysis, aiAnalyze, aiExperience, aiInsightFeedback, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
 import { wellbeingStatus } from '@/api/wellbeing';
 
 export default {
 	components: { HealthConsentSheet },
-		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
+		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', processingInsightKey: '', switchingExperience: false, pendingExperienceTarget: '', experienceVersion: 'A1', experienceCanSwitch: false, showAllObservers: false, creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
+		isCognitionExperience() { return this.experienceVersion === 'A1.1'; },
+		featuredInsights() { return this.analysis && Array.isArray(this.analysis.featuredInsights) ? this.analysis.featuredInsights : []; },
+		hasKeepableCandidates() { return Boolean(this.wellbeingRecord || this.inquiryCandidates.length || this.compoundLinks.length || this.cardSuggestion || this.candidates.length); },
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
 		currentView() { return this.currentObservation.result || {}; },
@@ -207,12 +232,14 @@ export default {
 			try {
 				const [status, existing, observers] = await Promise.all([this.$http.get(aiStatus), this.$http.get(aiAnalysis, { diaryId: this.diaryId }), this.$http.get(aiObservers)]);
 				this.analysisEnabled = Boolean(status.data && status.data.enabled); this.capabilityKnown = true;
+				this.experienceVersion = status.data && status.data.experienceVersion || 'A1';
+				this.experienceCanSwitch = Boolean(status.data && status.data.experienceCanSwitch);
 				this.configuredObservers = Array.isArray(observers.data) ? observers.data : [];
 				if (existing.data) { this.acceptAnalysis(existing.data); if (['pending', 'running'].includes(existing.data.status)) this.startPolling(); }
 				if (this.autoStart && this.analysisEnabled && (!existing.data || !['pending', 'running'].includes(existing.data.status))) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
-		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: false })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
+		acceptAnalysis(value) { this.analysis = value; this.experienceVersion = value.experienceVersion || this.experienceVersion || 'A1'; this.experienceCanSwitch = value.experienceCanSwitch === undefined ? this.experienceCanSwitch : Boolean(value.experienceCanSwitch); const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: false })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
 		async startAnalysis() {
 			if (!this.analysisEnabled) return;
 			this.stopPolling();
@@ -227,6 +254,31 @@ export default {
 			catch (error) { console.error('查询分析进度失败', error); this.startPolling(); }
 		},
 		selectView(tab) { this.activeView = tab.id; },
+		async setInsightFeedback(item, action) {
+			if (!item || !item.key || !this.analysis || !this.analysis.taskId || this.processingInsightKey) return;
+			this.processingInsightKey = item.key;
+			try {
+				const res = await this.$http.post(aiInsightFeedback(this.analysis.taskId), { insightKey: item.key, action });
+				this.acceptAnalysis(res.data.analysis);
+				uni.showToast({ title: action === 'HELPFUL' ? '会多保留这类理解' : action === 'WRONG' ? '已记住这条不符合' : '会在以后继续观察', icon: 'none' });
+			} catch (error) { console.error('保存理解反馈失败', error); }
+			finally { this.processingInsightKey = ''; }
+		},
+		prepareExperienceSwitch() { if (!this.switchingExperience) this.pendingExperienceTarget = this.isCognitionExperience ? 'A1' : 'A1.1'; },
+		async confirmExperienceSwitch() {
+			const target = this.pendingExperienceTarget;
+			if (!target || this.switchingExperience) return;
+			this.switchingExperience = true;
+			try {
+				await this.$http.post(aiExperience, { version: target });
+				this.experienceVersion = target;
+				this.pendingExperienceTarget = '';
+				this.showAllObservers = false;
+				const refreshed = await this.$http.get(aiAnalysis, { diaryId: this.diaryId });
+				if (refreshed.data) this.acceptAnalysis(refreshed.data);
+			} catch (error) { console.error('切换分析体验失败', error); }
+			finally { this.switchingExperience = false; }
+		},
 		stateLabel(value) { return { entropy_increase: '熵增', entropy_decrease: '熵减', boundary: '边界' }[value] || value; },
 		ruleLabel(value) { return { followed: '本次遵循', violated: '本次偏离', not_covered: '尚未覆盖' }[value] || value; },
 		formatTokens(value) { return Number(value || 0).toLocaleString(); },
@@ -385,6 +437,9 @@ button::after { border: 0; }
 .subtitle { margin-top: 10rpx; font-size: 20rpx; color: #718075; }
 .privacy { display: flex; align-items: flex-start; gap: 13rpx; margin-top: 35rpx; padding: 21rpx 24rpx; border-radius: 23rpx; background: #e1ebd9; font-size: 18rpx; line-height: 1.55; color: #55665a; }
 .privacy-dot { width: 9rpx; height: 9rpx; margin-top: 9rpx; flex: 0 0 9rpx; border-radius: 50%; background: #5d7562; }
+.experience-switch { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-top: 14rpx; padding: 17rpx 19rpx; border: 1rpx solid rgba(23,32,25,.07); border-radius: 21rpx; background: rgba(255,255,255,.55); }
+.experience-switch > view { display: flex; min-width: 0; flex-direction: column; gap: 4rpx; }.experience-switch > view text:first-child { font-size: 15rpx; font-weight: 760; letter-spacing: 1.4rpx; color: #627164; }.experience-switch > view text:last-child { font-size: 18rpx; color: #77837a; }.experience-switch button { flex: 0 0 auto; padding: 13rpx 17rpx; border-radius: 999rpx; background: #172019; color: #fff; font-size: 16rpx; }.experience-switch button[disabled] { opacity: .45; }
+.experience-confirm { margin-top: 10rpx; padding: 19rpx; border-radius: 19rpx; background: #ede8d7; }.experience-confirm > text { display: block; color: #6e6958; font-size: 17rpx; line-height: 1.55; }.experience-confirm > view { display: flex; justify-content: flex-end; gap: 9rpx; margin-top: 14rpx; }.experience-confirm button { min-height: 52rpx; padding: 0 17rpx; border-radius: 999rpx; color: #6e6958; font-size: 16rpx; }.experience-confirm button:last-child { background: #172019; color: #fff; font-weight: 700; }
 .empty-state, .unavailable, .running-state { display: flex; min-height: 520rpx; margin-top: 23rpx; padding: 38rpx; box-sizing: border-box; flex-direction: column; justify-content: flex-end; border-radius: 35rpx; background: #172019; color: #fff; }
 .unavailable { background: #ede8d7; color: #292d27; }
 .state-index { font-size: 17rpx; font-weight: 710; letter-spacing: 2.7rpx; color: #9fad9f; }
@@ -398,6 +453,15 @@ button::after { border: 0; }
 .observer-preview { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 24rpx; }
 .observer-preview text { padding: 8rpx 13rpx; border: 1rpx solid rgba(255,255,255,.15); border-radius: 999rpx; font-size: 17rpx; color: #c4d0c3; }
 .manage-link { margin-top: 20rpx; text-align: center; font-size: 19rpx; color: #abbbaa; }
+.insight-hero { margin-top: 24rpx; padding: 30rpx; border-radius: 34rpx; background: #172019; color: #fff; }
+.insight-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }.insight-heading > view { display: flex; flex-direction: column; gap: 7rpx; }.insight-heading > view text:first-child { color: #9eada0; font-size: 14rpx; font-weight: 750; letter-spacing: 2rpx; }.insight-heading > view text:last-child { font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; font-weight: 700; }.insight-heading > text { display: flex; width: 42rpx; height: 42rpx; align-items: center; justify-content: center; border-radius: 50%; background: rgba(229,239,217,.12); color: #dce8d5; font-size: 16rpx; }
+.insight-note { display: block; margin-top: 13rpx; color: #aebbae; font-size: 17rpx; line-height: 1.55; }
+.featured-insight { margin-top: 25rpx; padding-top: 24rpx; border-top: 1rpx solid rgba(255,255,255,.11); }.insight-meta { display: flex; align-items: center; gap: 9rpx; }.insight-meta text { padding: 6rpx 10rpx; border-radius: 999rpx; background: rgba(255,255,255,.08); color: #b9c8ba; font-size: 14rpx; }.insight-meta text:first-child { background: #dfe9bd; color: #263027; font-weight: 700; }
+.insight-title { display: block; margin-top: 15rpx; font-size: 25rpx; font-weight: 700; line-height: 1.5; }.insight-detail { display: block; margin-top: 11rpx; color: #bdc9bd; font-size: 20rpx; line-height: 1.65; }
+.insight-assumption, .insight-next { display: flex; margin-top: 15rpx; padding: 16rpx; flex-direction: column; gap: 7rpx; border-radius: 17rpx; background: rgba(238,233,217,.1); }.insight-next { background: rgba(223,234,215,.11); }.insight-assumption text:first-child, .insight-next text:first-child { color: #c6bd9c; font-size: 14rpx; font-weight: 730; letter-spacing: 1rpx; }.insight-next text:first-child { color: #bdd1b8; }.insight-assumption text:last-child, .insight-next text:last-child { font-size: 18rpx; line-height: 1.55; }
+.insight-feedback { margin-top: 18rpx; }.insight-feedback > text { color: #879888; font-size: 15rpx; }.insight-feedback > view { display: flex; flex-wrap: wrap; gap: 8rpx; margin-top: 10rpx; }.insight-feedback button { min-height: 52rpx; padding: 0 16rpx; border: 1rpx solid rgba(255,255,255,.15); border-radius: 999rpx; color: #c8d3c9; font-size: 16rpx; }.insight-feedback button.active { border-color: #dfe9bd; background: #dfe9bd; color: #263027; font-weight: 700; }.insight-feedback button[disabled] { opacity: .45; }
+.observer-disclosure { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; margin-top: 18rpx; padding: 22rpx 24rpx; border-radius: 24rpx; background: rgba(255,255,255,.65); }.observer-disclosure > view { display: flex; flex-direction: column; gap: 5rpx; }.observer-disclosure > view text:first-child { font-size: 21rpx; font-weight: 700; }.observer-disclosure > view text:last-child, .observer-disclosure > text { color: #738077; font-size: 16rpx; }
+.keep-heading { margin-top: 29rpx; padding: 0 4rpx; }.keep-heading text { display: block; }.keep-heading text:first-child { font-family: Georgia, 'Songti SC', serif; font-size: 31rpx; font-weight: 700; }.keep-heading text:last-child { margin-top: 9rpx; color: #748078; font-size: 18rpx; line-height: 1.6; }
 .unavailable .primary-button, .todo-section .primary-button { background: #172019; color: #fff; }
 	.primary-button.disabled { opacity: .45; }
 	.todo-create-button { width: 100%; box-sizing: border-box; line-height: 1.2; }
