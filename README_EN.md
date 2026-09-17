@@ -1,6 +1,6 @@
 # Shroom Diary
 
-[简体中文](./README.md) · [Live demo](https://shroom.surfplus.xyz)
+[简体中文](./README.md) · [Live demo](https://shroom.evox.run)
 
 Shroom is an open-source, private-first AI journal for memory, reflection, and lightweight social learning. It does more than preserve what happened today: it helps people revisit their own evidence over time, revise earlier interpretations, retain useful experience, and notice how they are changing.
 

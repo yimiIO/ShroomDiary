@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 
-const baseUrl = process.env.TEST_BASE_URL || 'https://shroom.surfplus.xyz';
+const baseUrl = process.env.TEST_BASE_URL || 'https://shroom.evox.run';
 const audioPath = process.env.TEST_SPEECH_FILE;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const mobile = `137${String(Date.now()).slice(-8)}`;

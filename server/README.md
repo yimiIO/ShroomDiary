@@ -142,12 +142,12 @@ adds default-on inbox delivery and allows the worker to identify inbox-generated
 See `STORAGE.md` for the single-source storage boundary and the distinction
 between runtime data and one-time migration inputs.
 
-The temporary `shroom.surfplus.xyz` production topology keeps the API and
-PostgreSQL database on the independent Shroom server. The Surfplus host serves
-only the H5 bundle and forwards `/api/` through the restricted
-`shroom-api-tunnel.service`; the tunnel key is limited to local port 3102 and
-cannot open a shell. DNS must contain only the edge address while this topology
-is active.
+The canonical production origin is `https://shroom.evox.run`. Nginx serves the
+H5 bundle and forwards `/api/` to the Shroom service on `127.0.0.1:3102` on the
+same server. PostgreSQL and private uploads remain on that independent Shroom
+host. `server/deploy/shroom-evox-run.nginx.conf` is the active deployment
+template; the old Surfplus edge/tunnel configuration is retained only as
+historical rollback material and must not be used for new releases.
 
 Life OS review uses the configured AI provider only after an authenticated user
 explicitly starts it. The server selects that user's own AI-allowed diary entries,

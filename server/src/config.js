@@ -18,7 +18,7 @@ module.exports = {
     && Boolean(String(process.env.FINANCIAL_AI_PROCESSOR_NAME || '').trim()),
   adminConsoleUsername: process.env.ADMIN_CONSOLE_USERNAME || '',
   adminConsolePasswordHash: process.env.ADMIN_CONSOLE_PASSWORD_HASH || '',
-  publicOrigin: process.env.PUBLIC_ORIGIN || 'https://shroom.surfplus.xyz',
+  publicOrigin: process.env.PUBLIC_ORIGIN || 'https://shroom.evox.run',
   allowedOrigins: String(process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map(origin => origin.trim())

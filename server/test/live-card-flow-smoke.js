@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
 
-const baseUrl = process.env.TEST_BASE_URL || 'https://shroom.surfplus.xyz';
+const baseUrl = process.env.TEST_BASE_URL || 'https://shroom.evox.run';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const suffix = String(Date.now()).slice(-8);
 const mobileA = `136${suffix}`;

@@ -7,7 +7,7 @@ const path = require('node:path');
 const { Pool } = require('pg');
 const { deletePrivateObject } = require('../src/media-storage');
 
-const baseUrl = process.env.TEST_BASE_URL || 'https://shroom.surfplus.xyz';
+const baseUrl = process.env.TEST_BASE_URL || 'https://shroom.evox.run';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const suffix = String(Date.now()).slice(-8);
 const mobileA = `139${suffix}`;

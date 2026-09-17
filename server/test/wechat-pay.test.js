@@ -115,7 +115,7 @@ test('v2 JSAPI signs flat XML callbacks and normalizes them for the billing ledg
 
 test('v2 JSAPI OAuth state and payer token are user-bound and expire', () => {
   const now = 1_800_000_000;
-  const state = createOAuthState({ userId: 'user-1', returnUrl: 'https://shroom.surfplus.xyz/pages/shroom/wallet', nowSeconds: now });
+  const state = createOAuthState({ userId: 'user-1', returnUrl: 'https://shroom.evox.run/pages/shroom/wallet', nowSeconds: now });
   assert.equal(verifyOAuthState(state, { userId: 'user-1', nowSeconds: now + 60 }).userId, 'user-1');
   assert.throws(() => verifyOAuthState(state, { userId: 'user-2', nowSeconds: now + 60 }));
   assert.throws(() => verifyOAuthState(state, { userId: 'user-1', nowSeconds: now + 601 }));
@@ -160,7 +160,7 @@ test('v2 JSAPI live readiness uses the proven WeChat-inside-H5 channel without A
       publicKeyId: '',
       publicKeyPath: '',
       platformCertPath: '',
-      notifyUrl: 'https://shroom.surfplus.xyz/api/billing/v1/payments/wechat/notify',
+      notifyUrl: 'https://shroom.evox.run/api/billing/v1/payments/wechat/notify',
       refundNotifyUrl: '',
       jsapiEnabled: true,
       h5Enabled: false

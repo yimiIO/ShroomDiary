@@ -1,6 +1,6 @@
 # Shroom Diary｜菇日记
 
-[English](./README_EN.md) · [在线体验](https://shroom.surfplus.xyz)
+[English](./README_EN.md) · [在线体验](https://shroom.evox.run)
 
 Shroom 是一款以私人日记为原点的开源 AI 记忆、理解与轻社交产品。它不只保存“今天发生了什么”，也帮助你在经过足够时间与真实经历后，重新理解过去、保留有效经验，并看见自己正在发生的变化。
 

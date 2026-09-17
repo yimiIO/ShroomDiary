@@ -88,7 +88,7 @@ npm run billing:refund -- <退款申请UUID> reject <处理人标识> "未通过
 - `BILLING_ICP_QUALIFICATION` 已真实取得并与运营主体一致；如业务依法需要 ICP 许可证或其他前置许可，不能用普通备案号替代；
 - 协议、价格展示、退款执行、开票路径和微信商户经营类目已经人工复核后，才设置 `BILLING_LEGAL_REVIEW_CONFIRMED=true`；
 - `suyetiyu` 的商户号、公众号 AppID、V2 API 密钥、商户证书与私钥、支付 HTTPS 回调地址齐全；
-- 公众号网页授权域名和 JSAPI 支付授权目录覆盖 `shroom.surfplus.xyz`，并设置 `WECHAT_PAY_PROTOCOL=v2_jsapi`、`WECHAT_PAY_JSAPI_ENABLED=true`；
+- 公众号网页授权域名和 JSAPI 支付授权目录覆盖 `shroom.evox.run`，并设置 `WECHAT_PAY_PROTOCOL=v2_jsapi`、`WECHAT_PAY_JSAPI_ENABLED=true`；
 - 微信支付商户平台中绑定的公众号 AppID、经营类目、实际开票主体和上述配置一致；
 - 已按顺序执行 `036_billing.sql`、`037_payment_operations.sql`，并完成支付成功、主动查单、重复回调、金额篡改、余额不足、活动幂等、功能重复解锁、退款申请、退款回调和个人数据导出验收；
 - 财务能够按支付订单、钱包流水、AI 用量事件和退款申请进行日结对账。
@@ -108,12 +108,12 @@ npm run billing:refund -- <退款申请UUID> reject <处理人标识> "未通过
 微信支付操作顺序：
 
 1. 确认支付域名的实名与 ICP 主体为「海口澎湃体育文化有限公司」，且网页已公开展示主体、价格、用户协议、隐私政策和退款联系方式。
-2. 在微信公众号后台把 `shroom.surfplus.xyz` 配置为网页授权域名；在微信支付商户平台确认公众号 AppID 已与 `suyetiyu` 商户号绑定，并让 JSAPI 支付授权目录覆盖菇日记钱包路径。
+2. 在微信公众号后台把 `shroom.evox.run` 配置为网页授权域名；在微信支付商户平台确认公众号 AppID 已与 `suyetiyu` 商户号绑定，并让 JSAPI 支付授权目录覆盖菇日记钱包路径。
 
-   - 公众号网页授权域名：`shroom.surfplus.xyz`（不带协议和路径）
-   - JSAPI 支付授权目录：`https://shroom.surfplus.xyz/pages/shroom/`
-   - OAuth 回跳页面：`https://shroom.surfplus.xyz/pages/shroom/wallet`
-   - 支付结果通知：`https://shroom.surfplus.xyz/api/billing/v1/payments/wechat/notify`
+   - 公众号网页授权域名：`shroom.evox.run`（不带协议和路径）
+   - JSAPI 支付授权目录：`https://shroom.evox.run/pages/shroom/`
+   - OAuth 回跳页面：`https://shroom.evox.run/pages/shroom/wallet`
+   - 支付结果通知：`https://shroom.evox.run/api/billing/v1/payments/wechat/notify`
 3. V2 API 密钥、商户证书和私钥只写入 Shroom 服务器受限环境与密钥文件。普通运营后台只显示“已配置/缺失”，不提供查看、复制或下载。
 4. 只有真实用户在个人微信内完成“授权 → 下单 → 调起收银台 → 支付 → 回调/主动查单入账 → 原路退款”验收后，才把渠道标记为最终验收通过。
 

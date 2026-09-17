@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const inputPath = process.argv[2];
-const baseUrl = String(process.env.SHROOM_API_URL || 'https://shroom.surfplus.xyz').replace(/\/$/, '');
+const baseUrl = String(process.env.SHROOM_API_URL || 'https://shroom.evox.run').replace(/\/$/, '');
 const token = process.env.SHROOM_ACCESS_TOKEN;
 
 if (!inputPath || !token) {
