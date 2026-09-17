@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { parseJsonContent } = require('./ai-json');
 const { FOLLOWUP_PROMPT } = require('./ai-prompts');
+const { normalizeFollowup } = require('./analysis-b2');
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -66,6 +67,12 @@ function createExperimentCaller({ apiBaseUrl, apiKey, fetchImpl = global.fetch, 
         ? content.map(item => item?.text || item?.content || '').join('')
         : String(content || ''));
       const usage = payload?.usage || {};
+      const usageDetails = {
+        promptCacheHitTokens: Number(usage.prompt_cache_hit_tokens || 0),
+        promptCacheMissTokens: Number(usage.prompt_cache_miss_tokens || 0),
+        cachedPromptTokens: Number(usage.prompt_tokens_details?.cached_tokens || 0),
+        reasoningTokens: Number(usage.completion_tokens_details?.reasoning_tokens || 0)
+      };
       calls.push({
         id: crypto.randomUUID(),
         label: String(label || ''),
@@ -74,6 +81,7 @@ function createExperimentCaller({ apiBaseUrl, apiKey, fetchImpl = global.fetch, 
         promptTokens: Number(usage.prompt_tokens || 0),
         completionTokens: Number(usage.completion_tokens || 0),
         totalTokens: Number(usage.total_tokens || 0),
+        usageDetails,
         request: { system: String(system || ''), input: clone(input) },
         output: clone(parsed),
         status: 'SUCCEEDED'
@@ -144,7 +152,7 @@ async function runLegacyReplay({ fixture, callJson, model }) {
     mode: 'READ_ONLY_LEGACY_REPLAY',
     diary: clone(fixture.diary),
     observations,
-    followup: clone(followup)
+    followup: normalizeFollowup(followup, context, diary.content)
   };
 }
 

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { DEFAULT_OBSERVERS } = require('../src/observer-presets');
-const { runAnalysisVNext, VNEXT_OBSERVER_TASKS, VERSION } = require('../src/analysis-vnext');
+const { runAnalysisB2, VERSION: B2_VERSION } = require('../src/analysis-b2');
 const {
   createExperimentCaller,
   runComparison,
@@ -25,15 +25,9 @@ function args(argv) {
   return result;
 }
 
-function observersFor(fixture, vNext = false) {
-  const observers = Array.isArray(fixture.observers) && fixture.observers.length
+function observersFor(fixture) {
+  return Array.isArray(fixture.observers) && fixture.observers.length
     ? fixture.observers : DEFAULT_OBSERVERS;
-  if (!vNext) return observers;
-  return observers.map(observer => ({
-    ...observer,
-    vNextPrompt: VNEXT_OBSERVER_TASKS[observer.presetKey]
-      || `从用户指定的「${observer.name || '自定义'}」角度观察：${observer.description || observer.instructions || ''}`
-  }));
 }
 
 function summarizeCalls(calls, at = new Date()) {
@@ -41,8 +35,21 @@ function summarizeCalls(calls, at = new Date()) {
     promptTokens: sum.promptTokens + Number(call.promptTokens || 0),
     completionTokens: sum.completionTokens + Number(call.completionTokens || 0),
     totalTokens: sum.totalTokens + Number(call.totalTokens || 0),
-    durationMs: sum.durationMs + Number(call.durationMs || 0)
-  }), { promptTokens: 0, completionTokens: 0, totalTokens: 0, durationMs: 0 });
+    durationMs: sum.durationMs + Number(call.durationMs || 0),
+    promptCacheHitTokens: sum.promptCacheHitTokens + Number(call.usageDetails?.promptCacheHitTokens || 0),
+    promptCacheMissTokens: sum.promptCacheMissTokens + Number(call.usageDetails?.promptCacheMissTokens || 0),
+    cachedPromptTokens: sum.cachedPromptTokens + Number(call.usageDetails?.cachedPromptTokens || 0),
+    reasoningTokens: sum.reasoningTokens + Number(call.usageDetails?.reasoningTokens || 0)
+  }), {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    durationMs: 0,
+    promptCacheHitTokens: 0,
+    promptCacheMissTokens: 0,
+    cachedPromptTokens: 0,
+    reasoningTokens: 0
+  });
   const model = calls[0]?.model || '';
   const estimate = estimateAiCost({
     provider: 'deepseek',
@@ -50,7 +57,9 @@ function summarizeCalls(calls, at = new Date()) {
     usage: {
       prompt_tokens: totals.promptTokens,
       completion_tokens: totals.completionTokens,
-      total_tokens: totals.totalTokens
+      total_tokens: totals.totalTokens,
+      prompt_cache_hit_tokens: totals.promptCacheHitTokens,
+      prompt_cache_miss_tokens: totals.promptCacheMissTokens
     },
     at
   });
@@ -109,7 +118,6 @@ async function main() {
   const apiBaseUrl = process.env.AI_API_BASE_URL;
   const apiKey = process.env.AI_API_KEY;
   const currentModel = String(options['current-model'] || process.env.AI_MODEL || 'deepseek-v4-flash');
-  const candidateModel = String(options['candidate-model'] || 'deepseek-v4-pro');
   const repetitions = Math.max(1, Math.min(10, Number(options.repetitions || 1)));
   const payload = JSON.parse(fs.readFileSync(path.resolve(options.fixture), 'utf8'));
   const allFixtures = Array.isArray(payload) ? payload : (Array.isArray(payload.fixtures) ? payload.fixtures : [payload]);
@@ -119,7 +127,7 @@ async function main() {
     __dirname,
     '..',
     '.local',
-    'analysis-vnext',
+    'analysis-b2',
     new Date().toISOString().replace(/[:.]/gu, '-')
   ));
   fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 });
@@ -128,31 +136,14 @@ async function main() {
     const caller = createExperimentCaller({ apiBaseUrl, apiKey });
     const variants = [
       variant({
-        id: 'A_CURRENT_MODEL_CURRENT_PROMPT', promptVersion: 'production-current', model: currentModel, caller,
-        fixtureTransform: value => ({ ...value, observers: observersFor(value, false) }),
+        id: 'A1_PATCHED_PRODUCTION', promptVersion: 'production-patched', model: currentModel, caller,
+        fixtureTransform: value => ({ ...value, observers: observersFor(value) }),
         execute: (value, selectedModel, callJson) => runLegacyReplay({ fixture: value, model: selectedModel, callJson })
       }),
       variant({
-        id: 'B_CURRENT_MODEL_VNEXT_PROMPT', promptVersion: VERSION, model: currentModel, caller,
-        fixtureTransform: value => ({ ...value, observers: observersFor(value, true) }),
-        execute: (value, selectedModel, callJson) => runAnalysisVNext({
-          diary: value.diary,
-          observers: value.observers,
-          sourceActivities: value.context?.sourceActivities || [],
-          context: value.context || {},
-          model: selectedModel,
-          callJson
-        })
-      }),
-      variant({
-        id: 'C_CANDIDATE_MODEL_CURRENT_PROMPT', promptVersion: 'production-current', model: candidateModel, caller,
-        fixtureTransform: value => ({ ...value, observers: observersFor(value, false) }),
-        execute: (value, selectedModel, callJson) => runLegacyReplay({ fixture: value, model: selectedModel, callJson })
-      }),
-      variant({
-        id: 'D_CANDIDATE_MODEL_VNEXT_PROMPT', promptVersion: VERSION, model: candidateModel, caller,
-        fixtureTransform: value => ({ ...value, observers: observersFor(value, true) }),
-        execute: (value, selectedModel, callJson) => runAnalysisVNext({
+        id: 'B2_COMPLETE_COMPACT', promptVersion: B2_VERSION, model: currentModel, caller,
+        fixtureTransform: value => ({ ...value, observers: observersFor(value) }),
+        execute: (value, selectedModel, callJson) => runAnalysisB2({
           diary: value.diary,
           observers: value.observers,
           sourceActivities: value.context?.sourceActivities || [],
@@ -178,7 +169,8 @@ async function main() {
   fs.writeFileSync(path.join(outputDir, 'comparison.json'), JSON.stringify({
     generatedAt: new Date().toISOString(),
     currentModel,
-    candidateModel,
+    baselineVersion: 'production-patched',
+    candidateVersion: B2_VERSION,
     repetitions,
     comparisons
   }, null, 2), { mode: 0o600 });

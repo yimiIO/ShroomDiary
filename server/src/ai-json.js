@@ -6,9 +6,37 @@ function parseJsonContent(value) {
   try {
     return JSON.parse(source);
   } catch (error) {
-    const start = source.indexOf('{');
-    const end = source.lastIndexOf('}');
-    if (start >= 0 && end > start) return JSON.parse(source.slice(start, end + 1));
+    for (let start = 0; start < source.length; start += 1) {
+      if (source[start] !== '{' && source[start] !== '[') continue;
+      const stack = [];
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index += 1) {
+        const character = source[index];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (character === '\\') escaped = true;
+          else if (character === '"') inString = false;
+          continue;
+        }
+        if (character === '"') {
+          inString = true;
+          continue;
+        }
+        if (character === '{' || character === '[') stack.push(character);
+        else if (character === '}' || character === ']') {
+          const expected = character === '}' ? '{' : '[';
+          if (stack.pop() !== expected) break;
+          if (!stack.length) {
+            try {
+              return JSON.parse(source.slice(start, index + 1));
+            } catch {
+              break;
+            }
+          }
+        }
+      }
+    }
     throw error;
   }
 }
