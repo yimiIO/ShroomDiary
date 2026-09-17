@@ -16,10 +16,14 @@ test('AI JSON parser extracts the single object from short surrounding text', ()
   assert.deepEqual(parseJsonContent('结果如下： {"people":[]} 完成'), { people: [] });
 });
 
-test('AI JSON parser keeps the first complete object when a model appends another payload', () => {
-  assert.deepEqual(
-    parseJsonContent('{"synthesis":{"primaryInsights":[]}} {"duplicate":true}'),
-    { synthesis: { primaryInsights: [] } }
+test('AI JSON parser rejects two business payloads instead of silently choosing the first', () => {
+  assert.throws(
+    () => parseJsonContent('{"synthesis":{"primaryInsights":[]}} {"duplicate":true}'),
+    error => {
+      assert.equal(error.code, 'SHROOM_AI_JSON_AMBIGUOUS');
+      assert.match(error.message, /多个 JSON/u);
+      return true;
+    }
   );
 });
 

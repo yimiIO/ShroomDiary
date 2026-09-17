@@ -7,6 +7,7 @@ const { buildSourceIndex, runAnalysisVNext } = require('../src/analysis-vnext');
 const { buildAddressedSource, runAnalysisB2 } = require('../src/analysis-b2');
 const { createExperimentCaller, runComparison, runLegacyReplay } = require('../src/analysis-experiment');
 const { classifyDiary, selectDiverseFixtures } = require('../src/analysis-fixtures');
+const { replayFrozenCalls } = require('../scripts/replay-frozen-analysis-call');
 
 test('analysis B2 sends one complete addressed diary source without a duplicate source index', async () => {
   const calls = [];
@@ -223,6 +224,9 @@ test('analysis B2 uses its sixth call for deduplicated synthesis and the complet
   assert.match(finalCall.system, /用户已经分析得很完整[^。]*不能[^。]*空/u);
   assert.match(finalCall.system, /逐段检查[^。]*身体变化/u);
   assert.match(finalCall.system, /只返回一个 JSON 根对象/u);
+  assert.match(finalCall.system, /综合是面向用户的整理，不要求创造观察席之外的新观点/u);
+  assert.match(finalCall.system, /只返回 JSON：\{"synthesis"[\s\S]*"todoCandidates"/u);
+  assert.equal(finalCall.system.match(/只返回 JSON：/gu)?.length, 1);
   assert.doesNotMatch(finalCall.system, /最多 2 条，不适用时/u);
   assert.equal(JSON.stringify(finalCall.input).match(/明天核对余额/gu)?.length, 1);
   assert.deepEqual(finalCall.input.existingCards.map(item => item.id), ['card-1']);
@@ -274,6 +278,40 @@ test('analysis B2 allows zero synthesis but rejects unmerged overflow', async ()
   }), /必须真正取舍/u);
 });
 
+test('analysis B2 distinguishes an explicit empty synthesis from a missing synthesis field', async () => {
+  const base = {
+    diary: { id: 'd-synthesis-state', content: '今天只是正常吃饭和散步。', diaryDate: '2026-09-18' },
+    observers: []
+  };
+  const explicitEmpty = await runAnalysisB2({
+    ...base,
+    callJson: async () => ({
+      synthesis: { primaryInsights: [], additionalInsights: [], caveats: [] },
+      todoCandidates: [],
+      cardSuggestion: { shouldCreate: false, existingMatches: [] },
+      healthExtraction: {},
+      inquiryCandidates: [],
+      compoundLinks: []
+    })
+  });
+
+  assert.equal(explicitEmpty.diagnostics.synthesisState, 'EXPLICIT_EMPTY');
+  await assert.rejects(() => runAnalysisB2({
+    ...base,
+    callJson: async () => ({
+      todoCandidates: [],
+      cardSuggestion: { shouldCreate: false, existingMatches: [] },
+      healthExtraction: {},
+      inquiryCandidates: [],
+      compoundLinks: []
+    })
+  }), error => {
+    assert.equal(error.code, 'SHROOM_B2_MISSING_SYNTHESIS');
+    assert.match(error.message, /缺少 synthesis/u);
+    return true;
+  });
+});
+
 test('analysis B2 applies the same evidence and existing-record guards as the product candidate flow', async () => {
   const result = await runAnalysisB2({
     diary: {
@@ -317,6 +355,21 @@ test('analysis B2 applies the same evidence and existing-record guards as the pr
   assert.equal(result.followup.inquiryCandidates[0].suggestedInquiryId, 'inquiry-real');
   assert.equal(result.followup.compoundLinks.length, 1);
   assert.equal(result.followup.compoundLinks[0].itemKey, '17');
+  assert.deepEqual(result.diagnostics.candidateStages.healthLifestyle, {
+    rawCount: 2,
+    acceptedCount: 1,
+    state: 'FILTERED_PARTIAL'
+  });
+  assert.deepEqual(result.diagnostics.candidateStages.healthPhysical, {
+    rawCount: 0,
+    acceptedCount: 0,
+    state: 'NOT_GENERATED'
+  });
+  assert.deepEqual(result.diagnostics.candidateStages.inquiries, {
+    rawCount: 2,
+    acceptedCount: 1,
+    state: 'FILTERED_PARTIAL'
+  });
 });
 
 test('analysis B2 longitudinal context excludes superseded model interpretations and keeps corrected source records', async () => {
@@ -464,6 +517,21 @@ test('comparison runs keep every variant and repetition isolated', async () => {
   assert.ok(comparison.runs.every(run => run.status === 'SUCCEEDED'));
 });
 
+test('comparison records missing required fields separately from an intentional empty result', async () => {
+  const missing = new Error('missing synthesis');
+  missing.code = 'SHROOM_B2_MISSING_SYNTHESIS';
+  missing.experimentCalls = [{ label: 'analysis B2 · 综合与候选', status: 'SUCCEEDED', output: { todoCandidates: [] } }];
+  const comparison = await runComparison({
+    fixture: { id: 'fixture-missing', diary: { id: 'd', content: '普通记录。' } },
+    variants: [{ id: 'B2', execute: async () => { throw missing; } }]
+  });
+
+  assert.equal(comparison.runs[0].status, 'FAILED');
+  assert.equal(comparison.runs[0].errorCode, 'SHROOM_B2_MISSING_SYNTHESIS');
+  assert.equal(comparison.runs[0].outputState, 'MISSING_REQUIRED_FIELD');
+  assert.equal(comparison.runs[0].calls[0].label, 'analysis B2 · 综合与候选');
+});
+
 test('reconstructed replay excludes context created after the diary analysis time', async () => {
   let received;
   const comparison = await runComparison({
@@ -527,6 +595,57 @@ test('experiment model caller records usage without using the production billing
   });
   assert.equal(Object.hasOwn(caller.calls[0], 'apiKey'), false);
   assert.equal(Object.hasOwn(caller.calls[0], 'authorization'), false);
+});
+
+test('experiment model caller records ambiguous JSON as processing failure instead of normal empty', async () => {
+  const caller = createExperimentCaller({
+    apiBaseUrl: 'https://model.example/v1',
+    apiKey: 'private-key',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: '{"synthesis":{}} {"synthesis":{"primaryInsights":[]}}' } }],
+        usage: { prompt_tokens: 30, completion_tokens: 12, total_tokens: 42 }
+      })
+    })
+  });
+
+  await assert.rejects(
+    () => caller.callJson('system', { diary: 'text' }, 'ambiguous', { model: 'model-a' }),
+    error => error.code === 'SHROOM_AI_JSON_AMBIGUOUS'
+  );
+  assert.equal(caller.calls.length, 1);
+  assert.equal(caller.calls[0].status, 'FAILED');
+  assert.equal(caller.calls[0].errorCode, 'SHROOM_AI_JSON_AMBIGUOUS');
+  assert.equal(caller.calls[0].outputState, 'AMBIGUOUS_JSON');
+  assert.equal(caller.calls[0].totalTokens, 42);
+  assert.equal(caller.calls[0].responseDiagnostics.jsonValueCount, 2);
+  assert.equal(typeof caller.calls[0].responseDiagnostics.rawSha256, 'string');
+  assert.equal(Object.hasOwn(caller.calls[0].responseDiagnostics, 'rawContent'), false);
+});
+
+test('frozen final-call replay reuses the exact stored request without rerunning observers', async () => {
+  const requests = [];
+  const caller = {
+    calls: [],
+    callJson: async (system, input, label, callOptions) => {
+      requests.push({ system, input, label, callOptions });
+      caller.calls.push({ status: 'SUCCEEDED', label });
+      return { synthesis: { primaryInsights: [], additionalInsights: [] } };
+    }
+  };
+  const result = await replayFrozenCalls({
+    cases: [{ id: 'frozen-1', system: 'stored system', input: { observations: [{ id: 'o1' }] }, model: 'model-a' }],
+    repetitions: 2,
+    caller
+  });
+
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[0].input, { observations: [{ id: 'o1' }] });
+  assert.equal(requests[0].system, 'stored system');
+  assert.equal(requests[0].callOptions.temperature, 0.1);
+  assert.equal(result.runs.every(run => run.calls.length === 1), true);
 });
 
 test('legacy comparison replay uses current prompts without production writes', async () => {

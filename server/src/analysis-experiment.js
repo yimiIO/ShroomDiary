@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { parseJsonContent } = require('./ai-json');
+const { inspectJsonContent, parseJsonContent } = require('./ai-json');
 const { FOLLOWUP_PROMPT } = require('./ai-prompts');
 const { normalizeFollowup } = require('./analysis-b2');
 
@@ -43,6 +43,16 @@ function createExperimentCaller({ apiBaseUrl, apiKey, fetchImpl = global.fetch, 
     const inputText = typeof input === 'string' ? input : JSON.stringify(input);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 120000));
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let totalTokens = 0;
+    let usageDetails = {
+      promptCacheHitTokens: 0,
+      promptCacheMissTokens: 0,
+      cachedPromptTokens: 0,
+      reasoningTokens: 0
+    };
+    let responseDiagnostics;
     try {
       const response = await fetchImpl(endpoint, {
         method: 'POST',
@@ -63,25 +73,34 @@ function createExperimentCaller({ apiBaseUrl, apiKey, fetchImpl = global.fetch, 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.error?.message || `${label} failed (${response.status})`);
       const content = payload?.choices?.[0]?.message?.content;
-      const parsed = parseJsonContent(Array.isArray(content)
+      const rawContent = Array.isArray(content)
         ? content.map(item => item?.text || item?.content || '').join('')
-        : String(content || ''));
+        : String(content || '');
+      responseDiagnostics = {
+        ...inspectJsonContent(rawContent),
+        rawSha256: crypto.createHash('sha256').update(rawContent).digest('hex')
+      };
       const usage = payload?.usage || {};
-      const usageDetails = {
+      promptTokens = Number(usage.prompt_tokens || 0);
+      completionTokens = Number(usage.completion_tokens || 0);
+      totalTokens = Number(usage.total_tokens || 0);
+      usageDetails = {
         promptCacheHitTokens: Number(usage.prompt_cache_hit_tokens || 0),
         promptCacheMissTokens: Number(usage.prompt_cache_miss_tokens || 0),
         cachedPromptTokens: Number(usage.prompt_tokens_details?.cached_tokens || 0),
         reasoningTokens: Number(usage.completion_tokens_details?.reasoning_tokens || 0)
       };
+      const parsed = parseJsonContent(rawContent);
       calls.push({
         id: crypto.randomUUID(),
         label: String(label || ''),
         model,
         durationMs: Date.now() - started,
-        promptTokens: Number(usage.prompt_tokens || 0),
-        completionTokens: Number(usage.completion_tokens || 0),
-        totalTokens: Number(usage.total_tokens || 0),
+        promptTokens,
+        completionTokens,
+        totalTokens,
         usageDetails,
+        responseDiagnostics,
         request: { system: String(system || ''), input: clone(input) },
         output: clone(parsed),
         status: 'SUCCEEDED'
@@ -93,9 +112,13 @@ function createExperimentCaller({ apiBaseUrl, apiKey, fetchImpl = global.fetch, 
         label: String(label || ''),
         model,
         durationMs: Date.now() - started,
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        usageDetails,
+        responseDiagnostics,
+        errorCode: String(error?.code || ''),
+        outputState: error?.code === 'SHROOM_AI_JSON_AMBIGUOUS' ? 'AMBIGUOUS_JSON' : 'PARSE_OR_REQUEST_FAILED',
         error: String(error?.message || error),
         status: 'FAILED'
       });
@@ -179,12 +202,19 @@ async function runComparison({ fixture, variants = [], repetitions = 1, now = ()
           output: clone(output)
         });
       } catch (error) {
+        const errorCode = String(error?.code || '');
+        const outputState = errorCode === 'SHROOM_B2_MISSING_SYNTHESIS'
+          ? 'MISSING_REQUIRED_FIELD'
+          : (errorCode === 'SHROOM_AI_JSON_AMBIGUOUS' ? 'AMBIGUOUS_JSON' : 'FAILED');
         runs.push({
           id: crypto.randomUUID(),
           variantId: String(variant.id),
           repetition,
           status: 'FAILED',
           durationMs: Date.now() - started,
+          errorCode,
+          outputState,
+          calls: clone(error?.experimentCalls || []),
           error: String(error?.message || error)
         });
       }

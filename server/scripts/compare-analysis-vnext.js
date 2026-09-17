@@ -72,15 +72,20 @@ function variant({ id, promptVersion, model, fixtureTransform, execute, caller }
     execute: async fixture => {
       const start = caller.calls.length;
       const prepared = fixtureTransform(fixture);
-      const analysis = await execute(prepared, model, caller.callJson);
-      const calls = caller.calls.slice(start);
-      return {
-        promptVersion,
-        model,
-        analysis,
-        calls,
-        usage: summarizeCalls(calls)
-      };
+      try {
+        const analysis = await execute(prepared, model, caller.callJson);
+        const calls = caller.calls.slice(start);
+        return {
+          promptVersion,
+          model,
+          analysis,
+          calls,
+          usage: summarizeCalls(calls)
+        };
+      } catch (error) {
+        error.experimentCalls = caller.calls.slice(start);
+        throw error;
+      }
     }
   };
 }

@@ -1,9 +1,9 @@
 'use strict';
 
-const VERSION = 'analysis-b2-experiment-v4';
+const VERSION = 'analysis-b2-experiment-v5-loss-path';
 
 const { VNEXT_OBSERVER_TASKS } = require('./analysis-vnext');
-const { FOLLOWUP_PROMPT: PRODUCTION_FOLLOWUP_PROMPT } = require('./ai-prompts');
+const { FOLLOWUP_OUTPUT_CONTRACT, FOLLOWUP_RULES } = require('./ai-prompts');
 const { normalizeCardSuggestion } = require('./card-suggestions');
 const { normalizeDiaryHealthExtraction } = require('./diary-health');
 const { normalizeInquiryCandidates } = require('./inquiry-candidates');
@@ -24,19 +24,24 @@ const OBSERVATION_OUTPUT_CONTRACT = `最低必填字段只有 statement、inform
 只返回 JSON：{"observations":[{"statement":"观察","informationType":"SOURCE_EXPRESSION|INTERPRETATION|SUGGESTION","evidenceRefs":["D1:P01"],"actorScope":"USER|OTHER|RELATIONSHIP|MIXED|UNKNOWN（按需）","temporalScope":"按需","alternativeExplanations":["按需"],"missingInformation":["按需"]}]}。
 用户是否采纳不属于你的判断，不要输出确认、事实化或保存状态。`;
 
+const B2_COMBINED_OUTPUT_CONTRACT = FOLLOWUP_OUTPUT_CONTRACT.replace(
+  '只返回 JSON：{',
+  '只返回 JSON：{"synthesis":{"primaryInsights":[{"statement":"理解候选","informationType":"INTERPRETATION|SOURCE_EXPRESSION|SUGGESTION","evidenceRefs":["D1:P01"]}],"additionalInsights":[],"caveats":[]},'
+);
+
 const B2_COMBINED_PROMPT = `${SOURCE_PROTOCOL}
 你负责第六次也是最后一次调用，同时完成两类互不挤占名额的工作：
 1. synthesis：真正合并同义判断、保留重要差异和冲突，不要把观察席依次复述。primaryInsights 用于首屏，0—2 条；additionalInsights 最多 2 条。补充项只有在删掉后用户会失去一个重要且不同的理解时才能保留。
 2. 产品候选：待办、菇卡、身心记录、未解之问与复利关联必须继续根据完整 diarySource 原文和必要上下文独立判断。首屏洞察数量不得限制候选数量，也不能只从 synthesis 提取候选。
 
+综合是面向用户的整理，不要求创造观察席之外的新观点。可以采纳、合并、澄清观察席中有依据且有帮助的内容。去重是避免同一理解重复展示，不是删除所有已经出现过的理解。是否值得呈现，以它对用户的帮助判断，而不是以它是否首次出现在模型上下文中判断。仍然允许没有值得呈现的内容，不强制填满。
 允许 synthesis 为空，是为了普通记录不被强行解释；用户已经分析得很完整不能成为返回空数组的理由。只要观察席中存在一个经过合并后仍能帮助用户看清区别、张力、变化或证据缺口的判断，就应保留最重要的一条；只有全部观察都是重复复述或没有理解价值时才返回空。
 生成产品候选前逐段检查完整原文中的明确计划或承诺、可迁移规则、心理感受、身体变化、睡眠与生活环境、长期疑问及复利证据。某项没有进入首屏或已经出现在 missingInformation，不能成为漏掉相应原文候选的理由；仍须按照各模块自身规则决定保留或不保留。
 
-${PRODUCTION_FOLLOWUP_PROMPT}
+${FOLLOWUP_RULES}
 
-上文提到的 diary 在本次输入中名为 diarySource，其中 text 是带段落地址的完整原文。最终只返回一个 JSON 根对象，不要追加第二个 JSON、解释或 Markdown；保留上文全部候选字段，并额外加入：
-"synthesis":{"primaryInsights":[{"statement":"理解候选","informationType":"INTERPRETATION|SOURCE_EXPRESSION|SUGGESTION","evidenceRefs":["D1:P01"]}],"additionalInsights":[],"caveats":[]}
-候选中的 evidenceExcerpt 仍必须使用不带地址标记的日记逐字原文。`;
+上文提到的 diary 在本次输入中名为 diarySource，其中 text 是带段落地址的完整原文。候选中的 evidenceExcerpt 仍必须使用不带地址标记的日记逐字原文。最终只返回一个 JSON 根对象，不要追加第二个 JSON、解释或 Markdown。
+${B2_COMBINED_OUTPUT_CONTRACT}`;
 
 function clean(value, maximum = 20000) {
   return String(value || '').trim().slice(0, maximum);
@@ -159,6 +164,21 @@ function normalizeSynthesis(value, allowedRefs) {
   };
 }
 
+function requireCombinedSynthesis(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+      || !Object.hasOwn(value, 'synthesis')) {
+    const error = new Error('B2 综合与候选结果缺少 synthesis，不能当作正常空综合');
+    error.code = 'SHROOM_B2_MISSING_SYNTHESIS';
+    throw error;
+  }
+  if (!value.synthesis || typeof value.synthesis !== 'object' || Array.isArray(value.synthesis)) {
+    const error = new Error('B2 synthesis 必须是对象');
+    error.code = 'SHROOM_B2_INVALID_SYNTHESIS';
+    throw error;
+  }
+  return value.synthesis;
+}
+
 function normalizeFollowup(value, context, diaryContent) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return {
@@ -171,6 +191,49 @@ function normalizeFollowup(value, context, diaryContent) {
     ),
     inquiryCandidates: normalizeInquiryCandidates(input.inquiryCandidates, context.inquiries),
     compoundLinks: normalizeLifeOsLinks(input.compoundLinks || input.lifeOsLinks, context.compoundDirections, diaryContent)
+  };
+}
+
+function candidateStage(rawCount, acceptedCount) {
+  const raw = Math.max(0, Number(rawCount) || 0);
+  const accepted = Math.max(0, Number(acceptedCount) || 0);
+  let state = 'PRESERVED';
+  if (!raw) state = 'NOT_GENERATED';
+  else if (!accepted) state = 'FILTERED_ALL';
+  else if (accepted < raw) state = 'FILTERED_PARTIAL';
+  return { rawCount: raw, acceptedCount: accepted, state };
+}
+
+function candidateStageDiagnostics(rawValue, normalized) {
+  const raw = rawValue && typeof rawValue === 'object' && !Array.isArray(rawValue) ? rawValue : {};
+  const health = raw.healthExtraction || raw.health_extraction || {};
+  const card = raw.cardSuggestion || {};
+  const arrayCount = value => Array.isArray(value) ? value.length : 0;
+  const rawTodos = raw.todoCandidates || raw.candidates;
+  return {
+    todos: candidateStage(arrayCount(rawTodos), normalized.todoCandidates.length),
+    cardMatches: candidateStage(arrayCount(card.existingMatches), normalized.cardSuggestion.existingMatches.length),
+    healthPsychological: candidateStage(
+      arrayCount(health.psychologicalObservations),
+      normalized.healthExtraction.psychologicalObservations.length
+    ),
+    healthPhysical: candidateStage(
+      arrayCount(health.physicalObservations),
+      normalized.healthExtraction.physicalObservations.length
+    ),
+    healthLifestyle: candidateStage(
+      arrayCount(health.lifestyleFactors),
+      normalized.healthExtraction.lifestyleFactors.length
+    ),
+    healthEnvironment: candidateStage(
+      arrayCount(health.environmentFactors),
+      normalized.healthExtraction.environmentFactors.length
+    ),
+    inquiries: candidateStage(arrayCount(raw.inquiryCandidates), normalized.inquiryCandidates.length),
+    compoundLinks: candidateStage(
+      arrayCount(raw.compoundLinks || raw.lifeOsLinks),
+      normalized.compoundLinks.length
+    )
   };
 }
 
@@ -249,8 +312,13 @@ async function runAnalysisB2({ diary, observers = [], sourceActivities = [], con
     'analysis B2 · 综合与候选',
     { model, usageContext, temperature: 0.1 }
   );
-  const { synthesis: rawSynthesis, ...rawFollowup } = combined && typeof combined === 'object'
-    ? combined : {};
+  const rawSynthesis = requireCombinedSynthesis(combined);
+  const rawFollowup = { ...combined };
+  delete rawFollowup.synthesis;
+  const synthesis = normalizeSynthesis(rawSynthesis, allowedRefs);
+  const synthesisState = synthesis.primaryInsights.length || synthesis.additionalInsights.length
+    ? 'NONEMPTY' : 'EXPLICIT_EMPTY';
+  const followup = normalizeFollowup(rawFollowup, context, String(diary.content));
   return {
     version: VERSION,
     mode: 'READ_ONLY_EXPERIMENT',
@@ -258,8 +326,12 @@ async function runAnalysisB2({ diary, observers = [], sourceActivities = [], con
     sourceIndex: addressed.index,
     sourceActivities,
     observations,
-    synthesis: normalizeSynthesis(rawSynthesis || {}, allowedRefs),
-    followup: normalizeFollowup(rawFollowup, context, String(diary.content))
+    synthesis,
+    followup,
+    diagnostics: {
+      synthesisState,
+      candidateStages: candidateStageDiagnostics(rawFollowup, followup)
+    }
   };
 }
 
@@ -270,8 +342,10 @@ module.exports = {
   VERSION,
   buildAddressedSource,
   normalizeObservationResult,
+  candidateStageDiagnostics,
   normalizeFollowup,
   normalizeSynthesis,
+  requireCombinedSynthesis,
   runAnalysisB2,
   selectedContextForObserver
 };
