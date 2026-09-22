@@ -1,6 +1,34 @@
 {
 	"pages": [
 		{
+			"path": "pages/snapshot/index",
+			"style": {
+				"navigationBarTitleText": "今日快照",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/snapshot/history",
+			"style": {
+				"navigationBarTitleText": "历史快照",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/snapshot/trend",
+			"style": {
+				"navigationBarTitleText": "7日趋势",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/snapshot/detail",
+			"style": {
+				"navigationBarTitleText": "快照详情",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/diary/index",
 			"style": {
 				"enablePullDownRefresh": true,
@@ -24,7 +52,9 @@
 			"style": {
 				"navigationBarTitleText": "写日记",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -32,7 +62,9 @@
 			"style": {
 				"navigationBarTitleText": "我的待办",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -40,7 +72,9 @@
 			"style": {
 				"navigationBarTitleText": "待办",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -48,7 +82,9 @@
 			"style": {
 				"navigationBarTitleText": "待办详情",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -56,7 +92,9 @@
 			"style": {
 				"navigationBarTitleText": "项目",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -80,7 +118,9 @@
 				"navigationBarTitleText": "发现",
 				"navigationStyle": "custom",
 				"enablePullDownRefresh": true,
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -88,7 +128,9 @@
 			"style": {
 				"navigationBarTitleText": "我的",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -96,7 +138,9 @@
 			"style": {
 				"navigationBarTitleText": "设置",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -104,7 +148,9 @@
 			"style": {
 				"navigationBarTitleText": "数据与连接",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -116,7 +162,9 @@
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
 				"onReachBottomDistance": 80,
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -126,7 +174,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -136,7 +186,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -146,7 +198,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -156,7 +210,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -166,7 +222,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -176,7 +234,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -186,7 +246,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -197,7 +259,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -207,7 +271,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -217,7 +283,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -227,7 +295,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -237,7 +307,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -247,7 +319,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -265,7 +339,9 @@
 				"navigationStyle": "custom",
 				"backgroundColorTop": "#f1f8e9",
 				"backgroundColorBottom": "#f1f8e9",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -273,7 +349,9 @@
 			"style": {
 				"navigationBarTitleText": "菇卡详情",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -281,7 +359,9 @@
 			"style": {
 				"navigationBarTitleText": "编辑菇卡",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -289,7 +369,9 @@
 			"style": {
 				"navigationBarTitleText": "选择菇卡",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -297,7 +379,9 @@
 			"style": {
 				"navigationBarTitleText": "记录练习",
 				"navigationStyle": "custom",
-				"app-plus": { "titleNView": false }
+				"app-plus": {
+					"titleNView": false
+				}
 			}
 		},
 		{
@@ -365,6 +449,12 @@
 				"iconPath": "static/tab-level.png",
 				"selectedIconPath": "static/tab-level-black.png",
 				"text": "菇卡"
+			},
+			{
+				"pagePath": "pages/snapshot/index",
+				"iconPath": "static/snapshot/icons/tab-record.png",
+				"selectedIconPath": "static/snapshot/icons/tab-record.png",
+				"text": "快照"
 			},
 			{
 				"pagePath": "pages/shroom/discover",
