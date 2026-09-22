@@ -1,6 +1,6 @@
 <template>
 	<view class="edit-diary-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 
 		<view class="navbar">
 			<view class="nav-inner">
@@ -9,11 +9,12 @@
 				</button>
 				<view class="nav-heading">
 					<text class="nav-kicker">SHROOM JOURNAL</text>
-					<text class="nav-title">{{ diaryId ? '编辑日记' : '写日记' }}</text>
+					<text class="nav-title">{{ isReadOnly ? '查看日记' : (diaryId ? '编辑日记' : '写日记') }}</text>
 				</view>
-				<button class="nav-save" :class="{ disabled: !canSave }" :disabled="!canSave" @click="saveDiary">
+				<button class="nav-save" v-if="!isReadOnly" :class="{ disabled: !canSave }" :disabled="!canSave" @click="saveDiary">
 					{{ saving ? '保存中' : '完成' }}
 				</button>
+				<text class="nav-readonly" v-else>只读</text>
 			</view>
 		</view>
 
@@ -22,7 +23,7 @@
 				<view class="date-intro">
 					<text class="date-eyebrow">{{ displayDateEyebrow }}</text>
 					<text class="date-title">{{ displayDateTitle }}</text>
-					<text class="date-prompt">不必完整，也不必正确。先把此刻留下。</text>
+					<text class="date-prompt">{{ isReadOnly ? '过去的日记只能查看，不能修改。' : '不必完整，也不必正确。先把此刻留下。' }}</text>
 				</view>
 
 				<view class="mood-block">
@@ -36,7 +37,8 @@
 								v-for="mood in moods"
 								:key="mood.value"
 								class="mood-chip"
-								:class="{ active: diaryForm.mood === mood.value }"
+								:class="{ active: diaryForm.mood === mood.value, readonly: isReadOnly }"
+								:disabled="isReadOnly"
 								@click="selectMood(mood.value)"
 							>
 								<text class="mood-emoji">{{ mood.emoji }}</text>
@@ -46,9 +48,10 @@
 					</scroll-view>
 				</view>
 
+				<view class="capture-editor-stack">
 				<view class="writing-sheet">
 					<view class="writing-topline">
-						<text class="writing-label">今天发生了什么？</text>
+						<text class="writing-label">{{ isReadOnly ? '那天发生了什么' : '今天发生了什么？' }}</text>
 						<text class="writing-count">{{ diaryForm.content.length }} / 5000</text>
 					</view>
 					<textarea
@@ -58,9 +61,10 @@
 						placeholder-class="content-placeholder"
 						:maxlength="5000"
 						:show-confirm-bar="false"
+						:disabled="isReadOnly"
 					/>
 
-					<view class="writing-tools">
+					<view class="writing-tools" v-if="!isReadOnly">
 						<button class="writing-tool" :class="{ active: voicePanelOpen || diaryForm.voice }" @click="openVoicePanel">
 							<view class="tool-icon mic-mini"><view class="mic-mini-stem"></view></view>
 							<text>{{ diaryForm.voice ? '语音已保存' : '语音写日记' }}</text>
@@ -84,7 +88,7 @@
 					</view>
 				</view>
 
-				<view class="image-upload-panel" v-if="imageUploading" aria-live="polite">
+				<view class="image-upload-panel" v-if="imageUploading && !isReadOnly" aria-live="polite">
 					<view class="image-upload-heading">
 						<view>
 							<text class="image-upload-kicker">照片保存进度</text>
@@ -98,7 +102,7 @@
 					<text class="image-upload-meta">已处理 {{ imageUploadFinishedCount }} / {{ imageUploadTotal }} 张 · 已用时 {{ imageUploadElapsed }} 秒</text>
 				</view>
 
-				<button class="post-save-choice" :class="{ selected: lookBackAfterSave }" v-if="!diaryId" @click="lookBackAfterSave = !lookBackAfterSave">
+				<button class="post-save-choice" :class="{ selected: lookBackAfterSave }" v-if="!diaryId && !isReadOnly" @click="lookBackAfterSave = !lookBackAfterSave">
 					<view class="choice-check"><text v-if="lookBackAfterSave">✓</text></view>
 					<view class="choice-copy">
 						<text>保存后，看看与过去的关联</text>
@@ -135,15 +139,17 @@
 						</view>
 					</view>
 
-					<view class="ready-to-record" v-else-if="!diaryForm.voice">
+					<view class="ready-to-record" v-else-if="!diaryForm.voice && !isReadOnly">
 						<button class="record-button" @click="startRecording">
 							<view class="mic-shape">
 								<view class="mic-body"></view>
 								<view class="mic-base"></view>
 							</view>
 						</button>
-						<text class="record-instruction">点击开始录音</text>
-						<text class="record-helper">最长 10 分钟。原始语音会和日记一起保留。</text>
+						<view class="record-ready-copy">
+							<text class="record-instruction">点击开始录音</text>
+							<text class="record-helper">最长 10 分钟，录音会和文字一起保存。</text>
+						</view>
 					</view>
 
 					<view class="voice-result" v-else>
@@ -162,7 +168,7 @@
 							</view>
 							<text class="voice-time">{{ formatDuration(voicePlaybackTime) }} / {{ formatDuration(voiceDuration) }}</text>
 						</view>
-						<view class="voice-actions">
+							<view class="voice-actions" v-if="!isReadOnly">
 							<button class="voice-link" @click="replaceVoice">重新录制</button>
 							<button class="voice-link danger" @click="removeVoice">删除语音</button>
 						</view>
@@ -193,7 +199,7 @@
 								<view class="transcription-error" v-if="transcriptionError && !transcribing">
 									<text>{{ transcriptionError }}</text>
 								</view>
-								<button class="transcribe-button" :disabled="transcribing || !transcriptionAvailable" @click="transcribeRecording">
+								<button class="transcribe-button" v-if="!isReadOnly" :disabled="transcribing || !transcriptionAvailable" @click="transcribeRecording">
 									<text>{{ transcribing ? '高精度转写中 · ' + transcribeProgress + '%' : (transcriptionStatusKnown && !transcriptionAvailable ? '高精度转写服务待接入' : (transcriptionError ? '重试高精度转写' : '开始高精度转写')) }}</text>
 								</button>
 							</view>
@@ -203,13 +209,15 @@
 									v-model="transcriptDraft"
 									:maxlength="5000"
 									:show-confirm-bar="false"
+									:disabled="isReadOnly"
 								/>
-								<view class="transcript-actions">
+								<view class="transcript-actions" v-if="!isReadOnly">
 									<button class="voice-link" @click="transcriptDraft = ''">重新转写</button>
 									<button class="insert-button" @click="appendTranscript"><text>加入正文</text></button>
 								</view>
 							</view>
 						</view>
+					</view>
 					</view>
 				</view>
 
@@ -221,9 +229,9 @@
 					<view class="image-grid">
 						<view class="image-item" v-for="(img, index) in diaryForm.images" :key="img">
 							<image class="image-preview" :src="img" mode="aspectFill" />
-							<button class="image-delete" @click="removeImage(index)">×</button>
+							<button class="image-delete" v-if="!isReadOnly" @click="removeImage(index)">×</button>
 						</view>
-						<button class="image-add" v-if="diaryForm.images.length < 9" @click="chooseImage">
+						<button class="image-add" v-if="!isReadOnly && diaryForm.images.length < 9" @click="chooseImage">
 							<text class="image-add-plus">＋</text>
 							<text>继续添加</text>
 						</button>
@@ -235,19 +243,19 @@
 					<view class="linked-card" v-for="(card, index) in diaryForm.linkedCards" :key="index">
 						<text class="linked-card-mark">✦</text>
 						<text class="linked-card-text">{{ card.seedSentence || '已关联菇卡' }}</text>
-						<button class="linked-card-delete" @click="removeCard(card.id || card)">×</button>
+						<button class="linked-card-delete" v-if="!isReadOnly" @click="removeCard(card.id || card)">×</button>
 					</view>
 				</view>
 
 				<view class="linked-inquiries" v-if="linkedInquiries.length">
 					<view class="linked-inquiry-heading">
 						<view><text class="section-heading">放进长期问题</text><text>保存后成为一条由你确认的线索</text></view>
-						<button @tap="selectInquiry">调整</button>
+						<button v-if="!isReadOnly" @tap="selectInquiry">调整</button>
 					</view>
 						<view class="linked-inquiry" v-for="item in linkedInquiries" :key="item.id">
 							<text class="linked-inquiry-mark">?</text>
 							<view class="linked-inquiry-copy"><text v-if="item.inquiryType && item.inquiryType !== 'GENERAL'" class="linked-inquiry-type">{{ item.inquiryType === 'PHYSICAL_HEALTH' ? '身体健康' : '心理观察' }}</text><text class="linked-inquiry-text">{{ item.question }}</text></view>
-						<button class="linked-card-delete" @tap="removeInquiry(item.id)">×</button>
+					<button class="linked-card-delete" v-if="!isReadOnly" @tap="removeInquiry(item.id)">×</button>
 					</view>
 				</view>
 
@@ -262,7 +270,7 @@
 
 					<view class="detail-row">
 						<text class="detail-label">记录时间</text>
-						<picker mode="selector" :range="timeOptions" range-key="label" :value="selectedTimeIndex" @change="onTimeChange">
+						<picker mode="selector" :range="timeOptions" range-key="label" :value="selectedTimeIndex" :disabled="isReadOnly" @change="onTimeChange">
 							<view class="detail-picker">
 								<text>{{ selectedTimeText }}</text>
 								<text class="detail-arrow">›</text>
@@ -278,6 +286,7 @@
 								:key="option.value"
 								class="privacy-option"
 								:class="{ selected: diaryForm.visibility === option.value }"
+								:disabled="isReadOnly"
 								@click="selectPrivacy(option.value)"
 							>
 								<view class="privacy-radio"><view v-if="diaryForm.visibility === option.value" class="privacy-dot"></view></view>
@@ -322,11 +331,15 @@ import { diaryAiAccess, diaryDetail, diaryCreate, diaryUpdate } from '@/api/diar
 import { shroomCardDetail } from '@/api/shroomCard';
 import { inquiryDiaryLinks } from '@/api/inquiry';
 import { uploadImage, uploadVoice, transcribeVoiceBase } from '@/api/upload';
+import wechatPrivacy from '@/utils/wechat-privacy.js';
+// #ifdef H5
 import indexConfig from '@/config/index.config';
+// #endif
 import voiceProgress from '@/utils/voice-progress.js';
 
 const MAX_RECORD_SECONDS = 600;
 const { clampPercent, estimatedTranscriptionPercent } = voiceProgress;
+const { PRIVACY_DENIED_MESSAGE, requireWechatPrivacyAuthorization, isWechatPrivacyDenied } = wechatPrivacy;
 
 export default {
 	data() {
@@ -425,8 +438,11 @@ export default {
 		};
 	},
 	computed: {
+		isReadOnly() {
+			return this.entryDate !== moment().format('YYYY-MM-DD');
+		},
 		canSave() {
-			return !this.saving && !this.isRecording && !this.voiceUploading && !this.imageUploading &&
+			return !this.isReadOnly && !this.saving && !this.isRecording && !this.voiceUploading && !this.imageUploading &&
 				(this.diaryForm.content.trim().length > 0 || Boolean(this.diaryForm.voice));
 		},
 		selectedMood() {
@@ -455,9 +471,15 @@ export default {
 		this.statusBarHeight = systemInfo.statusBarHeight || 0;
 		if (options && /^\d{4}-\d{2}-\d{2}$/.test(String(options.date || ''))) this.entryDate = options.date;
 		if (options && options.time) this.setTimeFromString(options.time);
+		if ((!options || !options.id) && this.isReadOnly) {
+			uni.showToast({ title: '只能记录今天，过去的日记不能补写', icon: 'none' });
+			setTimeout(() => this.leaveEditor(), 300);
+			return;
+		}
 		this.initVoicePlayer();
 		this.initPlatformRecorder();
 		this.loadCapabilities();
+		if (!options || !options.id) this.voicePanelOpen = true;
 		if (options && options.cardId && !options.id) this.loadInitialCard(String(options.cardId));
 		if (options && options.id) {
 			this.diaryId = options.id;
@@ -513,7 +535,8 @@ export default {
 				if (res.code !== 200 || !res.data) return;
 				const diary = res.data;
 				this.originalCreatedAt = diary.createdAt || null;
-				if (diary.createdAt) this.entryDate = moment(diary.createdAt).format('YYYY-MM-DD');
+				if (diary.date) this.entryDate = diary.date;
+				else if (diary.createdAt) this.entryDate = moment(diary.createdAt).format('YYYY-MM-DD');
 				this.diaryForm = {
 					id: diary.id,
 					content: diary.content || '',
@@ -540,13 +563,16 @@ export default {
 		},
 
 		selectMood(mood) {
+			if (!this.ensureWritable()) return;
 			this.diaryForm.mood = mood;
 		},
 		async chooseImage() {
+			if (!this.ensureWritable()) return;
 			if (this.diaryForm.images.length >= 9 || this.imageUploading) return;
 			try {
+				await requireWechatPrivacyAuthorization();
 				const selected = await new Promise((resolve, reject) => {
-					uni.chooseImage({ count: 9 - this.diaryForm.images.length, sizeType: ['compressed'], success: resolve, fail: reject });
+					uni.chooseImage({ count: 9 - this.diaryForm.images.length, sourceType: ['album'], sizeType: ['compressed'], success: resolve, fail: reject });
 				});
 				const filePaths = Array.isArray(selected.tempFilePaths) ? selected.tempFilePaths.filter(Boolean) : [];
 				if (!filePaths.length) return;
@@ -570,7 +596,9 @@ export default {
 					uni.showToast({ title: urls.length ? `${urls.length} 张已保存，其余请重试` : '照片没有保存成功', icon: 'none' });
 				}
 			} catch (error) {
-				if (!String((error && error.errMsg) || error).includes('cancel')) {
+				if (isWechatPrivacyDenied(error)) {
+					uni.showToast({ title: PRIVACY_DENIED_MESSAGE, icon: 'none' });
+				} else if (!String((error && error.errMsg) || error).includes('cancel')) {
 					uni.showToast({ title: '照片没有保存成功', icon: 'none' });
 				}
 			} finally {
@@ -659,6 +687,12 @@ export default {
 			await this.startH5Recording();
 			// #endif
 			// #ifndef H5
+			try {
+				await requireWechatPrivacyAuthorization();
+			} catch (error) {
+				uni.showToast({ title: PRIVACY_DENIED_MESSAGE, icon: 'none' });
+				return;
+			}
 			this.startPlatformRecording();
 			// #endif
 		},
@@ -680,6 +714,7 @@ export default {
 				this.handleRecordingError(error);
 			}
 		},
+		// #ifdef H5
 		async startH5Recording() {
 			try {
 				if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -708,6 +743,7 @@ export default {
 				this.handleRecordingError(error);
 			}
 		},
+		// #endif
 		beginRecordingTimer() {
 			this.recordStartedAt = Date.now();
 			this.recordSeconds = 0;
@@ -747,7 +783,7 @@ export default {
 			this.clearVoiceUploadTimer();
 			this.releaseMicrophone();
 			const message = String((error && (error.errMsg || error.name || error.message)) || '');
-			const denied = /denied|permission|auth/i.test(message);
+			const denied = /denied|permission|auth/i.test(message) || isWechatPrivacyDenied(error);
 			uni.showToast({ title: denied ? '请允许 Shroom 使用麦克风' : '录音没有成功，请再试一次', icon: 'none' });
 		},
 		beginVoiceUpload() {
@@ -799,6 +835,7 @@ export default {
 				this.finishVoiceUpload(Boolean(this.diaryForm.voice));
 			}
 		},
+		// #ifdef H5
 		async finishH5Recording(blob) {
 			this.releaseMicrophone();
 			if (!blob || !blob.size) {
@@ -855,6 +892,7 @@ export default {
 				request.send(formData);
 			});
 		},
+		// #endif
 		acceptVoiceUpload(response, mimeType) {
 			if (!response || response.code !== 200 || !response.data || !response.data.id) throw new Error('Invalid voice upload');
 			this.diaryForm.voice = {
@@ -1066,6 +1104,7 @@ export default {
 			}
 		},
 		selectPrivacy(value) {
+			if (!this.ensureWritable()) return;
 			this.diaryForm.visibility = value;
 		},
 		setTimeFromString(value) {
@@ -1080,6 +1119,7 @@ export default {
 			this.selectedTimeIndex = index > -1 ? index : 0;
 		},
 		onTimeChange(event) {
+			if (!this.ensureWritable()) return;
 			const index = Number(event.detail.value);
 			const option = this.timeOptions[index] || this.timeOptions[0];
 			this.diaryForm.hour = option.hour;
@@ -1099,6 +1139,7 @@ export default {
 			return `${this.entryDate} ${time}`;
 		},
 		async saveDiary() {
+			if (!this.ensureWritable()) return;
 			if (!this.canSave) {
 				uni.showToast({ title: '写点文字或留下一段语音吧', icon: 'none' });
 				return;
@@ -1167,6 +1208,10 @@ export default {
 			openDiaryHome();
 		},
 		goBack() {
+			if (this.isReadOnly) {
+				this.leaveEditor();
+				return;
+			}
 			if (!this.hasDraft()) {
 				this.leaveEditor();
 				return;
@@ -1178,6 +1223,11 @@ export default {
 				cancelText: '继续写',
 				success: result => { if (result.confirm) this.leaveEditor(); }
 			});
+		},
+		ensureWritable() {
+			if (!this.isReadOnly) return true;
+			uni.showToast({ title: '过去的日记只能查看，不能修改', icon: 'none' });
+			return false;
 		}
 	}
 };
@@ -1257,6 +1307,16 @@ button::after { border: 0; }
 	font-weight: 650;
 }
 .nav-save.disabled { opacity: 0.34; }
+.nav-readonly {
+	min-width: 88rpx;
+	padding: 18rpx 22rpx;
+	border-radius: 999rpx;
+	background: rgba(82, 98, 47, 0.1);
+	color: #52622f;
+	font-size: 22rpx;
+	font-weight: 650;
+	text-align: center;
+}
 
 .content-scroll { flex: 1; height: 0; }
 .journal-canvas { width: 100%; max-width: 920rpx; margin: 0 auto; padding: 50rpx 34rpx 0; box-sizing: border-box; }
@@ -1287,7 +1347,9 @@ button::after { border: 0; }
 .mood-emoji { font-size: 31rpx; }
 .mood-label { margin-left: 10rpx; font-size: 23rpx; font-weight: 600; }
 
+.capture-editor-stack { display: flex; flex-direction: column; }
 .writing-sheet {
+	order: 1;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
@@ -1325,7 +1387,7 @@ button::after { border: 0; }
 .writing-tool { min-width: 120rpx; padding: 14rpx 10rpx; border-radius: 20rpx; display: flex; flex-direction: column; align-items: center; color: #786e67; }
 .writing-tool.active { background: #edf0e5; color: #445329; }
 .writing-tool[disabled] { opacity: .68; }
-.image-upload-panel { width: 100%; margin-top: 18rpx; padding: 25rpx 27rpx; border: 1rpx solid rgba(82, 98, 47, .15); border-radius: 24rpx; background: #edf1e5; box-sizing: border-box; }
+.image-upload-panel { order: 2; width: 100%; margin-top: 18rpx; padding: 25rpx 27rpx; border: 1rpx solid rgba(82, 98, 47, .15); border-radius: 24rpx; background: #edf1e5; box-sizing: border-box; }
 .image-upload-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
 .image-upload-heading > view:first-child { display: flex; min-width: 0; flex: 1; flex-direction: column; }
 .image-upload-kicker { color: #74805d; font-size: 17rpx; font-weight: 720; letter-spacing: 2rpx; }
@@ -1333,7 +1395,7 @@ button::after { border: 0; }
 .image-upload-percent { flex: 0 0 auto; color: #52622f; font-size: 28rpx; font-weight: 730; font-variant-numeric: tabular-nums; }
 .image-upload-track { margin-top: 20rpx; background: rgba(82, 98, 47, .14); }
 .image-upload-meta { display: block; margin-top: 12rpx; color: #76806c; font-size: 19rpx; font-variant-numeric: tabular-nums; }
-.post-save-choice { width: 100%; margin: 18rpx 0 0; padding: 23rpx 25rpx; border: 1rpx solid rgba(69, 86, 57, .13); border-radius: 24rpx; background: rgba(255,255,255,.5); display: flex; align-items: center; text-align: left; box-sizing: border-box; }
+.post-save-choice { order: 3; width: 100%; margin: 18rpx 0 0; padding: 23rpx 25rpx; border: 1rpx solid rgba(69, 86, 57, .13); border-radius: 24rpx; background: rgba(255,255,255,.5); display: flex; align-items: center; text-align: left; box-sizing: border-box; }
 .post-save-choice.selected { border-color: #82926a; background: #e9efdf; }
 .choice-check { width: 38rpx; height: 38rpx; margin-right: 18rpx; flex: 0 0 38rpx; border: 2rpx solid #9ba48f; border-radius: 12rpx; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22rpx; box-sizing: border-box; }
 .post-save-choice.selected .choice-check { border-color: #52633a; background: #52633a; }
@@ -1350,7 +1412,16 @@ button::after { border: 0; }
 .photo-mini-dot { position: absolute; width: 5rpx; height: 5rpx; border-radius: 50%; background: currentColor; right: 4rpx; top: 4rpx; }
 .tool-symbol { height: 28rpx; font-size: 31rpx; line-height: 25rpx; font-weight: 500; }
 
-.voice-studio, .details-panel {
+.voice-studio {
+	order: 0;
+	margin: 0 0 18rpx;
+	padding: 22rpx 24rpx;
+	background: #283321;
+	border-radius: 24rpx;
+	color: #f8f4ec;
+	box-shadow: 0 16rpx 42rpx rgba(35, 48, 28, 0.13);
+}
+.details-panel {
 	margin-top: 28rpx;
 	padding: 34rpx;
 	background: #283321;
@@ -1361,24 +1432,27 @@ button::after { border: 0; }
 .voice-header, .details-header { display: flex; align-items: flex-start; justify-content: space-between; }
 .voice-header > view:first-child, .details-header > view:first-child, .transcript-heading > view:first-child { display: flex; flex-direction: column; }
 .voice-kicker { color: #aeb998; }
-.voice-title, .details-title { margin-top: 10rpx; font-family: Georgia, 'Songti SC', serif; font-size: 33rpx; }
+.voice-title { margin-top: 5rpx; font-family: Georgia, 'Songti SC', serif; font-size: 28rpx; }
+.details-title { margin-top: 10rpx; font-family: Georgia, 'Songti SC', serif; font-size: 33rpx; }
 .quiet-button { padding: 14rpx 18rpx; color: #c6cdb7; font-size: 21rpx; }
-.ready-to-record, .recording-state { padding: 54rpx 0 28rpx; display: flex; flex-direction: column; align-items: center; }
-.record-button { width: 136rpx; height: 136rpx; border-radius: 50%; background: #d86246; box-shadow: 0 0 0 18rpx rgba(216, 98, 70, 0.13); display: flex; align-items: center; justify-content: center; }
-.record-button.stop { width: 116rpx; height: 116rpx; }
-.record-orbit { width: 164rpx; height: 164rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2rpx solid rgba(224, 117, 91, 0.28); }
+.ready-to-record { display: flex; padding: 17rpx 2rpx 4rpx; align-items: center; gap: 22rpx; }
+.recording-state { padding: 24rpx 0 12rpx; display: flex; flex-direction: column; align-items: center; }
+.record-button { display: flex; width: 88rpx; height: 88rpx; margin: 0; flex: 0 0 88rpx; align-items: center; justify-content: center; border-radius: 50%; background: #d86246; box-shadow: 0 0 0 10rpx rgba(216, 98, 70, 0.13); }
+.record-button.stop { width: 82rpx; height: 82rpx; flex-basis: 82rpx; }
+.record-orbit { display: flex; width: 112rpx; height: 112rpx; align-items: center; justify-content: center; border: 2rpx solid rgba(224, 117, 91, 0.28); border-radius: 50%; }
 .record-orbit.recording { animation: recordPulse 1.8s ease-in-out infinite; }
-.upload-progress-ring { width: 116rpx; height: 116rpx; border-radius: 50%; background: rgba(244, 239, 230, .1); border: 5rpx solid #d86246; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.upload-progress-ring { width: 82rpx; height: 82rpx; border-radius: 50%; background: rgba(244, 239, 230, .1); border: 5rpx solid #d86246; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
 .upload-progress-number { color: #fffaf3; font-size: 27rpx; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
 @keyframes recordPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(216, 98, 70, 0.2); } 50% { box-shadow: 0 0 0 22rpx rgba(216, 98, 70, 0); } }
 .stop-square { width: 34rpx; height: 34rpx; border-radius: 7rpx; background: #fffaf3; }
-.mic-shape { width: 48rpx; height: 64rpx; position: relative; }
-.mic-body { width: 28rpx; height: 42rpx; margin: 0 auto; border: 5rpx solid #fffaf3; border-radius: 18rpx; box-sizing: border-box; }
-.mic-base { width: 46rpx; height: 29rpx; margin-top: -19rpx; border: 5rpx solid #fffaf3; border-top: 0; border-radius: 0 0 24rpx 24rpx; box-sizing: border-box; position: relative; }
-.mic-base::after { content: ''; position: absolute; width: 5rpx; height: 14rpx; background: #fffaf3; left: 16rpx; top: 24rpx; }
-.record-instruction { margin-top: 34rpx; font-size: 27rpx; font-weight: 650; }
-.record-helper { margin-top: 14rpx; color: #aeb6a2; font-size: 21rpx; }
-.record-time { margin-top: 24rpx; font-size: 40rpx; font-weight: 650; letter-spacing: 3rpx; font-variant-numeric: tabular-nums; }
+.mic-shape { position: relative; width: 34rpx; height: 46rpx; }
+.mic-body { box-sizing: border-box; width: 22rpx; height: 32rpx; margin: 0 auto; border: 4rpx solid #fffaf3; border-radius: 15rpx; }
+.mic-base { position: relative; box-sizing: border-box; width: 34rpx; height: 22rpx; margin-top: -14rpx; border: 4rpx solid #fffaf3; border-top: 0; border-radius: 0 0 20rpx 20rpx; }
+.mic-base::after { position: absolute; top: 18rpx; left: 11rpx; width: 4rpx; height: 10rpx; background: #fffaf3; content: ''; }
+.record-ready-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.record-instruction { font-size: 25rpx; font-weight: 680; }
+.record-helper { color: #aeb6a2; font-size: 20rpx; line-height: 1.45; }
+.record-time { margin-top: 16rpx; font-size: 36rpx; font-weight: 650; letter-spacing: 3rpx; font-variant-numeric: tabular-nums; }
 .record-caption { margin-top: 10rpx; color: #bdc5b0; font-size: 21rpx; }
 .progress-track { width: 100%; height: 10rpx; overflow: hidden; border-radius: 999rpx; background: rgba(82, 98, 47, .14); }
 .progress-fill { height: 100%; border-radius: inherit; background: #647441; transition: width .28s ease; }
@@ -1386,13 +1460,13 @@ button::after { border: 0; }
 .upload-track .progress-fill { background: #d86246; }
 .progress-meta { display: block; margin-top: 13rpx; color: #898078; font-size: 19rpx; line-height: 1.55; font-variant-numeric: tabular-nums; }
 .recording-state > .progress-meta { color: #aeb6a2; text-align: center; }
-.live-wave { height: 84rpx; margin-top: 28rpx; display: flex; align-items: center; justify-content: center; }
+.live-wave { height: 56rpx; margin-top: 18rpx; display: flex; align-items: center; justify-content: center; }
 .live-wave-bar { width: 5rpx; margin: 0 4rpx; border-radius: 6rpx; background: #d86246; animation: wave 1.1s ease-in-out infinite alternate; }
 .live-wave-bar:nth-child(3n) { animation-delay: .25s; }
 .live-wave-bar:nth-child(4n) { animation-delay: .5s; }
 @keyframes wave { from { transform: scaleY(.42); opacity: .5; } to { transform: scaleY(1); opacity: 1; } }
-.voice-result { margin-top: 34rpx; }
-.voice-player { min-height: 112rpx; padding: 20rpx; border-radius: 24rpx; background: rgba(255, 255, 255, 0.08); display: flex; align-items: center; box-sizing: border-box; }
+.voice-result { margin-top: 20rpx; }
+.voice-player { min-height: 96rpx; padding: 16rpx; border-radius: 20rpx; background: rgba(255, 255, 255, 0.08); display: flex; align-items: center; box-sizing: border-box; }
 .play-button { width: 68rpx; height: 68rpx; flex-shrink: 0; border-radius: 50%; background: #f4efe6; color: #26321f; display: flex; align-items: center; justify-content: center; }
 .play-button text { font-size: 23rpx; transform: translateX(2rpx); }
 .waveform { flex: 1; height: 76rpx; margin: 0 20rpx; display: flex; align-items: center; overflow: hidden; }

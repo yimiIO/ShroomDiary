@@ -15,6 +15,16 @@ function providerName() {
   return 'compatible';
 }
 
+function canPriceAiModel(model, at = new Date()) {
+  return estimateAiCost({
+    provider: providerName(),
+    model,
+    usage: {},
+    at,
+    usdCnyRate: config.aiUsdCnyRate
+  }).priced;
+}
+
 async function recordAiUsage(context, payload, at = new Date()) {
   if (!context?.userId || !payload?.usage) return null;
   const provider = providerName();
@@ -44,7 +54,13 @@ async function recordAiUsage(context, payload, at = new Date()) {
       JSON.stringify(estimate.priceSnapshot), at
     ]
   );
-  return id;
+  if (context.chargeStatus) {
+    await db.query(
+      'UPDATE ai_usage_events SET charge_status = $2 WHERE id = $1',
+      [id, String(context.chargeStatus).slice(0, 24)]
+    );
+  }
+  return { id, estimate };
 }
 
 async function safeRecordAiUsage(context, payload) {
@@ -68,6 +84,7 @@ function mappedSummary(row) {
     totalTokens: Number(row?.total_tokens || 0),
     costUsd: pricedCalls ? Number(row?.cost_usd || 0) : null,
     costCny: pricedCalls ? Number(row?.cost_cny || 0) : null,
+    chargedPoints: Number(row?.charged_point_cents || 0) / 100,
     priced: calls > 0 && calls === pricedCalls,
     estimated: pricedCalls > 0,
     note: calls ? '按调用发生时的公开单价估算；赠送额度、税费与汇率差异以供应商账单为准。' : ''
@@ -95,11 +112,12 @@ async function usageSummary(userId, filters = {}) {
             COALESCE(sum(completion_tokens), 0)::bigint AS completion_tokens,
             COALESCE(sum(total_tokens), 0)::bigint AS total_tokens,
             COALESCE(sum(cost_usd), 0)::numeric AS cost_usd,
-            COALESCE(sum(cost_cny), 0)::numeric AS cost_cny
+            COALESCE(sum(cost_cny), 0)::numeric AS cost_cny,
+            COALESCE(sum(charged_point_cents), 0)::bigint AS charged_point_cents
        FROM ai_usage_events WHERE ${clauses.join(' AND ')}`,
     values
   );
   return mappedSummary(result.rows[0]);
 }
 
-module.exports = { mappedSummary, recordAiUsage, safeRecordAiUsage, usageSummary };
+module.exports = { canPriceAiModel, mappedSummary, recordAiUsage, safeRecordAiUsage, usageSummary };

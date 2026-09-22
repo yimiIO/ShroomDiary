@@ -2,7 +2,12 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { estimateAiCost, isDeepSeekPeak, normalizeUsage } = require('../src/ai-pricing');
+const {
+  estimateAiCost,
+  isDeepSeekPeak,
+  maximumAiChargePointCents,
+  normalizeUsage
+} = require('../src/ai-pricing');
 
 const usage = {
   prompt_tokens: 1000,
@@ -74,4 +79,39 @@ test('unknown model retains tokens without inventing a price', () => {
   assert.equal(result.priced, false);
   assert.equal(result.totalTokens, 1500);
   assert.equal(result.costUsd, null);
+});
+
+test('AI pre-authorization uses the peak uncached ceiling and never invents an unknown-model price', () => {
+  const flash = maximumAiChargePointCents({
+    model: 'deepseek-v4-flash',
+    promptUtf8Bytes: 12_000,
+    maxOutputTokens: 3_000,
+    multiplier: 2.5
+  });
+  const pro = maximumAiChargePointCents({
+    model: 'deepseek-v4-pro',
+    promptUtf8Bytes: 12_000,
+    maxOutputTokens: 3_000,
+    multiplier: 2.5
+  });
+  assert.ok(Number.isInteger(flash) && flash > 0);
+  assert.equal(pro, flash * 3);
+  assert.equal(maximumAiChargePointCents({ model: 'private-model' }), null);
+});
+
+test('actual charge for a bounded response stays under its conservative authorization ceiling', () => {
+  const maximumPointCents = maximumAiChargePointCents({
+    model: 'deepseek-v4-flash',
+    promptUtf8Bytes: 12_000,
+    maxOutputTokens: 3_000,
+    multiplier: 2.5
+  });
+  const actual = estimateAiCost({
+    provider: 'deepseek',
+    model: 'deepseek-v4-flash',
+    usage: { prompt_tokens: 12_000, completion_tokens: 3_000 },
+    at: new Date('2026-09-07T02:00:00Z')
+  });
+  const actualPointCents = Math.ceil(actual.costCny * 2.5 * 100);
+  assert.ok(maximumPointCents >= actualPointCents);
 });

@@ -12,7 +12,7 @@ module.exports = {
   port: Number(process.env.PORT || 3102),
   databaseUrl: process.env.DATABASE_URL,
   tokenSecret: process.env.TOKEN_SECRET,
-  publicOrigin: process.env.PUBLIC_ORIGIN || 'https://shroom.surfplus.xyz',
+  publicOrigin: process.env.PUBLIC_ORIGIN || 'https://shroom.evox.run',
   allowedOrigins: String(process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map(origin => origin.trim())
@@ -43,6 +43,44 @@ module.exports = {
   aiModel: process.env.AI_MODEL || '',
   aiTimeoutMs: Number(process.env.AI_TIMEOUT_MS || 120000),
   aiUsdCnyRate: Number(process.env.AI_USD_CNY_RATE || 7.2),
+  billing: {
+    mode: ['preview', 'live'].includes(process.env.BILLING_MODE) ? process.env.BILLING_MODE : 'disabled',
+    merchantLabel: process.env.BILLING_MERCHANT_LABEL || 'suyetiyu',
+    merchantLegalName: process.env.BILLING_MERCHANT_LEGAL_NAME || '',
+    invoiceLegalName: process.env.BILLING_INVOICE_LEGAL_NAME || '',
+    merchantTaxId: process.env.BILLING_MERCHANT_TAX_ID || '',
+    merchantAddress: process.env.BILLING_MERCHANT_ADDRESS || '',
+    customerService: process.env.BILLING_CUSTOMER_SERVICE || '',
+    customerServiceEmail: process.env.BILLING_CUSTOMER_SERVICE_EMAIL || '',
+    icpQualification: process.env.BILLING_ICP_QUALIFICATION || '',
+    appFilingNumber: process.env.BILLING_APP_FILING_NUMBER || '',
+    legalReviewConfirmed: process.env.BILLING_LEGAL_REVIEW_CONFIRMED === 'true',
+    aiChargeMultiplier: Math.max(1, Number(process.env.BILLING_AI_CHARGE_MULTIPLIER
+      || process.env.AI_CHARGE_MULTIPLIER || 2.5)),
+    minimumAiStartPointCents: Math.max(1, Number(process.env.BILLING_AI_MINIMUM_START_POINT_CENTS
+      || process.env.AI_MINIMUM_START_POINT_CENTS || 1)),
+    wechatPay: {
+      protocol: process.env.WECHAT_PAY_PROTOCOL === 'v2_jsapi' ? 'v2_jsapi' : 'v3_h5',
+      mchId: process.env.WECHAT_PAY_MCH_ID || '',
+      merchantLegalName: process.env.WECHAT_PAY_MERCHANT_LEGAL_NAME || '',
+      appId: process.env.WECHAT_PAY_APP_ID || '',
+      oauthAppId: process.env.WECHAT_OAUTH_APP_ID || process.env.WECHAT_PAY_APP_ID || '',
+      oauthAppSecret: process.env.WECHAT_OAUTH_APP_SECRET || '',
+      merchantSerial: process.env.WECHAT_PAY_MERCHANT_SERIAL || '',
+      merchantCertPath: process.env.WECHAT_PAY_MERCHANT_CERT_PATH || '',
+      privateKeyPath: process.env.WECHAT_PAY_PRIVATE_KEY_PATH || '',
+      apiV2Key: process.env.WECHAT_PAY_API_V2_KEY || '',
+      apiV3Key: process.env.WECHAT_PAY_API_V3_KEY || '',
+      publicKeyId: process.env.WECHAT_PAY_PUBLIC_KEY_ID || '',
+      publicKeyPath: process.env.WECHAT_PAY_PUBLIC_KEY_PATH || '',
+      platformCertPath: process.env.WECHAT_PAY_PLATFORM_CERT_PATH || '',
+      notifyUrl: process.env.WECHAT_PAY_NOTIFY_URL || '',
+      refundNotifyUrl: process.env.WECHAT_PAY_REFUND_NOTIFY_URL || '',
+      timeoutMs: Math.max(3000, Math.min(60000, Number(process.env.WECHAT_PAY_TIMEOUT_MS || 15000))),
+      jsapiEnabled: process.env.WECHAT_PAY_JSAPI_ENABLED === 'true',
+      h5Enabled: process.env.WECHAT_PAY_H5_ENABLED === 'true'
+    }
+  },
   embeddingProvider: process.env.EMBEDDING_PROVIDER || 'compatible',
   embeddingApiBaseUrl: process.env.EMBEDDING_API_BASE_URL || '',
   embeddingApiKey: process.env.EMBEDDING_API_KEY || '',
@@ -54,11 +92,20 @@ module.exports = {
   memoryWorkerIntervalMs: Math.max(1000, Number(process.env.MEMORY_WORKER_INTERVAL_MS || 3000)),
   friendSyncWorkerEnabled: process.env.FRIEND_SYNC_WORKER_ENABLED !== 'false',
   friendSyncWorkerIntervalMs: Math.max(1000, Number(process.env.FRIEND_SYNC_WORKER_INTERVAL_MS || 3000)),
+  dailyReview: {
+    workerEnabled: process.env.DAILY_REVIEW_WORKER_ENABLED !== 'false',
+    workerIntervalMs: Math.max(10000, Number(process.env.DAILY_REVIEW_WORKER_INTERVAL_MS || 60000)),
+    emailHour: Math.max(0, Math.min(23, Number(process.env.DAILY_REVIEW_EMAIL_HOUR || 22)))
+  },
+  mail: {
+    smtpHost: process.env.MAIL_SMTP_HOST || '',
+    smtpPort: Math.max(1, Math.min(65535, Number(process.env.MAIL_SMTP_PORT || 465))),
+    smtpSecure: process.env.MAIL_SMTP_SECURE !== 'false',
+    smtpUser: process.env.MAIL_SMTP_USER || '',
+    smtpPassword: process.env.MAIL_SMTP_PASSWORD || '',
+    from: process.env.MAIL_FROM || ''
+  },
   compound: {
-    ownerUserIds: String(process.env.COMPOUND_OWNER_USER_IDS || '')
-      .split(',')
-      .map(value => value.trim())
-      .filter(Boolean),
     stats: {
       url: process.env.COMPOUND_STATS_URL || '',
       username: process.env.COMPOUND_STATS_USERNAME || '',

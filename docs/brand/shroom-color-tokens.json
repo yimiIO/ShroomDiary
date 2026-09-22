@@ -1,0 +1,75 @@
+{
+  "version": "2026-09-18-v1",
+  "brand": "Shroom / 菇日记",
+  "principle": "深色负责可信与判断，纸色负责私人记录，记忆亮色负责找回，珊瑚色只负责证据冲突。",
+  "primitives": {
+    "myceliumInk": "#172019",
+    "forest": "#243329",
+    "moss": "#42634A",
+    "leaf": "#5D7562",
+    "quietText": "#59655C",
+    "archiveGrey": "#718075",
+    "mistBorder": "#DFEAD7",
+    "archivePanel": "#E5EFD9",
+    "brandPaper": "#E9F1E1",
+    "livingPaper": "#F1F8E9",
+    "warmPaper": "#FFFDF7",
+    "memoryLime": "#DDEC8C",
+    "memoryFlash": "#DDEC4A",
+    "evidenceCoral": "#D86246",
+    "evidenceCoralDark": "#A45E50"
+  },
+  "semantic": {
+    "surfaceApp": "#F1F8E9",
+    "surfaceCampaign": "#E9F1E1",
+    "surfaceCard": "#FFFDF7",
+    "surfaceRaised": "#FFFFFF",
+    "textPrimary": "#172019",
+    "textSecondary": "#59655C",
+    "textQuietLargeOnly": "#718075",
+    "actionPrimary": "#172019",
+    "onActionPrimary": "#F1F8E9",
+    "actionSoft": "#DDEC8C",
+    "onActionSoft": "#172019",
+    "border": "#DFEAD7",
+    "evidenceConflict": "#D86246",
+    "onEvidenceConflict": "#172019",
+    "evidenceCaution": "#A45E50",
+    "onEvidenceCaution": "#FFFDF7",
+    "campaignAttention": "#DDEC4A",
+    "onCampaignAttention": "#172019"
+  },
+  "contrast": {
+    "textPrimaryOnSurfaceApp": 15.39,
+    "textPrimaryOnSurfaceCampaign": 14.43,
+    "textPrimaryOnMemoryLime": 13.09,
+    "textPrimaryOnMemoryFlash": 12.86,
+    "textSecondaryOnSurfaceApp": 5.62,
+    "textSecondaryOnSurfaceCampaign": 5.27,
+    "onActionPrimaryOnActionPrimary": 15.39,
+    "whiteOnMoss": 6.74,
+    "textPrimaryOnEvidenceCoral": 4.58,
+    "onEvidenceCautionOnEvidenceCaution": 4.81,
+    "archiveGreyOnSurfaceApp": 3.83,
+    "archiveGreyOnSurfaceCampaign": 3.59
+  },
+  "usage": {
+    "product": {
+      "surfacePercent": "65-75%",
+      "inkPercent": "15-25%",
+      "memoryLimePercent": "5-10%",
+      "evidenceCoralPercent": "0-3%"
+    },
+    "campaign": {
+      "memoryFlashMaximum": "25%",
+      "evidenceCoralMaximum": "5%",
+      "rule": "每张封面最多一个高亮色块；高亮色不承担小字号正文。"
+    }
+  },
+  "icon": {
+    "recommendedBackground": "#172019",
+    "recommendedBody": "#FFFDF7",
+    "recommendedMemoryTab": "#DDEC8C",
+    "optionalMicroAccent": "#D86246"
+  }
+}

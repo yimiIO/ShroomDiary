@@ -13,9 +13,12 @@ import { http } from '@/utils/request';
 import $mGraceChecker from '@/utils/graceChecker';
 import $mHelper from '@/utils/helper';
 import $mRouter from '@/utils/router';
+import ShroomPageTopSpacer from '@/components/ShroomPageTopSpacer.vue';
 import store from './store';
 
 Vue.config.productionTip = false;
+
+Vue.component('shroom-page-top-spacer', ShroomPageTopSpacer);
 
 Vue.prototype.$mStore = store;
 Vue.prototype.$http = http;

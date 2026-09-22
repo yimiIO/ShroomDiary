@@ -1,0 +1,47 @@
+{
+	"description": "Shroom Diary 微信小程序编译工程",
+	"packOptions": {
+		"ignore": [
+			{ "type": "folder", "value": "static/css" },
+			{ "type": "folder", "value": "static/images" },
+			{ "type": "folder", "value": "static/tag" },
+			{ "type": "file", "value": "static/.DS_Store" },
+			{ "type": "file", "value": "static/product-code-input.png" },
+			{ "type": "file", "value": "static/product-code-scan.png" },
+			{ "type": "file", "value": "static/tab-surfba.png" },
+			{ "type": "file", "value": "static/tab-surfba-black.png" }
+		]
+	},
+	"setting": {
+		"urlCheck": true,
+		"es6": true,
+		"postcss": true,
+		"minified": true,
+		"ignoreDevUnusedFiles": true,
+		"ignoreUploadUnusedFiles": true
+	},
+	"compileType": "miniprogram",
+	"appid": "wxa25c13889c215f0a",
+	"projectname": "ShroomDiary",
+	"condition": {
+		"miniprogram": {
+			"current": 0,
+			"list": [
+				{
+					"id": 0,
+					"name": "登录",
+					"pathName": "pages/public/login",
+					"query": "type=0",
+					"scene": null
+				},
+				{
+					"id": 1,
+					"name": "写日记",
+					"pathName": "pages/diary/edit",
+					"query": "",
+					"scene": null
+				}
+			]
+		}
+	}
+}

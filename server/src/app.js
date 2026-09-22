@@ -23,10 +23,26 @@ const compoundProgressRoutes = require('./routes/compound-progress');
 const inquiryRoutes = require('./routes/inquiries');
 const wellbeingRoutes = require('./routes/wellbeing');
 const dataSourceRoutes = require('./routes/data-sources');
+const dailyReviewRoutes = require('./routes/daily-reviews');
+const billingRoutes = require('./routes/billing');
+const adminConsoleRoutes = require('./routes/admin-console');
+const agentControlRoutes = require('./routes/agent-control');
+const acquisitionRoutes = require('./routes/acquisition');
+const todoBatchingRoutes = require('./routes/todo-batching');
+const bagRoutes = require('./routes/bags');
+const correctionEventRoutes = require('./routes/correction-events');
+let financialLedgerRoutes = null;
+try {
+  financialLedgerRoutes = require('./routes/financial-ledger');
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND' || !String(error.message).includes("'./routes/financial-ledger'")) throw error;
+}
 const { isAiConfigured } = require('./ai-engine');
 const { embeddingProfile, isEmbeddingConfigured } = require('./embedding-provider');
 const { isTranscriptionConfigured } = require('./transcription');
 const { isCosConfigured } = require('./media-storage');
+const { paymentConfiguration } = require('./wechat-pay');
+const { isMailConfigured } = require('./mail');
 
 const app = express();
 app.disable('x-powered-by');
@@ -44,11 +60,18 @@ app.use(cors({
     if (!origin || allowedOrigins.has(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed'));
   },
-  allowedHeaders: ['Content-Type', 'x-api-key', 'x-rfdiary-token', 'x-shroom-source-token'],
+  allowedHeaders: ['Content-Type', 'x-api-key', 'x-rfdiary-token', 'x-shroom-source-token',
+    'x-shroom-admin-csrf', 'x-shroom-agent-token', 'x-shroom-platform'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400
 }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.raw({ type: ['text/xml', 'application/xml'], limit: '256kb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify(req, res, buffer) {
+    req.rawBody = Buffer.from(buffer);
+  }
+}));
 app.use((req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff',
@@ -77,6 +100,7 @@ app.use('/api/auth', (req, res, next) => {
 
 app.get('/api/health', asyncRoute(async (req, res) => {
   const database = await db.healthcheck();
+  const billingMerchant = paymentConfiguration();
   return ok(res, {
     service: 'shroom-api',
     database,
@@ -87,6 +111,19 @@ app.get('/api/health', asyncRoute(async (req, res) => {
     analysis: {
       enabled: isAiConfigured(),
       model: isAiConfigured() ? config.aiModel : null
+    },
+    billing: {
+      mode: config.billing.mode,
+      enabled: config.billing.mode !== 'disabled',
+      paymentReady: billingMerchant.live,
+      merchantLabel: config.billing.merchantLabel,
+      subjectConsistent: billingMerchant.subjectConsistent
+    },
+    dailyReview: {
+      webEnabled: true,
+      emailEnabled: isMailConfigured(),
+      emailHour: config.dailyReview.emailHour,
+      timeZone: 'Asia/Shanghai'
     },
     memory: {
       enabled: isAiConfigured(),
@@ -103,6 +140,7 @@ app.get('/api/health', asyncRoute(async (req, res) => {
   });
 }));
 app.use('/api/auth/v1', authRoutes);
+app.use('/api/acquisition/v1', acquisitionRoutes);
 app.use('/api/diaries/v1', diaryRoutes);
 app.use('/api/todos/v1', todoRoutes);
 app.use('/api/cards/v1', cardRoutes);
@@ -116,9 +154,17 @@ app.use('/api/ai/v1', aiRoutes);
 app.use('/api/memory/v1', memoryRoutes);
 app.use('/api/compound/v1', compoundRoutes);
 app.use('/api/compound/v2', compoundProgressRoutes);
+if (financialLedgerRoutes) app.use('/api/compound/v2/financial', financialLedgerRoutes);
 app.use('/api/inquiries/v1', inquiryRoutes);
 app.use('/api/wellbeing/v1', wellbeingRoutes);
 app.use('/api/data-sources/v1', dataSourceRoutes);
+app.use('/api/daily-reviews/v1', dailyReviewRoutes);
+app.use('/api/billing/v1', billingRoutes);
+app.use('/api/admin/v2', adminConsoleRoutes);
+app.use('/api/agent-control/v1', agentControlRoutes);
+app.use('/api/todos/v1', todoBatchingRoutes);
+app.use('/api/bags/v1', bagRoutes);
+app.use('/api/correction-events/v1', correctionEventRoutes);
 
 const publicDir = process.env.STATIC_DIR || path.join(__dirname, '..', 'public');
 app.use(express.static(publicDir, { index: 'index.html', maxAge: '1h' }));
@@ -144,6 +190,7 @@ app.use((error, req, res, next) => {
   if (error.code === '22P02') return fail(res, 400, '参数格式不正确');
   if (error.code === 'SHROOM_MEDIA_OWNER') return fail(res, 400, '媒体文件不属于当前账号');
   if (error.code === 'SHROOM_CARD_OWNER') return fail(res, 400, '关联菇卡不属于当前账号');
+  if (error.code === 'SHROOM_DIARY_READ_ONLY') return fail(res, 409, error.message);
   if (error.code === 'SHROOM_MEDIA_TYPE') return fail(res, 400, '文件格式不受支持');
   if (error.code === 'SHROOM_IMAGE_INVALID') return fail(res, 400, error.message);
   if (['SHROOM_FRIEND_INPUT', 'SHROOM_FRIEND_RULE', 'SHROOM_FRIEND_SCORE'].includes(error.code)) {
@@ -158,10 +205,24 @@ app.use((error, req, res, next) => {
   if (['SHROOM_COS_CONFIG', 'SHROOM_COS_UNAVAILABLE'].includes(error.code)) return fail(res, 503, error.message);
   if (error.code === 'SHROOM_API_SCOPE') return fail(res, 403, error.message);
   if (error.code === 'SHROOM_TODO_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_BAG_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_BAG_LIMIT') return fail(res, 429, error.message);
   if (error.code === 'SHROOM_DATA_SOURCE_INPUT') return fail(res, 400, error.message);
   if (error.code === 'SHROOM_DATA_SOURCE_RATE') return fail(res, 429, error.message);
+  if (error.code === 'SHROOM_MAIL_UNAVAILABLE') return fail(res, 503, error.message);
+  if (error.code === 'SHROOM_DAILY_REVIEW_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_BALANCE_INSUFFICIENT') return fail(res, 402, error.message, error.data || null);
+  if (error.code === 'SHROOM_BILLING_AGREEMENT') return fail(res, 402, error.message, error.data || null);
+  if (error.code === 'SHROOM_BILLING_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_BILLING_LEDGER') return fail(res, 503, error.message);
+  if (['SHROOM_PAYMENT_CONFIG', 'SHROOM_PAYMENT_PLATFORM'].includes(error.code)) return fail(res, 503, error.message);
+  if (['SHROOM_PAYMENT_FAILED', 'SHROOM_PAYMENT_OPENID', 'SHROOM_PAYMENT_VERIFY', 'SHROOM_PAYMENT_ORDER'].includes(error.code)) {
+    return fail(res, 503, error.message);
+  }
+  if (error.code === 'SHROOM_AI_PRICING_UNAVAILABLE') return fail(res, 503, error.message);
   if (['SHROOM_AI_FAILED', 'SHROOM_AI_INPUT'].includes(error.code)) return fail(res, 503, error.message);
   if (error.code === 'SHROOM_REFLECTION_INPUT') return fail(res, 400, error.message);
+  if (error.code === 'SHROOM_FINANCIAL_CONFIG') return fail(res, 503, error.message);
   if (String(error.code || '').startsWith('SHROOM_EMBEDDING_')) return fail(res, 503, error.message);
   if (error.message === 'Origin not allowed') return fail(res, 400, '请求来源不被允许');
   return fail(res, 500, '服务暂时不可用，请稍后重试');

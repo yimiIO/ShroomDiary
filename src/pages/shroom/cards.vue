@@ -1,6 +1,6 @@
 <template>
 	<view class="cards-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="cards-shell">
 			<view class="page-header">
 				<view>

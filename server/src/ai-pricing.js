@@ -87,11 +87,32 @@ function estimateAiCost({ provider, model, usage, at = new Date(), usdCnyRate = 
   };
 }
 
+function maximumAiChargePointCents({ model, promptUtf8Bytes, maxOutputTokens, multiplier = 2.5 }) {
+  const normalizedModel = String(model || '').toLowerCase();
+  const tier = DEEPSEEK_FLASH_MODELS.has(normalizedModel)
+    ? 'flash'
+    : (DEEPSEEK_PRO_MODELS.has(normalizedModel) ? 'pro' : '');
+  if (!tier) return null;
+  const peakRates = tier === 'pro'
+    ? { cacheMissInputCnyPerMillion: 9, outputCnyPerMillion: 27 }
+    : { cacheMissInputCnyPerMillion: 3, outputCnyPerMillion: 9 };
+  // A BPE token cannot contain less than one source byte. The extra 4,096
+  // tokens conservatively cover chat-template and provider-side framing.
+  const promptTokenCeiling = Math.max(0, Math.ceil(Number(promptUtf8Bytes) || 0)) + 4096;
+  const outputTokenCeiling = Math.max(500, Math.min(8000, Number(maxOutputTokens) || 3000));
+  const maximumCostCny = (
+    promptTokenCeiling * peakRates.cacheMissInputCnyPerMillion
+    + outputTokenCeiling * peakRates.outputCnyPerMillion
+  ) / MILLION;
+  return Math.max(1, Math.ceil(maximumCostCny * Math.max(1, Number(multiplier) || 2.5) * 100));
+}
+
 module.exports = {
   DEEPSEEK_FLASH_MODELS,
   DEEPSEEK_PRICE_VERSION,
   DEEPSEEK_PRO_MODELS,
   estimateAiCost,
   isDeepSeekPeak,
+  maximumAiChargePointCents,
   normalizeUsage
 };

@@ -5,8 +5,13 @@
 			<view class="desktop-sidebar">
 				<text class="brand">SHROOM · ACTION</text>
 				<text class="sidebar-title">待办</text>
-				<button v-for="view in views" :key="view.key" :class="{ active: currentView === view.key }" @tap="setView(view.key)">{{ view.label }}</button>
+				<text class="sidebar-section-label">按时间</text>
+				<button v-for="view in timeViews" :key="view.key" :class="{ active: currentView === view.key }" @tap="setView(view.key)">{{ view.label }}</button>
 				<view class="sidebar-divider"></view>
+				<text class="sidebar-section-label">组织方式</text>
+				<button :class="{ active: currentView === 'projects' }" @tap="setView('projects')">按项目查看</button>
+				<view class="sidebar-divider"></view>
+				<text class="sidebar-section-label">全部记录</text>
 				<button @tap="setView('all')">全部待办</button>
 				<button @tap="setView('completed')">已完成</button>
 			</view>
@@ -30,7 +35,7 @@
 
 				<scroll-view class="mobile-tabs" scroll-x :show-scrollbar="false">
 					<view class="tab-row">
-						<button v-for="view in views" :key="view.key" :class="{ active: currentView === view.key }" @tap="setView(view.key)">{{ view.label }}</button>
+						<button v-for="view in timeViews" :key="view.key" :class="{ active: currentView === view.key }" @tap="setView(view.key)">{{ view.label }}</button>
 					</view>
 				</scroll-view>
 
@@ -47,6 +52,14 @@
 					</template>
 
 					<template v-else>
+						<view v-if="coordinationGroups.length && (currentView === 'current' || currentView === 'all')" class="coordination-card" data-testid="coordination-suggestions" @tap="openCoordination">
+							<view class="coordination-copy">
+								<text class="coordination-kicker">统筹建议</text>
+								<text class="coordination-title">{{ coordinationGroups.length }} 组事可以一起处理</text>
+								<text>{{ coordinationTaskCount }} 件待办已按执行方式、项目与长期方向整理。{{ adjustmentCount ? `已学习你 ${adjustmentCount} 次调整。` : '' }}</text>
+							</view>
+							<text class="coordination-arrow">›</text>
+						</view>
 						<view v-for="group in visibleGroups" :key="group.key" class="task-section">
 							<view class="section-heading">
 								<text>{{ group.label || viewLabel }} · {{ group.items.length }}</text>
@@ -56,8 +69,8 @@
 						</view>
 
 						<view v-if="loaded && currentView === 'current' && !taskCount && unscheduledCount" class="unscheduled-nudge">
-							<text>还有 {{ unscheduledCount }} 条未安排的待办，可以选一件开始。</text>
-							<button @tap="setView('unscheduled')">查看未安排</button>
+							<text>还有 {{ unscheduledCount }} 条待安排的待办，可以选一件开始。</text>
+							<button @tap="setView('unscheduled')">查看待安排</button>
 						</view>
 						<view v-else-if="loaded && !taskCount" class="empty-copy">
 							<text>{{ emptyTitle }}</text><text>{{ emptyHint }}</text><button @tap="openQuickAdd">写下一件事</button>
@@ -76,6 +89,10 @@
 				<view class="manage-grid">
 					<button @tap="selectManagedView('all')"><text>全部待办</text><text>查看所有未删除的行动</text></button>
 					<button @tap="selectManagedView('completed')"><text>已完成</text><text>回看结果和完成时间</text></button>
+				</view>
+				<text class="manage-section-label">组织方式</text>
+				<view class="manage-list">
+					<button @tap="selectManagedView('projects')"><view><text>按项目查看</text><text>查看每个项目的目标与未完成行动</text></view><text>›</text></button>
 				</view>
 				<text class="manage-section-label">整理与数据</text>
 				<view class="manage-list">
@@ -129,6 +146,25 @@
 			</view>
 		</view>
 
+		<view v-if="showCoordinationSheet" class="sheet-mask" @tap.self="closeCoordination">
+			<view class="sheet coordination-sheet" @tap.stop>
+				<view class="sheet-handle"></view>
+				<view class="sheet-heading"><view><text>一起处理</text><text>先看系统为什么这样分。不对就移动，下次会更准。</text></view><button @tap="closeCoordination">关闭</button></view>
+				<view v-for="group in coordinationGroups" :key="group.key" class="coordination-group">
+					<view class="coordination-group-head">
+						<view><text>{{ group.label }}</text><text>{{ group.reason }} · 约 {{ group.estimatedMinutes }} 分钟</text></view>
+						<button :disabled="group.adopted || adoptingGroupKey === group.key || group.tasks.length < 1" @tap="adoptCoordinationGroup(group)">{{ group.adopted ? '执行中' : (adoptingGroupKey === group.key ? '处理中…' : '按这组执行') }}</button>
+					</view>
+					<view v-for="task in group.tasks" :key="task.id" class="coordination-task">
+						<view><text>{{ task.title }}</text><text v-if="task.projectName">{{ task.projectName }}</text></view>
+						<button v-if="!group.adopted" @tap="moveCoordinationTask(task, group)">移动到其他组</button>
+					</view>
+					<text v-if="group.personalization && group.personalization.adjustmentCount" class="learned-note">{{ group.personalization.explanation }}</text>
+				</view>
+				<text class="coordination-footnote">你移动的每一项都会记住这次调整；待办原始内容和项目不会被改写。</text>
+			</view>
+		</view>
+
 		<view v-if="selectionMode" class="bulk-bar"><text>已选 {{ selectedIds.length }} 项</text><button @tap="bulkSchedule">安排日期</button><button @tap="bulkMove">加入项目</button><button @tap="bulkCancel">取消</button><button @tap="exitSelection">完成</button></view>
 		<view v-if="undoTask" class="undo-bar"><text>已完成“{{ undoTask.title }}”</text><button @tap="undoComplete">撤销</button></view>
 	</view>
@@ -156,7 +192,8 @@ export default {
 			draft: emptyDraft(this.localToday()), repeatIndex: 0,
 			projectDraft: { name: '', goal: '' }, projectNameFocused: false, savingProject: false,
 			selectionMode: false, selectedIds: [], undoTask: null, undoTimer: null,
-			views: [{ key: 'current', label: '当前' }, { key: 'upcoming', label: '之后' }, { key: 'unscheduled', label: '未安排' }, { key: 'projects', label: '项目' }],
+			coordinationGroups: [], adjustmentCount: 0, coordinationLoading: false, showCoordinationSheet: false, adoptingGroupKey: '',
+			timeViews: [{ key: 'current', label: '现在要做' }, { key: 'upcoming', label: '未来安排' }, { key: 'unscheduled', label: '待安排' }],
 			repeatLabels: ['不重复', '每天', '每周', '每月'],
 			weekDayOptions: [{ value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' }, { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' }]
 		};
@@ -164,6 +201,7 @@ export default {
 	computed: {
 		navPadding() { return Math.max(22, (this.customBarHeight - this.statusBarHeight) * 2 + 14); },
 		taskCount() { return this.groups.reduce((count, group) => count + group.items.length, 0); },
+		coordinationTaskCount() { return this.coordinationGroups.reduce((count, group) => count + group.tasks.length, 0); },
 		visibleGroups() { return this.groups.filter(group => group.items && group.items.length); },
 		projectOptions() { return [{ id: '', name: '不属于项目' }, ...this.projects]; },
 		directionOptions() { return [{ id: '', name: '不关联复利方向' }, ...this.directions]; },
@@ -172,7 +210,7 @@ export default {
 		selectedProjectName() { const item = this.projectOptions[this.projectIndex]; return item && item.id ? item.name : ''; },
 		selectedDirectionName() { const item = this.directionOptions[this.directionIndex]; return item && item.id ? item.name : ''; },
 		viewLabel() {
-			return { current: '当前', upcoming: '之后', unscheduled: '未安排', all: '全部待办', completed: '已完成' }[this.currentView] || '';
+			return { current: '现在要做', upcoming: '未来安排', unscheduled: '待安排', all: '全部待办', completed: '已完成' }[this.currentView] || '';
 		},
 		emptyTitle() { return this.currentView === 'completed' ? '还没有已完成的行动' : '这里暂时是空的'; },
 		emptyHint() { return this.currentView === 'completed' ? '完成的任务会保留结果和发生时间。' : '只写标题就能保存，日期和项目都可以以后再加。'; }
@@ -198,10 +236,67 @@ export default {
 				if (res.code !== 200) throw new Error(res.message);
 				this.groups = res.data.groups || []; this.projects = res.data.projects || []; this.today = res.data.today || this.today;
 				this.unscheduledCount = res.data.unscheduledCount || 0;
+				if (this.currentView === 'current' || this.currentView === 'all') await this.loadCoordination();
+				else this.coordinationGroups = [];
 				if (!this.directions.length) await this.loadDirections();
 				this.loaded = true;
 			} catch (error) { uni.showToast({ title: typeof error === 'string' ? error : '待办加载失败', icon: 'none' }); }
 			finally { this.loading = false; this.refreshing = false; }
+		},
+		async loadCoordination() {
+			if (this.coordinationLoading) return;
+			this.coordinationLoading = true;
+			try {
+				const [res, bags] = await Promise.all([
+					this.$http.get('/todos/v1/smart-groups'),
+					this.$http.get('/bags/v1', { status: 'adopted' })
+				]);
+				const active = [];
+				if (bags.code === 200) {
+					const details = await Promise.all((bags.data.bags || []).map(item => this.$http.get(`/bags/v1/${item.id}`)));
+					for (const detail of details) if (detail.code === 200) active.push({
+						key: `bag:${detail.data.bag.id}`, bagId: detail.data.bag.id, label: detail.data.bag.name,
+						reason: '你已确认的统筹', estimatedMinutes: detail.data.bag.durationMinutes,
+						taskCount: detail.data.tasks.length, tasks: detail.data.tasks, adopted: true
+					});
+				}
+				if (res.code === 200) {
+					this.coordinationGroups = [...active, ...(res.data.groups || [])];
+					this.adjustmentCount = res.data.adjustmentCount || 0;
+				}
+			} catch (_) { this.coordinationGroups = []; }
+			finally { this.coordinationLoading = false; }
+		},
+		openCoordination() { this.showCoordinationSheet = true; },
+		closeCoordination() { if (!this.adoptingGroupKey) this.showCoordinationSheet = false; },
+		moveCoordinationTask(task, sourceGroup) {
+			const targets = this.coordinationGroups.filter(group => group.key !== sourceGroup.key && !group.adopted);
+			if (!targets.length) return uni.showToast({ title: '暂时没有其他可移入的组', icon: 'none' });
+			uni.showActionSheet({ itemList: targets.map(group => group.label), success: async ({ tapIndex }) => {
+				const target = targets[tapIndex];
+				const originalState = { taskId: task.id, taskTitle: task.title, taskTags: task.tags || [], fromGroupKey: sourceGroup.key, fromGroupLabel: sourceGroup.label };
+				const newState = { taskId: task.id, taskTitle: task.title, taskTags: task.tags || [], toGroupKey: target.key, toGroupLabel: target.label };
+				try {
+					const res = await this.$http.post('/correction-events/v1', { eventType: 'drag_reclassify', originalState, newState });
+					if (res.code !== 200) throw new Error(res.message);
+					sourceGroup.tasks = sourceGroup.tasks.filter(item => item.id !== task.id); sourceGroup.taskCount = sourceGroup.tasks.length;
+					target.tasks.push(task); target.taskCount = target.tasks.length;
+					this.adjustmentCount += 1;
+					uni.showToast({ title: '已移动，记住这次调整', icon: 'none' });
+				} catch (error) { uni.showToast({ title: error.message || '移动失败', icon: 'none' }); }
+			} });
+		},
+		async adoptCoordinationGroup(group) {
+			if (this.adoptingGroupKey || !group.tasks.length) return;
+			this.adoptingGroupKey = group.key;
+			try {
+				const res = await this.$http.post('/bags/v1', { name: group.label, scheduledAt: new Date().toISOString(), durationMinutes: Math.min(90, Math.max(15, group.estimatedMinutes || group.tasks.length * 15)), taskIds: group.tasks.map(task => task.id), groupingReason: group.reason, adopt: true });
+				if (res.code !== 200) throw new Error(res.message);
+				group.key = `bag:${res.data.id}`; group.bagId = res.data.id; group.adopted = true;
+				uni.showToast({ title: '已统筹，现在可以集中执行', icon: 'none' });
+				if (!this.coordinationGroups.length) this.showCoordinationSheet = false;
+			} catch (error) { uni.showToast({ title: error.message || '采纳失败', icon: 'none' }); }
+			finally { this.adoptingGroupKey = ''; }
 		},
 		async loadDirections() {
 			try { const res = await this.$http.get('/todos/v1/options'); if (res.code === 200) this.directions = res.data.directions || []; } catch (_) {}
@@ -339,6 +434,12 @@ button::after { border: 0; }
 .empty-copy > text:first-child { margin-bottom: 14rpx; color: #3e4a41; font: 600 29rpx/1.3 Georgia, 'Songti SC', serif; }
 .empty-copy > text:last-of-type { max-width: 540rpx; line-height: 1.55; }
 .empty-copy button { margin-top: 28rpx; padding: 17rpx 24rpx; border-radius: 20rpx; background: #dfe8bd; color: #3f5031; font-size: 22rpx; }
+.coordination-card { display: flex; align-items: center; gap: 22rpx; margin: 28rpx 30rpx 4rpx; padding: 27rpx 25rpx; border: 1rpx solid rgba(76,96,55,.16); border-radius: 25rpx; background: linear-gradient(135deg, #e5ebcf, #f6f3e5); box-shadow: 0 12rpx 34rpx rgba(48,64,42,.07); }
+.coordination-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 8rpx; }
+.coordination-kicker { color: #617047; font-size: 16rpx; font-weight: 760; letter-spacing: 2rpx; }
+.coordination-title { color: #29372c; font: 700 29rpx/1.25 Georgia, 'Songti SC', serif; }
+.coordination-copy > text:last-child { color: #68736b; font-size: 19rpx; line-height: 1.5; }
+.coordination-arrow { color: #637253; font-size: 44rpx; }
 .task-section { margin: 28rpx 30rpx 0; padding: 0 24rpx; border: 1rpx solid rgba(38,52,42,.08); border-radius: 25rpx; background: rgba(255,253,247,.74); }
 .section-heading { display: flex; align-items: center; justify-content: space-between; padding: 23rpx 0 9rpx; }
 .section-heading > text { color: #606b63; font-size: 20rpx; font-weight: 700; letter-spacing: 1rpx; }
@@ -396,6 +497,21 @@ button::after { border: 0; }
 .project-field input { box-sizing: border-box; width: 100%; min-height: 60rpx; color: #263229; font-size: 27rpx; line-height: 1.4; }
 .project-field textarea { box-sizing: border-box; width: 100%; min-height: 105rpx; color: #263229; font-size: 22rpx; line-height: 1.55; overflow-wrap: anywhere; }
 .goal-field { margin-top: 13rpx; }
+.coordination-sheet { max-width: 820rpx; }
+.coordination-group { margin-top: 22rpx; padding: 22rpx; border: 1rpx solid rgba(45,61,48,.09); border-radius: 23rpx; background: #f2f2e9; }
+.coordination-group-head { display: flex; align-items: flex-start; gap: 18rpx; padding-bottom: 15rpx; }
+.coordination-group-head > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.coordination-group-head > view > text:first-child { color: #26352b; font-size: 25rpx; font-weight: 720; }
+.coordination-group-head > view > text:last-child { color: #737d75; font-size: 17rpx; line-height: 1.45; }
+.coordination-group-head > button { flex: 0 0 auto; padding: 14rpx 17rpx; border-radius: 17rpx; background: #52643d; color: #fff; font-size: 18rpx; }
+.coordination-group-head > button[disabled] { opacity: .45; }
+.coordination-task { display: flex; align-items: center; gap: 15rpx; padding: 17rpx 0; border-top: 1rpx solid rgba(45,61,48,.08); }
+.coordination-task > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 6rpx; }
+.coordination-task > view > text:first-child { color: #303d33; font-size: 21rpx; line-height: 1.4; }
+.coordination-task > view > text:last-child { color: #899087; font-size: 16rpx; }
+.coordination-task > button { flex: 0 0 auto; padding: 12rpx 0 12rpx 12rpx; color: #657456; font-size: 17rpx; }
+.learned-note { display: block; padding-top: 12rpx; color: #68794f; font-size: 16rpx; }
+.coordination-footnote { display: block; padding: 22rpx 8rpx 4rpx; color: #7c857e; font-size: 17rpx; line-height: 1.55; }
 .undo-bar, .bulk-bar { position: fixed; right: 22rpx; bottom: calc(24rpx + env(safe-area-inset-bottom)); left: 22rpx; z-index: 600; display: flex; align-items: center; gap: 15rpx; padding: 20rpx 22rpx; border-radius: 22rpx; background: #1f2b23; color: #fff; box-shadow: 0 10rpx 36rpx rgba(20,28,22,.24); }
 .undo-bar text, .bulk-bar text { min-width: 0; flex: 1; overflow: hidden; font-size: 21rpx; text-overflow: ellipsis; white-space: nowrap; }
 .undo-bar button, .bulk-bar button { color: #dce9b9; font-size: 20rpx; }
@@ -405,6 +521,7 @@ button::after { border: 0; }
 	.desktop-sidebar { display: flex; position: sticky; top: 40px; height: fit-content; flex-direction: column; padding: 29px 20px; border: 1px solid rgba(38,52,42,.08); border-radius: 24px; background: rgba(255,253,247,.74); }
 	.brand { color: #78827a; font-size: 11px; letter-spacing: 2px; }
 	.sidebar-title { margin: 13px 0 24px; font: 700 31px/1.2 Georgia, serif; }
+	.sidebar-section-label { margin: 5px 15px 7px; color: #929a93; font-size: 10px; font-weight: 700; letter-spacing: 1.4px; }
 	.desktop-sidebar button { padding: 13px 15px; border-radius: 13px; color: #657067; font-size: 15px; text-align: left; }
 	.desktop-sidebar button.active { background: #e2e8d2; color: #2e3c31; font-weight: 700; }
 	.sidebar-divider { height: 1px; margin: 15px 8px; background: rgba(38,52,42,.09); }

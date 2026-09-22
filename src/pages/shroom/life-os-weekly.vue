@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="shell">
 			<view class="header"><button class="back" aria-label="返回" @tap="goBack">‹</button><view><text class="kicker">EVIDENCE REVIEW</text><text class="title">阶段回看</text><text class="subtitle">只看真实做过和留下的结果，再决定继续、调整或停止。</text></view></view>
 
@@ -100,7 +100,10 @@ export default {
 			finally { this.confirming = false; }
 		},
 		decisionLabel(value) { return { CONTINUE: '继续', ADJUST: '调整', STOP: '停止' }[value] || '已确认'; },
-		costLabel(cost) { return cost.priced && cost.costCny !== null ? `约 ¥${Number(cost.costCny).toFixed(4)}` : '暂无可靠价格'; },
+		costLabel(cost) {
+			if (Number(cost && cost.chargedPoints || 0) > 0) return `已扣 ${Number(cost.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`;
+			return cost.priced && cost.costCny !== null ? `约 ¥${Number(cost.costCny).toFixed(4)}` : '暂无可靠价格';
+		},
 		async exportData(kind) {
 			try {
 				const response = await this.$http.get(compoundExport);

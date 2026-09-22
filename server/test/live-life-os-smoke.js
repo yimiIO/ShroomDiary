@@ -27,7 +27,7 @@ async function api(route, { method = 'GET', token, body } = {}) {
 async function run() {
   try {
     await api('/api/auth/v1/register', {
-      method: 'POST', body: { mobile, password, nickname: 'Life OS Smoke' }
+      method: 'POST', body: { mobile, password, nickname: 'Life OS Smoke', acceptedTerms: true }
     });
     const session = await api('/api/auth/v1/login', {
       method: 'POST', body: { mobile, password }

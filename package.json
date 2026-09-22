@@ -6,6 +6,7 @@
 	"scripts": {
 		"serve": "npm run dev:h5",
 		"build": "npm run build:h5",
+		"build:admin": "npm --prefix admin run build",
 		"lint": "vue-cli-service lint",
 		"build:app-plus": "cross-env NODE_ENV=production UNI_PLATFORM=app-plus vue-cli-service uni-build",
 		"build:custom": "cross-env NODE_ENV=production uniapp-cli custom",
@@ -15,9 +16,12 @@
 		"build:mp-qq": "cross-env NODE_ENV=production UNI_PLATFORM=mp-qq vue-cli-service uni-build",
 		"build:mp-toutiao": "cross-env NODE_ENV=production UNI_PLATFORM=mp-toutiao vue-cli-service uni-build",
 		"build:mp-weixin": "cross-env NODE_ENV=production UNI_PLATFORM=mp-weixin vue-cli-service uni-build",
+		"postbuild:mp-weixin": "node scripts/prepare-wechat-project.js",
+		"build:wechat-project": "npm run build:mp-weixin && npm run check:mp-weixin",
+		"check:mp-weixin": "node scripts/check-wechat-miniapp.js",
 		"dev:app-plus": "cross-env NODE_ENV=development UNI_PLATFORM=app-plus vue-cli-service uni-build --watch",
 		"dev:h5": "cross-env NODE_ENV=development UNI_PLATFORM=h5 vue-cli-service uni-serve",
-		"dev:mp-weixin": "cross-env NODE_ENV=development UNI_PLATFORM=mp-weixin vue-cli-service uni-build --watch --minmize"
+		"dev:mp-weixin": "cross-env NODE_ENV=development UNI_PLATFORM=mp-weixin vue-cli-service uni-build --watch --minimize"
 	},
 	"dependencies": {
 		"@dcloudio/uni-app-plus": "^2.0.0-24220191115011",
@@ -37,7 +41,7 @@
 		"node-sass": "6.0.1",
 		"regenerator-runtime": "^0.12.1",
 		"sass": "^1.24.0",
-		"sass-loader": "^7.3.1",
+		"sass-loader": "8.0.2",
 		"uni-read-pages": "^1.0.5",
 		"uni-simple-router": "^2.0.2",
 		"uview-ui": "^1.8.4",

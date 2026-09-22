@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="shell">
 			<view class="header"><view class="back" @tap="goBack">‹</view><view class="heading"><text class="kicker">RELATIONSHIP CARE</text><text class="title">关系提醒</text><text class="subtitle">重要的关系，不该靠焦虑维持。</text></view><view class="count">{{ overview.total || 0 }}</view></view>
 

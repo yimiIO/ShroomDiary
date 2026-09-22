@@ -13,6 +13,12 @@ function dateOnly(value) {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== input ? null : input;
 }
 
+function clockTime(value) {
+  const input = String(value || '').trim();
+  const match = input.match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?$/);
+  return match ? `${match[1]}:${match[2]}` : null;
+}
+
 function normalizeTimeZone(value) {
   const candidate = String(value || '').trim() || 'Asia/Shanghai';
   try {
@@ -61,12 +67,18 @@ function normalizeRecurrence(value = {}, fallbackStartDate = null, fallbackTimeZ
   const weekDays = [...new Set((Array.isArray(value.weekDays) ? value.weekDays : [])
     .map(Number).filter(day => Number.isInteger(day) && day >= 1 && day <= 7))].sort();
   const monthDay = Math.max(1, Math.min(31, Number(value.monthDay) || Number(startsOn.slice(8, 10))));
+  const scheduledStartTime = clockTime(value.scheduledStartTime);
+  const scheduledEndTime = clockTime(value.scheduledEndTime);
+  if (value.scheduledStartTime && !scheduledStartTime) return null;
+  if (value.scheduledEndTime && (!scheduledEndTime || !scheduledStartTime || scheduledEndTime <= scheduledStartTime)) return null;
   return {
     frequency,
     startsOn,
     endsOn: endsOn && endsOn >= startsOn ? endsOn : null,
     weekDays: frequency === 'WEEKLY' ? (weekDays.length ? weekDays : [isoWeekday(startsOn)]) : [],
     monthDay: frequency === 'MONTHLY' ? monthDay : null,
+    scheduledStartTime,
+    scheduledEndTime,
     timeZone: normalizeTimeZone(value.timeZone || fallbackTimeZone)
   };
 }
@@ -110,6 +122,8 @@ function decorateTask(task, today) {
     ...task,
     deadline,
     scheduledDate,
+    scheduledStartTime: clockTime(task.scheduledStartTime || task.scheduled_start_time),
+    scheduledEndTime: clockTime(task.scheduledEndTime || task.scheduled_end_time),
     isOverdue: Boolean(deadline && deadline < today && !['completed', 'cancelled'].includes(task.status)),
     isPastScheduled: Boolean(scheduledDate && scheduledDate < today && !['completed', 'cancelled'].includes(task.status))
   };
@@ -148,9 +162,10 @@ function taskMatchesView(task, view, today) {
 
 function repeatLabel(rule) {
   if (!rule) return '';
-  if (rule.frequency === 'DAILY') return '每天重复';
-  if (rule.frequency === 'WEEKLY') return `每周 ${rule.weekDays.join('、')}`;
-  if (rule.frequency === 'MONTHLY') return `每月 ${rule.monthDay} 日`;
+  const time = clockTime(rule.scheduledStartTime) ? ` · ${clockTime(rule.scheduledStartTime)}` : '';
+  if (rule.frequency === 'DAILY') return `每天重复${time}`;
+  if (rule.frequency === 'WEEKLY') return `每周 ${rule.weekDays.join('、')}${time}`;
+  if (rule.frequency === 'MONTHLY') return `每月 ${rule.monthDay} 日${time}`;
   return '';
 }
 
@@ -158,6 +173,7 @@ module.exports = {
   RECURRENCE_FREQUENCIES,
   TASK_STATUSES,
   addDays,
+  clockTime,
   compareDates,
   dateOnly,
   decorateTask,

@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  clockTime,
   groupCurrentTasks,
   normalizeRecurrence,
   recurrenceDates,
@@ -63,6 +64,19 @@ test('monthly day 31 clamps to short month and returns to 31 later', () => {
 test('an invalid timezone falls back without rejecting the base task', () => {
   const rule = normalizeRecurrence({ frequency: 'DAILY', startsOn: '2026-09-13', timeZone: 'Mars/Olympus' });
   assert.equal(rule.timeZone, 'Asia/Shanghai');
+});
+
+test('recurring habits keep a validated fixed time window', () => {
+  const rule = normalizeRecurrence({
+    frequency: 'WEEKLY', startsOn: '2026-09-21', weekDays: [1, 3, 5],
+    scheduledStartTime: '07:30', scheduledEndTime: '08:15', timeZone: 'Asia/Shanghai'
+  });
+  assert.equal(rule.scheduledStartTime, '07:30');
+  assert.equal(rule.scheduledEndTime, '08:15');
+  assert.equal(clockTime('07:30:00'), '07:30');
+  assert.equal(normalizeRecurrence({
+    frequency: 'DAILY', startsOn: '2026-09-21', scheduledStartTime: '09:00', scheduledEndTime: '08:00'
+  }), null);
 });
 
 test('PostgreSQL Date values keep their calendar date in API mapping helpers', () => {

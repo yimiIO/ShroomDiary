@@ -1,6 +1,6 @@
 <template>
 	<view class="practice-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="page-shell">
 			<view class="topbar">
 				<button class="back-button" aria-label="返回" @tap="goBack">‹</button>
@@ -33,7 +33,7 @@
 					</view>
 					<view class="video-wrap">
 						<video
-							:key="activeSegment.id + '-' + audioLocale"
+							:key="videoRenderKey"
 							id="yoga-lesson-video"
 							class="lesson-video"
 							:src="activeVideoUrl"
@@ -124,6 +124,7 @@ export default {
 	},
 	computed: {
 		activeSegment() { return (this.practice.segments || []).find(item => item.id === this.activeSegmentId) || this.practice.segments[0] || null; },
+		videoRenderKey() { return this.activeSegment ? `${this.activeSegment.id}-${this.audioLocale}` : this.audioLocale; },
 		activeIndexLabel() { const index = this.practice.segments.findIndex(item => item.id === this.activeSegmentId); return `MOVEMENT ${String(index + 1).padStart(2, '0')}`; },
 		clipDurationLabel() { if (!this.activeSegment) return ''; return `精讲 ${Math.ceil((this.activeSegment.endSeconds - this.activeSegment.startSeconds) / 60)} 分钟`; },
 		clipLength() { return this.activeSegment ? this.activeSegment.endSeconds - this.activeSegment.startSeconds : 0; },

@@ -14,7 +14,25 @@ test('compound catalog contains only versioned growth or protection archetypes',
     assert.ok(item.notThis.length > 10);
     assert.ok(item.defaultPrincipalMetric);
     assert.ok(item.defaultReturnMetric);
+    assert.ok(Array.isArray(item.starterPlans));
+    assert.ok(item.starterPlans.length >= 2, `${item.key} should offer at least two starter templates`);
+    for (const starter of item.starterPlans) {
+      assert.ok(starter.title);
+      assert.ok(starter.observableEvidence);
+      assert.ok(starter.feltChange);
+      assert.ok(starter.firstStep);
+    }
   }
+});
+
+test('body capacity starts with the existing daily yoga practice as a safe compound example', () => {
+  const body = archetypeByKey('body_capacity');
+  const yoga = body.starterPlans.find(item => item.key === 'daily_yoga_practice');
+  assert.equal(yoga.title, '每天练一遍 7 动作全身瑜伽');
+  assert.match(yoga.summary, /7 动作自主练习/);
+  assert.match(yoga.observableEvidence, /每周完成 5 天左右/);
+  assert.match(yoga.firstStep, /疼痛、眩晕或明显不适时立即停止/);
+  assert.equal(yoga.principalMetricName, '完成每日瑜伽的天数');
 });
 
 test('catalog separates direct compounding from protective capacity', () => {

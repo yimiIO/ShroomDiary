@@ -1,6 +1,6 @@
 <template>
 	<view class="inquiry-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar">
 			<button class="nav-back" @tap="goBack"><text>‹</text></button>
 			<view class="nav-copy"><text class="nav-kicker">LIVING QUESTION</text><text class="nav-title">问题线索</text></view>
@@ -67,7 +67,7 @@
 					<text v-if="isHealth && inquiry.currentSynthesis.hypotheses && inquiry.currentSynthesis.hypotheses.length" class="hypothesis-heading">原因假设 · 都可以被新记录推翻</text>
 					<view v-for="(item, index) in inquiry.currentSynthesis.hypotheses || []" :key="index" class="hypothesis-row">
 						<view class="hypothesis-mark">{{ index + 1 }}</view>
-						<view class="hypothesis-copy"><text>{{ item.statement }}</text><text v-if="isHealth">{{ confidenceLabel(item.confidence) }} · 支持 {{ refsLabel(item.supportingEvidenceRefs) }} · 反对/不一致 {{ refsLabel(item.challengingEvidenceRefs) }}</text><text v-else>{{ confidenceLabel(item.confidence) }} · 支持 {{ (item.supportingEvidenceRefs || []).length }} · 反例 {{ (item.challengingEvidenceRefs || []).length }}</text></view>
+						<view class="hypothesis-copy"><text>{{ item.statement }}</text><text v-if="isHealth">{{ confidenceLabel(item.confidence) }} · 支持 {{ refsLabel(item.supportingEvidenceRefs) }} · 反对/不一致 {{ refsLabel(item.challengingEvidenceRefs) }}</text><text v-else>{{ confidenceLabel(item.confidence) }} · 支持 {{ refCount(item.supportingEvidenceRefs) }} · 反例 {{ refCount(item.challengingEvidenceRefs) }}</text></view>
 					</view>
 					<view v-if="missingInformation.length" class="finding-block unknown-block">
 						<text class="finding-label">{{ isHealth ? '缺失信息' : '仍然不知道' }}</text>
@@ -224,7 +224,9 @@ export default {
 		costText() {
 			const cost = this.inquiry && this.inquiry.costSummary;
 			if (!cost || !cost.calls) return '';
-			const money = cost.costCny === null ? '费用以供应商账单为准' : `约 ¥${Number(cost.costCny).toFixed(4)}`;
+			const money = Number(cost.chargedPoints || 0) > 0
+				? `已扣 ${Number(cost.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`
+				: (cost.costCny === null ? '费用以供应商账单为准' : `约 ¥${Number(cost.costCny).toFixed(4)}`);
 			return `${cost.calls} 次 · ${cost.totalTokens} tokens · ${money}`;
 		}
 	},
@@ -253,6 +255,7 @@ export default {
 		typeLabel(value) { return { GENERAL: '生活问题', PSYCHOLOGICAL: '心理问题', PHYSICAL_HEALTH: '身体健康问题' }[value] || '生活问题'; },
 		confidenceLabel(value) { return { emerging: '初步判断', medium: '已有一些依据', strong: '目前证据较强' }[value] || '初步判断'; },
 		refsLabel(value) { return Array.isArray(value) && value.length ? value.join('、') : '暂无直接证据'; },
+		refCount(value) { return Array.isArray(value) ? value.length : 0; },
 		careUrgency(value) { return { PROMPT: '建议尽快咨询', URGENT: '建议及时就医', EMERGENCY: '建议立即求助' }[value] || '建议咨询'; },
 		evidenceTypeLabel(value) { return { DIARY: '日记', NOTE: '观察', LINK: '外部材料', ACTION: '行动结果', REFLECTION: '讨论记录' }[value] || '线索'; },
 		relationLabel(value) { return { SUPPORT: '支持当前理解', CHALLENGE: '反例 / 冲突', CONTEXT: '补充背景', UNKNOWN: '关系未确定' }[value] || '补充背景'; },

@@ -1,25 +1,30 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="shell">
 			<view class="header"><view class="back" @tap="goBack">‹</view><view class="heading"><text class="kicker">MY OBSERVERS</text><text class="title">重新看见这一天</text><text class="subtitle">让你选择的观察席，从不同机制理解同一段经历。</text></view></view>
 
 			<view class="privacy"><view class="privacy-dot"></view><text>观察席只在你主动开始时运行；本次使用哪些席位会随结果保存，之后修改设置不会改写历史分析。</text></view>
 
-			<view class="unavailable" v-if="capabilityKnown && !analysisEnabled">
+			<view class="unavailable" v-if="invalidDiaryContext">
+				<text class="state-index">DIARY REQUIRED</text><text class="state-title">请先选择一篇日记</text><text class="state-copy">观察席只会分析你主动打开的那篇日记，不会在没有上下文时发起请求。</text>
+				<view class="primary-button" @tap="goBack">回到日记</view>
+			</view>
+			<view class="unavailable" v-else-if="capabilityKnown && !analysisEnabled">
 				<text class="state-index">AI · OFF</text><text class="state-title">观察席服务尚未启用</text><text class="state-copy">在模型配置完成前，日记不会被发送给任何模型。</text>
 			</view>
 			<view class="empty-state" v-else-if="!analysis">
 				<text class="state-index">{{ enabledObserverCount }} SEATS READY</text><text class="state-title">把经历放到不同的观察席</text><text class="state-copy">默认五席与自己的自定义席位都可以自由切换。分析是参考，不是结论。</text>
 				<view class="observer-preview" v-if="enabledObservers.length"><text v-for="item in enabledObservers" :key="item.id">{{ item.shortName || item.name }}</text></view>
 				<view class="primary-button" @tap="startAnalysis">开始日记观察</view>
+				<text class="charge-note">成功交付后按实际 Token 成本 × 2.5 扣菇点；失败不扣费。首次使用会先请你确认收费与退款规则。</text>
 				<view class="manage-link" @tap="openObservers">管理我的观察席　›</view>
 			</view>
 			<view class="running-state" v-else-if="analysis.status === 'pending' || analysis.status === 'running'">
 				<view class="orbit"><view></view></view><text class="state-title">正在听取 {{ taskObserverCount }} 个观察席</text><text class="state-copy">各席位独立观察，完成后会一起保存。你可以离开页面，稍后回来查看。</text><text class="running-label">{{ analysis.status === 'pending' ? '等待开始' : '分析进行中' }}</text>
 			</view>
 			<view class="unavailable" v-else-if="analysis.status === 'failed'">
-				<text class="state-index">NEEDS RETRY</text><text class="state-title">这次分析没有完整完成</text><text class="state-copy">{{ analysis.error || '模型服务暂时不可用，日记原文仍然安全保存。' }}</text><view class="primary-button" @tap="startAnalysis">重新分析</view>
+				<text class="state-index">NEEDS RETRY</text><text class="state-title">这次分析没有完整完成</text><text class="state-copy">{{ analysis.error || '模型服务暂时不可用，日记原文仍然安全保存。' }}</text><view class="primary-button" @tap="startAnalysis">重新分析</view><text class="charge-note retry-note">失败不扣费；重新分析成功后按新的实际 Token 用量计费。</text>
 			</view>
 
 			<view v-else-if="analysis.status === 'done'">
@@ -70,7 +75,7 @@
 
 				<view class="cost-card" v-if="analysis.costSummary && analysis.costSummary.calls">
 					<view><text>本次 AI 用量</text><text>{{ analysis.costSummary.calls }} 次调用 · {{ formatTokens(analysis.costSummary.totalTokens) }} tokens</text></view>
-					<view><text>{{ formatCost(analysis.costSummary) }}</text><text>预计花费 · 最终以 DeepSeek 账单为准</text></view>
+					<view><text>{{ formatBilling(analysis.costSummary) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
 				</view>
 
 				<view class="wellbeing-section" v-if="wellbeingRecord">
@@ -171,7 +176,7 @@ import { wellbeingStatus } from '@/api/wellbeing';
 
 export default {
 	components: { HealthConsentSheet },
-		data() { return { statusBarHeight: 0, diaryId: '', autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
+		data() { return { statusBarHeight: 0, diaryId: '', invalidDiaryContext: false, autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
@@ -198,7 +203,16 @@ export default {
 			return result.slice(0, 16);
 		}
 	},
-	onLoad(options) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.diaryId = options.diaryId || ''; this.autoStart = options.autoStart === '1'; this.load(); },
+	onLoad(options = {}) {
+		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
+		this.diaryId = String(options.diaryId || '').trim();
+		this.autoStart = options.autoStart === '1';
+		if (!this.diaryId) {
+			this.invalidDiaryContext = true;
+			return;
+		}
+		this.load();
+	},
 	onUnload() { this.stopPolling(); this.resolveHealthConsent(false); },
 	methods: {
 		async load() {
@@ -212,7 +226,7 @@ export default {
 		},
 		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
 		async startAnalysis() {
-			if (!this.analysisEnabled) return;
+			if (!this.diaryId || !this.analysisEnabled) return;
 			this.stopPolling();
 			try { const res = await this.$http.post(aiAnalyze, { diaryId: this.diaryId, sync: false }); this.acceptAnalysis(res.data); this.pollCount = 0; this.startPolling(); }
 			catch (error) { console.error('启动观察席分析失败', error); }
@@ -232,6 +246,10 @@ export default {
 			if (!summary || !summary.estimated || summary.costCny === null) return '暂时无法估价';
 			const cost = Number(summary.costCny);
 			return '约 ¥' + cost.toFixed(cost >= 0.01 ? 2 : 4);
+		},
+		formatBilling(summary) {
+			if (summary && Number(summary.chargedPoints || 0) > 0) return `已扣 ${Number(summary.chargedPoints).toFixed(2).replace(/\.00$/, '')} 菇点`;
+			return this.formatCost(summary);
 		},
 		sourceActivityMeta(item) {
 			const parts = [];
@@ -350,7 +368,7 @@ export default {
 		openLifeOsItem(link) { if (link && link.itemKey) uni.navigateTo({ url: `/pages/shroom/life-os-item?key=${link.itemKey}` }); },
 		openCompound() { uni.navigateTo({ url: '/pages/shroom/compound' }); },
 		viewCreatedCard() { if (this.cardSuggestion && this.cardSuggestion.createdCardId) uni.navigateTo({ url: `/pages/common/cards/detail?id=${this.cardSuggestion.createdCardId}` }); },
-		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果，并产生新的 AI 用量。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
+		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果。成功后按本次实际 Token 成本 × 2.5 扣菇点；失败不扣费。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
 		openObservers() { uni.navigateTo({ url: '/pages/shroom/observers' }); },
 		openLifeOs() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
 		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/diary/index' }) }); else uni.switchTab({ url: '/pages/diary/index' }); }
@@ -386,6 +404,8 @@ button::after { border: 0; }
 .state-copy { margin-top: 15rpx; font-size: 21rpx; line-height: 1.7; color: #b7c3b7; }
 .unavailable .state-copy { color: #6d6959; }
 .primary-button { margin-top: 29rpx; padding: 25rpx; border-radius: 999rpx; background: #e5efd9; text-align: center; font-size: 22rpx; font-weight: 700; color: #172019; }
+.charge-note { display: block; margin-top: 16rpx; text-align: center; font-size: 16rpx; line-height: 1.55; color: #9eada0; }
+.retry-note { color: #77725f; }
 .observer-preview { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 24rpx; }
 .observer-preview text { padding: 8rpx 13rpx; border: 1rpx solid rgba(255,255,255,.15); border-radius: 999rpx; font-size: 17rpx; color: #c4d0c3; }
 .manage-link { margin-top: 20rpx; text-align: center; font-size: 19rpx; color: #abbbaa; }

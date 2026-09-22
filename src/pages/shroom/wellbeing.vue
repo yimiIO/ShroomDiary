@@ -1,6 +1,6 @@
 <template>
 	<view class="wellbeing-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar">
 			<button class="nav-back" aria-label="返回" @tap="goBack">‹</button>
 			<view class="nav-copy"><text class="nav-kicker">BODY & MIND LOG</text><text class="nav-title">身心记录</text></view>
@@ -33,7 +33,7 @@
 					</view>
 					<text class="possibility-intro">这里会明确说出可能涉及的心理概念、症状模式或医学排查方向。它来自你的私密记录，是待验证线索，不是患病结论。</text>
 					<view v-if="hypotheses.length" class="possibility-list">
-						<view v-for="item in hypotheses" :key="item.id" class="possibility-card" :class="{ observing: item.status === 'OBSERVING', risk: item.redFlags && item.redFlags.length }">
+						<view v-for="item in visibleHypotheses" :key="item.id" class="possibility-card" :class="{ observing: item.status === 'OBSERVING', risk: item.redFlags && item.redFlags.length }">
 							<view class="possibility-topline"><view><text>{{ domainLabel(item.domain) }}</text><text>{{ kindLabel(item.kind) }}</text></view><text>{{ strengthLabel(item.evidenceStrength) }}</text></view>
 							<view v-if="item.namedPossibilities && item.namedPossibilities.length" class="named-possibilities">
 								<text class="named-label">这组线索可能涉及</text>
@@ -61,6 +61,8 @@
 							<view v-if="item.status === 'PENDING'" class="possibility-actions"><button :disabled="hypothesisProcessingId === item.id" @tap="updateHypothesisStatus(item, 'dismiss')">不符合我</button><button :disabled="hypothesisProcessingId === item.id" @tap="updateHypothesisStatus(item, 'observe')">持续观察</button></view>
 							<view v-else class="observing-label"><text>●</text><text>你正在持续观察这个方向，新记录会帮助修订它</text><button :disabled="hypothesisProcessingId === item.id" @tap="updateHypothesisStatus(item, 'archive')">结束</button></view>
 						</view>
+						<button v-if="hiddenHypothesisCount" class="show-more-possibilities" @tap="showAllHypotheses = true">查看其余 {{ hiddenHypothesisCount }} 个方向</button>
+						<button v-else-if="showAllHypotheses && hypotheses.length > 3" class="show-more-possibilities" @tap="showAllHypotheses = false">收起更多方向</button>
 					</view>
 					<view v-else-if="!hypothesesLoading" class="possibility-empty"><text>尚未形成可靠的问题可能性</text><text>{{ hypothesisState.sourceCount ? '可以让 AI 综合现有记录重新识别；证据不够时不会硬凑疾病名称。' : '先从日记积累真实的身心变化，系统再寻找跨时间模式。' }}</text></view>
 					<text class="consent-copy">这是可选的第二次分析。点击后，AI 会综合这里已沉淀的私密身心记录，而不是重新读取全部日记；结果仅保存在你的账户中。</text>
@@ -141,16 +143,18 @@ export default {
 	data() {
 		return {
 			statusBarHeight: 0, items: [], total: 0, page: 1,
-			pageSize: 20, category: '', loading: false, processingId: '', creating: false, saving: false,
+			pageSize: 8, category: '', loading: false, processingId: '', creating: false, saving: false,
 			summary: {}, draft: emptyDraft(), hypotheses: [], hypothesisState: {}, hypothesesLoading: false,
-			refreshing: false, hypothesisProcessingId: '', expandedHypothesisId: '', safetyConsentVisible: false, selectedConcept: null,
+			refreshing: false, hypothesisProcessingId: '', expandedHypothesisId: '', showAllHypotheses: false, safetyConsentVisible: false, selectedConcept: null,
 			categories: [{ value: '', label: '全部' }, { value: 'PSYCHOLOGICAL', label: '心理' }, { value: 'PHYSICAL', label: '身体' }, { value: 'SLEEP', label: '睡眠' }, { value: 'HABIT', label: '习惯' }, { value: 'MEASUREMENT', label: '测量' }, { value: 'TEST_RESULT', label: '检查' }]
 		};
 	},
 	computed: {
 		canSave() { return Boolean(this.draft.note.trim() || this.draft.psychologicalFeelings.trim() || this.draft.physicalSymptoms.trim() || this.draft.sleepHours || this.draft.sleepQuality || this.draft.behaviors.trim() || this.draft.measurements.trim() || this.draft.testResults.trim()); },
 		categoryTitle() { return this.category ? this.categoryLabel(this.category) + '记录' : '全部身心记录'; },
-		medicalDisclaimer() { return this.hypothesisState.medicalDisclaimer || DEFAULT_MEDICAL_DISCLAIMER; }
+		medicalDisclaimer() { return this.hypothesisState.medicalDisclaimer || DEFAULT_MEDICAL_DISCLAIMER; },
+		visibleHypotheses() { return this.showAllHypotheses ? this.hypotheses : this.hypotheses.slice(0, 3); },
+		hiddenHypothesisCount() { return Math.max(0, this.hypotheses.length - this.visibleHypotheses.length); }
 	},
 	onLoad() {
 		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0;
@@ -177,6 +181,7 @@ export default {
 				const res = await this.$http.get(wellbeingHypotheses);
 				this.hypothesisState = res.data || {};
 				this.hypotheses = Array.isArray(this.hypothesisState.list) ? this.hypothesisState.list : [];
+				this.showAllHypotheses = false;
 			} catch (error) { console.error('加载身心问题候选失败', error); }
 			finally { this.hypothesesLoading = false; }
 		},
@@ -192,6 +197,7 @@ export default {
 				const res = await this.$http.post(wellbeingHypothesesRefresh, { healthConsent: true });
 				this.hypothesisState = res.data || {};
 				this.hypotheses = Array.isArray(this.hypothesisState.list) ? this.hypothesisState.list : [];
+				this.showAllHypotheses = false;
 				uni.showToast({ title: this.hypotheses.length ? '可能问题已更新' : '暂无线索足够的问题', icon: 'none' });
 			} catch (error) { console.error('识别身心问题候选失败', error); }
 			finally { this.refreshing = false; }
@@ -348,6 +354,8 @@ button::after { border: 0; }
 .possibility-heading > button[disabled] { opacity: .42; }
 .possibility-intro { display: block; margin-top: 14rpx; color: #767f75; font-size: 18rpx; line-height: 1.65; }
 .possibility-list { display: flex; flex-direction: column; gap: 15rpx; margin-top: 22rpx; }
+.show-more-possibilities { min-height: 68rpx; margin: 2rpx 0 0; border: 1rpx solid rgba(23,32,25,.12); border-radius: 999rpx; background: #f4f6ef; color: #536056; font-size: 18rpx; font-weight: 680; }
+.show-more-possibilities::after { border: 0; }
 .possibility-card { padding: 25rpx; border-radius: 25rpx; background: #edf2e5; border: 1rpx solid rgba(71,88,53,.1); overflow: hidden; }
 .possibility-card.observing { background: #e2ebca; }
 .possibility-card.risk { border-color: rgba(150,87,55,.32); }

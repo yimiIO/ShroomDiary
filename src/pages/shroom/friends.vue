@@ -1,6 +1,6 @@
 <template>
 	<view class="friends-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="friends-shell">
 			<view class="page-header">
 				<view class="back-button" @tap="goBack"><text>‹</text></view>

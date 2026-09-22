@@ -17,7 +17,8 @@ async function resolveUser(req) {
   const payload = verifyAccessToken(token);
   if (payload) {
     const result = await db.query(
-      'SELECT id, mobile, nickname, avatar_url FROM users WHERE id = $1',
+      `SELECT id, mobile, nickname, avatar_url, role FROM users
+        WHERE id = $1 AND account_status = 'ACTIVE'`,
       [payload.sub]
     );
     req.authKind = 'session';
@@ -27,8 +28,9 @@ async function resolveUser(req) {
     `UPDATE api_tokens t SET last_used_at = now()
        FROM users u
       WHERE t.token_hash = $1 AND t.user_id = u.id
+        AND u.account_status = 'ACTIVE'
         AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now())
-      RETURNING u.id, u.mobile, u.nickname, u.avatar_url, t.scopes`,
+      RETURNING u.id, u.mobile, u.nickname, u.avatar_url, u.role, t.scopes`,
     [hashToken(token)]
   );
   const user = result.rows[0];

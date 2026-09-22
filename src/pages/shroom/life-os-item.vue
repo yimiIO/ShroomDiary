@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="shell" v-if="item">
 			<view class="header"><button class="back" @tap="goBack">‹</button><view class="heading"><text class="kicker">COMPOUND DIRECTION · {{ item.section }}</text><text class="title">{{ item.stableKey }} · {{ item.name }}</text></view></view>
 			<view class="state-line"><text>{{ item.status === 'PAUSED' ? '暂停维护' : '长期维护中' }}</text><text>{{ item.relatedRecordCount }} 条关联记录</text></view>

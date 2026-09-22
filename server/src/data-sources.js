@@ -140,6 +140,63 @@ async function listDiarySourceActivities(queryable, userId, date, options = {}) 
   return result.rows.map(mapActivity);
 }
 
+async function getDiarySourceActivity(queryable, userId, id) {
+  const anchor = await queryable.query(
+    `SELECT connection_id, external_id FROM external_activity_events
+      WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [id, userId]
+  );
+  if (!anchor.rowCount) return null;
+  const values = [userId, anchor.rows[0].connection_id, anchor.rows[0].external_id];
+  const detail = await queryable.query(
+    `SELECT min(e.id::text) AS id, e.connection_id, e.provider, e.activity_type,
+            regexp_replace((array_agg(e.title ORDER BY e.completed_at))[1], ' · 后续 [0-9]+$', '') AS title,
+            COALESCE((array_agg(NULLIF(e.project_label, '') ORDER BY e.completed_at DESC)
+              FILTER (WHERE e.project_label <> ''))[1], '') AS project_label,
+            COALESCE((array_agg(NULLIF(e.source_kind, '') ORDER BY e.completed_at DESC)
+              FILTER (WHERE e.source_kind <> ''))[1], '') AS source_kind,
+            min(e.started_at) AS started_at, max(e.completed_at) AS completed_at,
+            sum(e.task_runtime_seconds)::integer AS task_runtime_seconds,
+            sum(e.active_seconds_estimate)::integer AS active_seconds_estimate,
+            (array_agg(e.outcome_status ORDER BY e.completed_at DESC))[1] AS outcome_status,
+            count(*)::int AS turn_count,
+            count(*) FILTER (WHERE e.outcome_status = 'COMPLETED')::int AS completed_turns,
+            count(*) FILTER (WHERE e.outcome_status = 'INTERRUPTED')::int AS interrupted_turns,
+            count(*) FILTER (WHERE e.outcome_status = 'FAILED')::int AS failed_turns,
+            jsonb_build_object('category', 'codex_task', 'turnCount', count(*)::int) AS metadata,
+            c.display_name
+       FROM external_activity_events e
+       JOIN data_source_connections c ON c.id = e.connection_id AND c.user_id = e.user_id
+      WHERE e.user_id = $1 AND e.connection_id = $2
+        AND regexp_replace(e.external_id, ':[^:]+$', '') = regexp_replace($3, ':[^:]+$', '')
+      GROUP BY e.connection_id, e.provider, e.activity_type, c.display_name`,
+    values
+  );
+  if (!detail.rowCount) return null;
+  const turns = await queryable.query(
+    `SELECT id, source_kind, started_at, completed_at, task_runtime_seconds,
+            active_seconds_estimate, outcome_status
+       FROM external_activity_events
+      WHERE user_id = $1 AND connection_id = $2
+        AND regexp_replace(external_id, ':[^:]+$', '') = regexp_replace($3, ':[^:]+$', '')
+      ORDER BY completed_at`,
+    values
+  );
+  return {
+    activity: mapActivity(detail.rows[0]),
+    turns: turns.rows.map((row, index) => ({
+      id: row.id,
+      index: index + 1,
+      sourceKind: row.source_kind || '',
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      taskRuntimeMinutes: row.task_runtime_seconds === null ? null : Math.round(Number(row.task_runtime_seconds) / 6) / 10,
+      activeMinutesEstimate: row.active_seconds_estimate === null ? null : Math.round(Number(row.active_seconds_estimate) / 6) / 10,
+      outcomeStatus: row.outcome_status
+    }))
+  };
+}
+
 function publicConnection(row) {
   return {
     id: row.id,
@@ -164,6 +221,7 @@ function publicConnection(row) {
 
 module.exports = {
   ALLOWED_INTERVALS,
+  getDiarySourceActivity,
   listDiarySourceActivities,
   mapActivity,
   normalizeCodexActivity,

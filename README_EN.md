@@ -119,7 +119,10 @@ Other targets:
 npm run build:h5
 npm run build:app-plus
 npm run build:mp-weixin
+npm run build:wechat-project
 ```
+
+`build:wechat-project` generates and validates a standalone project that can be imported from `dist/build/mp-weixin` into WeChat DevTools. See the [WeChat Mini Program guide](./docs/WECHAT_MINIPROGRAM.md) for platform-domain, privacy, and device-testing requirements.
 
 ## Verification
 

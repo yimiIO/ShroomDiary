@@ -11,6 +11,7 @@ const diaryList = '/diaries/v1/index';
 // GET /api/diaries/v1/calendar?month=2026-09
 const diaryCalendar = '/diaries/v1/calendar';
 const diaryStats = '/diaries/v1/stats';
+const diaryOverview = '/diaries/v1/overview';
 
 // 获取日记详情
 // GET /api/rf-diary/v1/diary/view?id=1
@@ -37,6 +38,7 @@ export {
 	diaryList,
 	diaryCalendar,
 	diaryStats,
+	diaryOverview,
 	diaryDetail,
 	diaryCreate,
 	diaryUpdate,

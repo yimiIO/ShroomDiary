@@ -1,6 +1,6 @@
 <template>
 	<view class="select-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar">
 			<text class="back" @tap="goBack">取消</text>
 			<text class="nav-title">选择菇卡</text>

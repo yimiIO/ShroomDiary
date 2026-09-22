@@ -8,6 +8,7 @@ const { asyncRoute, fail, ok, pageParams, requireUser, text } = require('../http
 const { createMediaSignature } = require('../security');
 const {
   addDays,
+  clockTime,
   dateOnly,
   decorateTask,
   groupCurrentTasks,
@@ -22,7 +23,10 @@ const {
 const router = express.Router();
 router.use(requireUser);
 
-const TASK_SELECT = `t.id, t.content, t.description, t.project_id, t.scheduled_date, t.deadline,
+const RECURRENCE_LOOKAHEAD_DAYS = 35;
+
+const TASK_SELECT = `t.id, t.content, t.description, t.project_id, t.scheduled_date,
+  t.scheduled_start_time, t.scheduled_end_time, t.deadline,
   t.tags, t.status, t.recurrence_rule_id, t.occurrence_date, t.compound_item_id,
   t.source_type, t.source_ref_id, t.source_diary_id, t.source_compound_thread_id,
   t.started_at, t.completed_at, t.cancelled_at, t.result_text, t.result_media_ids,
@@ -31,7 +35,9 @@ const TASK_SELECT = `t.id, t.content, t.description, t.project_id, t.scheduled_d
   li.name AS compound_item_name, li.stable_key AS compound_item_key,
   rr.frequency AS recurrence_frequency, rr.starts_on AS recurrence_starts_on,
   rr.ends_on AS recurrence_ends_on, rr.week_days AS recurrence_week_days,
-  rr.month_day AS recurrence_month_day, rr.time_zone AS recurrence_time_zone,
+  rr.month_day AS recurrence_month_day,
+  rr.scheduled_start_time AS recurrence_scheduled_start_time,
+  rr.scheduled_end_time AS recurrence_scheduled_end_time, rr.time_zone AS recurrence_time_zone,
   rr.status AS recurrence_status, rr.version AS recurrence_version`;
 
 const TASK_FROM = `FROM todos t
@@ -47,6 +53,8 @@ function mapTask(row, today = todayInTimeZone('Asia/Shanghai')) {
     endsOn: dateOnly(row.recurrence_ends_on),
     weekDays: row.recurrence_week_days || [],
     monthDay: row.recurrence_month_day,
+    scheduledStartTime: clockTime(row.recurrence_scheduled_start_time),
+    scheduledEndTime: clockTime(row.recurrence_scheduled_end_time),
     timeZone: row.recurrence_time_zone,
     status: row.recurrence_status,
     version: row.recurrence_version
@@ -60,6 +68,8 @@ function mapTask(row, today = todayInTimeZone('Asia/Shanghai')) {
     projectName: row.project_name || '',
     projectStatus: row.project_status || null,
     scheduledDate: row.scheduled_date,
+    scheduledStartTime: clockTime(row.scheduled_start_time),
+    scheduledEndTime: clockTime(row.scheduled_end_time),
     deadline: row.deadline,
     tags: row.tags || [],
     status: row.status,
@@ -114,6 +124,8 @@ function recurrenceFromRow(row) {
     endsOn: dateOnly(row.ends_on),
     weekDays: row.week_days || [],
     monthDay: row.month_day,
+    scheduledStartTime: clockTime(row.scheduled_start_time),
+    scheduledEndTime: clockTime(row.scheduled_end_time),
     timeZone: row.time_zone,
     status: row.status,
     version: row.version,
@@ -128,6 +140,16 @@ function taskSource(body) {
 
 function clientRequestId(value) {
   return text(value, 100) || null;
+}
+
+function scheduleTimes(body) {
+  const hasStart = body.scheduledStartTime !== null && body.scheduledStartTime !== undefined && body.scheduledStartTime !== '';
+  const hasEnd = body.scheduledEndTime !== null && body.scheduledEndTime !== undefined && body.scheduledEndTime !== '';
+  const start = hasStart ? clockTime(body.scheduledStartTime) : null;
+  const end = hasEnd ? clockTime(body.scheduledEndTime) : null;
+  if ((hasStart && !start) || (hasEnd && !end)) return { error: '时间格式不正确' };
+  if (end && (!start || end <= start)) return { error: '结束时间必须晚于开始时间' };
+  return { start, end };
 }
 
 function signedMediaUrl(mediaId) {
@@ -182,14 +204,16 @@ async function insertOccurrence(client, userId, rule, occurrenceDate) {
   const id = crypto.randomUUID();
   const result = await client.query(
     `INSERT INTO todos
-      (id, user_id, content, description, project_id, scheduled_date, deadline, status,
+      (id, user_id, content, description, project_id, scheduled_date,
+       scheduled_start_time, scheduled_end_time, deadline, status,
        recurrence_rule_id, occurrence_date, compound_item_id, source_type, position)
-     VALUES ($1, $2, $3, $4, $5, $6, NULL, 'pending', $7, $6, $8, 'RECURRENCE',
+     VALUES ($1, $2, $3, $4, $5, $6, $9, $10, NULL, 'pending', $7, $6, $8, 'RECURRENCE',
        COALESCE((SELECT max(position) + 1 FROM todos WHERE user_id = $2 AND project_id IS NOT DISTINCT FROM $5), 1))
      ON CONFLICT (user_id, recurrence_rule_id, occurrence_date)
        WHERE recurrence_rule_id IS NOT NULL AND occurrence_date IS NOT NULL AND deleted_at IS NULL
      DO NOTHING RETURNING id`,
-    [id, userId, rule.title, rule.description, rule.projectId, occurrenceDate, rule.id, rule.compoundItemId]
+    [id, userId, rule.title, rule.description, rule.projectId, occurrenceDate, rule.id, rule.compoundItemId,
+      rule.scheduledStartTime, rule.scheduledEndTime]
   );
   if (result.rowCount) {
     await insertEvent(client, {
@@ -231,8 +255,7 @@ async function generateActiveRules(userId, today) {
       [userId, today]
     );
     for (const row of rules.rows) {
-      const daysAhead = row.frequency === 'DAILY' ? 1 : (row.frequency === 'WEEKLY' ? 7 : 32);
-      const through = [addDays(today, daysAhead), row.starts_on].sort().pop();
+      const through = [addDays(today, RECURRENCE_LOOKAHEAD_DAYS), row.starts_on].sort().pop();
       await generateRule(client, userId, row, through);
     }
   });
@@ -393,6 +416,8 @@ router.post('/create', asyncRoute(async (req, res) => {
   const deadline = req.body.deadline ? dateOnly(req.body.deadline) : null;
   if (req.body.scheduledDate && !scheduledDate) return fail(res, 400, '安排日期格式不正确');
   if (req.body.deadline && !deadline) return fail(res, 400, '截止日期格式不正确');
+  const times = scheduleTimes(req.body);
+  if (times.error) return fail(res, 400, times.error);
   const timeZone = normalizeTimeZone(req.body.timeZone);
   const requestId = clientRequestId(req.body.clientRequestId);
   const sourceType = taskSource(req.body);
@@ -412,21 +437,25 @@ router.post('/create', asyncRoute(async (req, res) => {
     const compoundItemId = await assertOwned(client, 'life_os_items', req.body.compoundItemId || null, req.user.id, '复利方向不存在');
     const sourceDiaryId = await assertOwned(client, 'diaries', req.body.sourceDiaryId || null, req.user.id, '来源日记不存在');
     const sourceCompoundThreadId = await assertOwned(client, 'compound_threads', req.body.sourceCompoundThreadId || null, req.user.id, '复利推进不存在');
-    const recurrence = req.body.recurrence ? normalizeRecurrence(req.body.recurrence, scheduledDate || todayInTimeZone(timeZone), timeZone) : null;
+    const recurrence = req.body.recurrence ? normalizeRecurrence({
+      ...req.body.recurrence,
+      scheduledStartTime: req.body.recurrence.scheduledStartTime ?? times.start,
+      scheduledEndTime: req.body.recurrence.scheduledEndTime ?? times.end
+    }, scheduledDate || todayInTimeZone(timeZone), timeZone) : null;
     if (req.body.recurrence && !recurrence) return { inputError: '重复设置不完整' };
     if (recurrence) {
       const ruleId = crypto.randomUUID();
       const insertedRule = await client.query(
         `INSERT INTO todo_recurrence_rules
           (id, user_id, title, description, project_id, compound_item_id, frequency,
-           starts_on, ends_on, week_days, month_day, time_zone, client_request_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13) RETURNING *`,
+           starts_on, ends_on, week_days, month_day, scheduled_start_time,
+           scheduled_end_time, time_zone, client_request_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15) RETURNING *`,
         [ruleId, req.user.id, title, description, projectId, compoundItemId, recurrence.frequency,
           recurrence.startsOn, recurrence.endsOn, JSON.stringify(recurrence.weekDays), recurrence.monthDay,
-          recurrence.timeZone, requestId]
+          recurrence.scheduledStartTime, recurrence.scheduledEndTime, recurrence.timeZone, requestId]
       );
-      const daysAhead = recurrence.frequency === 'DAILY' ? 1 : (recurrence.frequency === 'WEEKLY' ? 7 : 32);
-      const through = [addDays(todayInTimeZone(recurrence.timeZone), daysAhead), recurrence.startsOn].sort().pop();
+      const through = [addDays(todayInTimeZone(recurrence.timeZone), RECURRENCE_LOOKAHEAD_DAYS), recurrence.startsOn].sort().pop();
       await generateRule(client, req.user.id, insertedRule.rows[0], through);
       const first = await client.query(
         `SELECT id FROM todos WHERE user_id = $1 AND recurrence_rule_id = $2 AND deleted_at IS NULL
@@ -438,13 +467,15 @@ router.post('/create', asyncRoute(async (req, res) => {
     const id = crypto.randomUUID();
     await client.query(
       `INSERT INTO todos
-        (id, user_id, content, description, project_id, scheduled_date, deadline, tags,
+        (id, user_id, content, description, project_id, scheduled_date,
+         scheduled_start_time, scheduled_end_time, deadline, tags,
          status, compound_item_id, source_type, source_ref_id, source_diary_id,
          source_compound_thread_id, client_request_id, position)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'[]'::jsonb,'pending',$8,$9,$10,$11,$12,$13,
+       VALUES ($1,$2,$3,$4,$5,$6,$14,$15,$7,'[]'::jsonb,'pending',$8,$9,$10,$11,$12,$13,
          COALESCE((SELECT max(position) + 1 FROM todos WHERE user_id = $2 AND project_id IS NOT DISTINCT FROM $5), 1))`,
       [id, req.user.id, title, description, projectId, scheduledDate, deadline, compoundItemId,
-        sourceType, clientRequestId(req.body.sourceRefId), sourceDiaryId, sourceCompoundThreadId, requestId]
+        sourceType, clientRequestId(req.body.sourceRefId), sourceDiaryId, sourceCompoundThreadId, requestId,
+        times.start, times.end]
     );
     await insertEvent(client, {
       userId: req.user.id, todoId: id, eventType: 'CREATED', eventDate: scheduledDate,
@@ -471,6 +502,8 @@ router.put('/update', asyncRoute(async (req, res) => {
   const deadline = req.body.deadline ? dateOnly(req.body.deadline) : null;
   if (req.body.scheduledDate && !scheduledDate) return fail(res, 400, '安排日期格式不正确');
   if (req.body.deadline && !deadline) return fail(res, 400, '截止日期格式不正确');
+  const times = scheduleTimes(req.body);
+  if (times.error) return fail(res, 400, times.error);
   const updated = await db.transaction(async client => {
     const current = await taskRow(client, req.query.id, req.user.id, true);
     if (!current) return { missing: true };
@@ -479,12 +512,13 @@ router.put('/update', asyncRoute(async (req, res) => {
     const compoundItemId = await assertOwned(client, 'life_os_items', req.body.compoundItemId || null, req.user.id, '复利方向不存在');
     await client.query(
       `UPDATE todos SET content=$3, description=$4, project_id=$5, scheduled_date=$6,
+        scheduled_start_time=$9, scheduled_end_time=$10,
         deadline=$7, compound_item_id=$8, version=version+1, updated_at=now()
        WHERE id=$1 AND user_id=$2`,
       [req.query.id, req.user.id, title, text(req.body.description, 5000), projectId,
-        scheduledDate, deadline, compoundItemId]
+        scheduledDate, deadline, compoundItemId, times.start, times.end]
     );
-    await insertEvent(client, { userId: req.user.id, todoId: req.query.id, eventType: 'UPDATED', payload: { title, scheduledDate, deadline } });
+    await insertEvent(client, { userId: req.user.id, todoId: req.query.id, eventType: 'UPDATED', payload: { title, scheduledDate, scheduledStartTime: times.start, scheduledEndTime: times.end, deadline } });
     return { row: await taskRow(client, req.query.id, req.user.id) };
   });
   if (updated.missing) return fail(res, 404, '待办不存在');
@@ -804,20 +838,23 @@ router.put('/recurrences/:id', asyncRoute(async (req, res) => {
     const updatedRule = await client.query(
       `UPDATE todo_recurrence_rules SET title=$3, description=$4, project_id=$5,
         compound_item_id=$6, frequency=$7, starts_on=$8, ends_on=$9, week_days=$10::jsonb,
-        month_day=$11, time_zone=$12, status='ACTIVE', last_generated_through=$13,
+        month_day=$11, scheduled_start_time=$12, scheduled_end_time=$13,
+        time_zone=$14, status='ACTIVE', last_generated_through=$15,
         version=version+1, updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *`,
       [req.params.id, req.user.id, title, text(req.body.description, 5000), projectId,
         compoundItemId, recurrence.frequency, recurrence.startsOn, recurrence.endsOn,
-        JSON.stringify(recurrence.weekDays), recurrence.monthDay, recurrence.timeZone,
+        JSON.stringify(recurrence.weekDays), recurrence.monthDay,
+        recurrence.scheduledStartTime, recurrence.scheduledEndTime, recurrence.timeZone,
         addDays(recurrence.startsOn, -1)]
     );
     if (currentTask) {
       await client.query(
         `UPDATE todos SET content=$3, description=$4, project_id=$5, scheduled_date=$6,
-          occurrence_date=$6, compound_item_id=$7, version=version+1, updated_at=now()
+          occurrence_date=$6, scheduled_start_time=$8, scheduled_end_time=$9,
+          compound_item_id=$7, version=version+1, updated_at=now()
           WHERE id=$1 AND user_id=$2`,
         [currentTask.id, req.user.id, title, text(req.body.description, 5000), projectId,
-          recurrence.startsOn, compoundItemId]
+          recurrence.startsOn, compoundItemId, recurrence.scheduledStartTime, recurrence.scheduledEndTime]
       );
       await insertEvent(client, {
         userId: req.user.id, todoId: currentTask.id, eventType: 'RESCHEDULED',
@@ -826,8 +863,7 @@ router.put('/recurrences/:id', asyncRoute(async (req, res) => {
         idempotencyKey: operationId ? `recurrence:${req.params.id}:update:${operationId}` : null
       });
     }
-    const daysAhead = recurrence.frequency === 'DAILY' ? 1 : (recurrence.frequency === 'WEEKLY' ? 7 : 32);
-    await generateRule(client, req.user.id, updatedRule.rows[0], addDays(todayInTimeZone(recurrence.timeZone), daysAhead));
+    await generateRule(client, req.user.id, updatedRule.rows[0], addDays(todayInTimeZone(recurrence.timeZone), RECURRENCE_LOOKAHEAD_DAYS));
     return { row: updatedRule.rows[0] };
   });
   if (result.missing) return fail(res, 404, '重复规则不存在');

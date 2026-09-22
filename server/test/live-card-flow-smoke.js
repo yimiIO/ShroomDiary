@@ -33,8 +33,8 @@ async function cleanup() {
 async function run() {
   await cleanup();
   try {
-    await api('/api/auth/v1/register', { method: 'POST', body: { mobile: mobileA, password, nickname: 'Card flow A' } });
-    await api('/api/auth/v1/register', { method: 'POST', body: { mobile: mobileB, password, nickname: 'Card flow B' } });
+    await api('/api/auth/v1/register', { method: 'POST', body: { mobile: mobileA, password, nickname: 'Card flow A', acceptedTerms: true } });
+    await api('/api/auth/v1/register', { method: 'POST', body: { mobile: mobileB, password, nickname: 'Card flow B', acceptedTerms: true } });
     const sessionA = await api('/api/auth/v1/login', { method: 'POST', body: { mobile: mobileA, password } });
     const sessionB = await api('/api/auth/v1/login', { method: 'POST', body: { mobile: mobileB, password } });
     const historical = await api('/api/cards/v1/create', {

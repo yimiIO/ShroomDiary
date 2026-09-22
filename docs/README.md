@@ -7,6 +7,11 @@
 - [LIFE_OS.md](./LIFE_OS.md)：人生 OS 与菇卡/行动的区别、生成修订机制、数据与 API 契约。
 - [INQUIRIES.md](./INQUIRIES.md)：未解之问的入口、证据生命周期、AI 复盘和隐私边界。
 - [TODO_PROJECTS.md](./TODO_PROJECTS.md)：待办、项目、重复实例、行动记录与复利系统的统一行动层。
+- [ADMIN_CONSOLE.md](./ADMIN_CONSOLE.md)：正式管理后台、权限边界、Agent Runner 协议与部署方式。
+- [SHROOM_BRAND_SYSTEM.md](./SHROOM_BRAND_SYSTEM.md)：Shroom 正式品牌色、可读性门禁、App 图标与官方账号视觉规则。
+- [SHROOM_BRAND_IDENTITY_AGENT.md](./SHROOM_BRAND_IDENTITY_AGENT.md)：头像、商标图形与运营角色分层，6 套商标级图形方向与品牌 Agent 推荐。
+- [SHROOM_MASCOT_IP_AGENT.md](./SHROOM_MASCOT_IP_AGENT.md)：面向小红书和公众号的卡通 IP 角色策略，小菇的人格、动作与运营规则。
+- [XIAOHONGSHU_BRAND_REVIEW_10.md](./XIAOHONGSHU_BRAND_REVIEW_10.md)：10 套官方账号品牌宣发候选路线，状态为内部审核、未发布。
 
 下面的 `API.md` 和 `database.sql` 是项目早期基于 MySQL 草案留下的参考，不能代表当前生产 PostgreSQL API 与数据库；现行服务端结构以 `server/sql/`、`server/src/routes/` 和 `server/STORAGE.md` 为准。
 

@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="shell">
 			<view class="header">
 				<button class="back" aria-label="返回" @tap="goBack">‹</button>

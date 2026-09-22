@@ -1,6 +1,6 @@
 <template>
 	<view class="detail-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar"><button @tap="goBack">‹</button><text>待办详情</text><button @tap="edit">调整</button></view>
 		<scroll-view v-if="task" class="content" scroll-y>
 			<view class="hero">
@@ -23,6 +23,7 @@
 				<text class="section-title">安排</text>
 				<view v-if="task.projectName"><text>项目</text><text>{{ task.projectName }}</text></view>
 				<view><text>安排日期</text><text>{{ task.scheduledDate || '未设置' }}</text></view>
+				<view><text>时间</text><text>{{ scheduleTimeLabel }}</text></view>
 				<view><text>截止日期</text><text>{{ task.deadline || '未设置' }}</text></view>
 				<view><text>重复</text><text>{{ task.recurrence ? task.recurrence.label : '不重复' }}</text></view>
 				<view v-if="task.compoundItemName"><text>复利方向</text><text>{{ task.compoundItemName }}</text></view>
@@ -55,9 +56,11 @@
 <script>
 import { todoDetail, todoResult, todoStatus } from '@/api/todo';
 import { uploadImage } from '@/api/upload';
+import wechatPrivacy from '@/utils/wechat-privacy.js';
+const { PRIVACY_DENIED_MESSAGE, requireWechatPrivacyAuthorization, isWechatPrivacyDenied } = wechatPrivacy;
 export default {
 	data() { return { statusBarHeight: 0, taskId: '', task: null, timeZone: this.localTimeZone(), showResultSheet: false, resultText: '', resultAttachments: [], uploading: false, uploadProgress: 0, saving: false }; },
-	computed: { statusLabel() { return { pending: '待做', in_progress: '进行中', completed: '已完成', cancelled: '已取消' }[this.task.status] || ''; } },
+	computed: { statusLabel() { return { pending: '待做', in_progress: '进行中', completed: '已完成', cancelled: '已取消' }[this.task.status] || ''; }, scheduleTimeLabel() { if (!this.task.scheduledStartTime) return '未设置'; return this.task.scheduledEndTime ? `${this.task.scheduledStartTime} – ${this.task.scheduledEndTime}` : this.task.scheduledStartTime; } },
 	onLoad(options) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.taskId = options.id; }, onShow() { this.load(); },
 	methods: {
 		localTimeZone() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; } catch (_) { return 'Asia/Shanghai'; } },
@@ -66,7 +69,7 @@ export default {
 		openResultSheet() { this.resultText = this.task.result || ''; this.resultAttachments = [...(this.task.resultMedia || [])]; this.showResultSheet = true; },
 		async changeStatus(action) { try { const res = await this.$http.patch(todoStatus, { id: this.task.id, action, version: this.task.version, operationId: this.requestId(), timeZone: this.timeZone }); if (res.code !== 200) throw new Error(res.message); this.task = { ...this.task, ...res.data }; uni.showToast({ title: action === 'START' ? '已经开始推进' : '状态已更新', icon: 'none' }); this.load(); } catch (e) { uni.showToast({ title: e.message || '操作失败', icon: 'none' }); } },
 		async complete() { if (this.saving || this.uploading) return; this.saving = true; try { const operationId = this.requestId(); const payload = { id: this.task.id, version: this.task.version, result: this.resultText, resultMediaIds: this.resultAttachments.map(item => item.id), operationId, timeZone: this.timeZone }; const editingResult = this.task.status === 'completed'; const res = await this.$http.patch(editingResult ? todoResult : todoStatus, editingResult ? payload : { ...payload, action: 'COMPLETE' }); if (res.code !== 200) throw new Error(res.message); this.task = { ...this.task, ...res.data }; this.showResultSheet = false; uni.showToast({ title: editingResult ? '完成结果已更新' : '已完成并留下行动记录', icon: 'none' }); this.load(); } catch (e) { uni.showToast({ title: e.message || '结果保存失败', icon: 'none' }); } finally { this.saving = false; } },
-		async chooseAttachment() { if (this.uploading || this.resultAttachments.length >= 9) return; try { const selected = await new Promise((resolve, reject) => uni.chooseImage({ count: 9 - this.resultAttachments.length, sizeType: ['compressed'], success: resolve, fail: reject })); const paths = selected.tempFilePaths || []; this.uploading = true; for (let index = 0; index < paths.length; index += 1) { this.uploadProgress = Math.round(index / Math.max(1, paths.length) * 100); const response = await this.$http.upload(uploadImage, { filePath: paths[index], name: 'file', getTask: task => this.trackUpload(task, index, paths.length) }); if (response.code === 200 && response.data && response.data.id) this.resultAttachments.push({ id: response.data.id, url: response.data.url }); } this.uploadProgress = 100; } catch (error) { if (!String((error && error.errMsg) || error).includes('cancel')) uni.showToast({ title: '结果照片没有保存成功', icon: 'none' }); } finally { this.uploading = false; } },
+		async chooseAttachment() { if (this.uploading || this.resultAttachments.length >= 9) return; try { await requireWechatPrivacyAuthorization(); const selected = await new Promise((resolve, reject) => uni.chooseImage({ count: 9 - this.resultAttachments.length, sourceType: ['album'], sizeType: ['compressed'], success: resolve, fail: reject })); const paths = selected.tempFilePaths || []; this.uploading = true; for (let index = 0; index < paths.length; index += 1) { this.uploadProgress = Math.round(index / Math.max(1, paths.length) * 100); const response = await this.$http.upload(uploadImage, { filePath: paths[index], name: 'file', getTask: task => this.trackUpload(task, index, paths.length) }); if (response.code === 200 && response.data && response.data.id) this.resultAttachments.push({ id: response.data.id, url: response.data.url }); } this.uploadProgress = 100; } catch (error) { if (isWechatPrivacyDenied(error)) uni.showToast({ title: PRIVACY_DENIED_MESSAGE, icon: 'none' }); else if (!String((error && error.errMsg) || error).includes('cancel')) uni.showToast({ title: '结果照片没有保存成功', icon: 'none' }); } finally { this.uploading = false; } },
 		trackUpload(task, index, total) { if (task && typeof task.onProgressUpdate === 'function') task.onProgressUpdate(event => { const partial = Math.min(99, Number(event.progress) || 0) / 100; this.uploadProgress = Math.min(99, Math.round((index + partial) / Math.max(1, total) * 100)); }); },
 		removeAttachment(media) { this.resultAttachments = this.resultAttachments.filter(item => item.id !== media.id); },
 		previewResultMedia(media) { uni.previewImage({ current: media.url, urls: this.task.resultMedia.map(item => item.url) }); },
@@ -86,6 +89,11 @@ button { margin: 0; padding: 0; border: 0; background: transparent; line-height:
 .detail-page { min-height: 100vh; background: #f3f1e9; color: #27322a; }
 .navbar { display: flex; align-items: center; padding: 24rpx 30rpx 19rpx; } .navbar > text { flex: 1; text-align: center; font: 700 29rpx/1.2 Georgia, 'Songti SC', serif; } .navbar button { min-width: 70rpx; color: #637067; font-size: 23rpx; } .navbar button:last-child { text-align: right; }
 .content { height: calc(100vh - 120rpx - env(safe-area-inset-top)); }
+/* #ifdef MP-WEIXIN */
+.detail-page { height: 100vh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.navbar { flex: 0 0 auto; }
+.content { min-height: 0; height: 0; flex: 1; }
+/* #endif */
 .hero { display: flex; flex-direction: column; margin: 12rpx 30rpx; padding: 31rpx 28rpx; border-radius: 27rpx; background: #25352a; color: #fff; }
 .status-line { display: flex; justify-content: space-between; color: #c1cbbd; font-size: 18rpx; letter-spacing: 1rpx; } .status-line .overdue { color: #ffc7bd; }
 .title { margin-top: 19rpx; font: 700 34rpx/1.45 Georgia, 'Songti SC', serif; overflow-wrap: anywhere; }

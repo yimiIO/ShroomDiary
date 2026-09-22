@@ -45,7 +45,7 @@ async function run() {
 	try {
 		await api('/api/auth/v1/register', {
 			method: 'POST',
-			body: { mobile, password, nickname: 'Voice smoke test' }
+			body: { mobile, password, nickname: 'Voice smoke test', acceptedTerms: true }
 		});
 		const session = await api('/api/auth/v1/login', {
 			method: 'POST',

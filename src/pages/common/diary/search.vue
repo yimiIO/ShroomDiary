@@ -1,6 +1,6 @@
 <template>
 	<view class="archive-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 
 		<view class="archive-shell">
 			<view class="archive-header">

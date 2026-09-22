@@ -1,6 +1,6 @@
 <template>
 	<view class="password-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="password-shell">
 			<view class="top-row">
 				<view class="back-button" @tap="goBack">‹</view>

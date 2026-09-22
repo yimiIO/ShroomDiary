@@ -1,6 +1,6 @@
 <template>
 	<view class="discover-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 
 		<view class="discover-shell">
 			<view class="discover-header">

@@ -1,6 +1,6 @@
 <template>
 	<view class="card-detail-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar">
 			<button class="nav-back" @tap="goBack" aria-label="返回">‹</button>
 			<text class="nav-title">{{ isOwner ? '我的菇卡' : '公开菇卡' }}</text>
@@ -422,6 +422,12 @@ export default {
 .nav-space { width: 96rpx; }
 
 .content-scroll { height: calc(100vh - 108rpx); }
+
+/* #ifdef MP-WEIXIN */
+.card-detail-page { height: 100vh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.navbar { flex: 0 0 auto; }
+.content-scroll { min-height: 0; height: 0; flex: 1; }
+/* #endif */
 
 .detail-shell {
 	box-sizing: border-box;

@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  getDiarySourceActivity,
   listDiarySourceActivities,
   normalizeCodexActivity,
   normalizeSyncInterval,
@@ -63,4 +64,32 @@ test('diary source activity queries stay user scoped and honor AI permission', a
 
   await listDiarySourceActivities(queryable, 'user-1', '2026-09-13');
   assert.match(captured.sql, /c\.include_in_diary/);
+});
+
+test('a synced Codex task opens an owner-scoped aggregate detail', async () => {
+  const calls = [];
+  const queryable = {
+    async query(sql, values) {
+      calls.push({ sql, values });
+      if (calls.length === 1) return { rowCount: 1, rows: [{ connection_id: 'connection-1', external_id: 'thread-1:turn-2' }] };
+      if (calls.length === 2) return { rowCount: 1, rows: [{
+        id: 'event-1', connection_id: 'connection-1', provider: 'CODEX', activity_type: 'TASK',
+        title: '修复时间轴', project_label: 'Shroom', source_kind: 'codex', started_at: null,
+        completed_at: '2026-09-20T11:00:00Z', task_runtime_seconds: 600, active_seconds_estimate: 300,
+        outcome_status: 'COMPLETED', turn_count: 2, completed_turns: 2, interrupted_turns: 0,
+        failed_turns: 0, metadata: {}, display_name: '菇日记 · Codex 数据源'
+      }] };
+      return { rows: [{
+        id: 'turn-1', source_kind: 'codex', started_at: null, completed_at: '2026-09-20T10:00:00Z',
+        task_runtime_seconds: 300, active_seconds_estimate: 120, outcome_status: 'COMPLETED'
+      }] };
+    }
+  };
+  const detail = await getDiarySourceActivity(queryable, 'user-1', 'event-1');
+
+  assert.equal(detail.activity.source, 'CODEX');
+  assert.equal(detail.turns.length, 1);
+  assert.deepEqual(calls[0].values, ['event-1', 'user-1']);
+  calls.slice(1).forEach(call => assert.equal(call.values[0], 'user-1'));
+  assert.match(calls[1].sql, /regexp_replace\(e\.external_id/u);
 });

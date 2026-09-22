@@ -120,7 +120,10 @@ npm run dev:h5
 npm run build:h5
 npm run build:app-plus
 npm run build:mp-weixin
+npm run build:wechat-project
 ```
+
+`build:wechat-project` 会生成并校验可直接导入微信开发者工具的工程，目录为 `dist/build/mp-weixin`。公众平台域名、隐私能力和真机验收清单见 [微信小程序工程说明](./docs/WECHAT_MINIPROGRAM.md)。
 
 ## 测试
 

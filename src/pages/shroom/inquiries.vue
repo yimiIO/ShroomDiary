@@ -1,6 +1,6 @@
 <template>
 	<view class="inquiries-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar">
 			<button class="nav-back" @tap="goBack"><text>‹</text></button>
 			<view class="nav-copy">

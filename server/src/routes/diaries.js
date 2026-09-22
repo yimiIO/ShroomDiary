@@ -14,9 +14,31 @@ const { enqueueFriendSync, removeDiaryFriendEffects } = require('../friend-sync'
 const { invalidateDiaryInquiryEvidence } = require('../inquiry-store');
 const { listDiarySourceActivities } = require('../data-sources');
 const { asyncRoute, fail, ok, pageParams, requireUser, text, visibility } = require('../http');
+const { maybeAwardSevenDayReward } = require('../billing-store');
+const { diaryDateFromOccurredAt, isTodayDiaryDate, shanghaiDate } = require('../diary-write-policy');
 
 const router = express.Router();
 router.use(requireUser);
+
+const MAX_OVERVIEW_DAYS = 370;
+
+function overviewDate(value) {
+  const source = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return null;
+  const parsed = new Date(`${source}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== source ? null : source;
+}
+
+function overviewPreview(value, fallback) {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  return clean ? clean.slice(0, 96) : fallback;
+}
+
+function overviewMinutes(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const match = String(value).match(/^([01]\d|2[0-3]):([0-5]\d)/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
 
 function signedMediaUrl(mediaId) {
   const expires = Math.floor(Date.now() / 1000) + 3600;
@@ -137,6 +159,14 @@ function occurredAtInput(body) {
   return `${localDate} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 }
 
+function assertTodayDiaryWrite(occurredAt, fallbackDate = null) {
+  const requestedDate = occurredAt ? diaryDateFromOccurredAt(occurredAt) : fallbackDate || shanghaiDate();
+  if (requestedDate && isTodayDiaryDate(requestedDate)) return;
+  throw Object.assign(new Error('过去的日记只能查看，不能修改或补写'), {
+    code: 'SHROOM_DIARY_READ_ONLY'
+  });
+}
+
 router.get('/calendar', asyncRoute(async (req, res) => {
   const month = String(req.query.month || '');
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
@@ -173,6 +203,132 @@ router.get('/calendar', asyncRoute(async (req, res) => {
     [req.user.id, month]
   );
   return ok(res, { list: result.rows });
+}));
+
+router.get('/overview', asyncRoute(async (req, res) => {
+  const start = overviewDate(req.query.start);
+  const end = overviewDate(req.query.end);
+  if (!start || !end || end < start) return fail(res, 400, '日期范围不正确');
+  const span = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+  if (!Number.isFinite(span) || span < 1 || span > MAX_OVERVIEW_DAYS) {
+    return fail(res, 400, '日期范围不能超过一年');
+  }
+
+  const [diaries, plans, actions, activities] = await Promise.all([
+    db.query(
+      `SELECT id, content, voice, hour, minute,
+              to_char(occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS local_date,
+              occurred_at
+         FROM diaries
+        WHERE user_id = $1 AND deleted_at IS NULL
+          AND (occurred_at AT TIME ZONE 'Asia/Shanghai')::date BETWEEN $2::date AND $3::date
+        ORDER BY occurred_at`,
+      [req.user.id, start, end]
+    ),
+    db.query(
+      `SELECT t.id, t.content, t.status, t.scheduled_start_time,
+              t.scheduled_end_time, p.name AS project_name,
+              to_char(t.scheduled_date, 'YYYY-MM-DD') AS local_date
+         FROM todos t LEFT JOIN todo_projects p ON p.id = t.project_id
+        WHERE t.user_id = $1 AND t.deleted_at IS NULL
+          AND t.scheduled_date BETWEEN $2::date AND $3::date
+          AND t.status IN ('pending', 'in_progress')
+        ORDER BY t.scheduled_date, t.scheduled_start_time NULLS LAST, t.position`,
+      [req.user.id, start, end]
+    ),
+    db.query(
+      `SELECT e.id, e.todo_id, e.created_at, e.payload,
+              t.content, t.result_text, p.name AS project_name,
+              to_char(e.event_date, 'YYYY-MM-DD') AS local_date,
+              EXTRACT(hour FROM e.created_at AT TIME ZONE 'Asia/Shanghai')::int AS local_hour,
+              EXTRACT(minute FROM e.created_at AT TIME ZONE 'Asia/Shanghai')::int AS local_minute
+         FROM todo_events e
+         JOIN todos t ON t.id = e.todo_id AND t.user_id = e.user_id AND t.deleted_at IS NULL
+         LEFT JOIN todo_projects p ON p.id = t.project_id
+        WHERE e.user_id = $1 AND e.event_type = 'COMPLETED' AND e.visible_in_diary
+          AND e.valid AND e.event_date BETWEEN $2::date AND $3::date
+        ORDER BY e.event_date, e.created_at`,
+      [req.user.id, start, end]
+    ),
+    db.query(
+      `SELECT min(e.id::text) AS id, e.connection_id, e.provider,
+              regexp_replace((array_agg(e.title ORDER BY e.completed_at))[1], ' · 后续 [0-9]+$', '') AS title,
+              COALESCE((array_agg(NULLIF(e.project_label, '') ORDER BY e.completed_at DESC)
+                FILTER (WHERE e.project_label <> ''))[1], '') AS project_label,
+              max(e.completed_at) AS completed_at,
+              to_char(max(e.completed_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS local_date,
+              EXTRACT(hour FROM max(e.completed_at) AT TIME ZONE 'Asia/Shanghai')::int AS local_hour,
+              EXTRACT(minute FROM max(e.completed_at) AT TIME ZONE 'Asia/Shanghai')::int AS local_minute,
+              count(*)::int AS turn_count,
+              (array_agg(e.outcome_status ORDER BY e.completed_at DESC))[1] AS outcome_status,
+              c.display_name
+         FROM external_activity_events e
+         JOIN data_source_connections c ON c.id = e.connection_id AND c.user_id = e.user_id
+        WHERE e.user_id = $1 AND c.include_in_diary
+          AND (e.completed_at AT TIME ZONE 'Asia/Shanghai')::date BETWEEN $2::date AND $3::date
+        GROUP BY e.connection_id, e.provider, regexp_replace(e.external_id, ':[^:]+$', ''), c.display_name
+        ORDER BY max(e.completed_at)`,
+      [req.user.id, start, end]
+    )
+  ]);
+
+  const entries = [];
+  for (const row of diaries.rows) {
+    const startMinutes = Number.isInteger(row.hour) && Number.isInteger(row.minute)
+      ? row.hour * 60 + row.minute : null;
+    entries.push({
+      key: `diary-${row.id}`, id: row.id, kind: 'DIARY', date: row.local_date,
+      title: overviewPreview(row.content, row.voice ? '语音日记' : '日记'),
+      startMinutes, endMinutes: null, tone: row.voice ? 'voice' : 'diary',
+      sourceIcon: row.voice ? '声' : '文', badge: row.voice ? '语音日记' : '日记'
+    });
+  }
+  for (const row of plans.rows) {
+    entries.push({
+      key: `plan-${row.id}`, id: row.id, kind: 'PLAN', date: row.local_date,
+      title: row.content, startMinutes: overviewMinutes(row.scheduled_start_time),
+      endMinutes: overviewMinutes(row.scheduled_end_time), tone: 'plan', sourceIcon: '○',
+      badge: '计划', meta: row.project_name || '计划不代表已经发生'
+    });
+  }
+  for (const row of actions.rows) {
+    entries.push({
+      key: `action-${row.id}`, id: row.todo_id, eventId: row.id, kind: 'ACTION',
+      date: row.local_date, title: row.content,
+      startMinutes: Number(row.local_hour) * 60 + Number(row.local_minute), endMinutes: null,
+      tone: 'action', sourceIcon: '✓', badge: '完成记录',
+      meta: row.result_text || row.payload?.result || row.project_name || ''
+    });
+  }
+  for (const row of activities.rows) {
+    entries.push({
+      key: `source-${row.id}`, id: row.id, kind: 'SOURCE', date: row.local_date,
+      title: row.title, startMinutes: Number(row.local_hour) * 60 + Number(row.local_minute),
+      endMinutes: null, tone: String(row.provider).toLowerCase() === 'codex' ? 'codex' : 'source',
+      sourceIcon: String(row.provider).toLowerCase() === 'codex' ? 'C' : '◇',
+      badge: String(row.provider).toLowerCase() === 'codex' ? 'Codex 任务' : row.display_name,
+      meta: row.project_label || `${row.turn_count} 个对话轮次`
+    });
+  }
+  entries.sort((left, right) => left.date.localeCompare(right.date)
+    || (left.startMinutes === null ? 1500 : left.startMinutes) - (right.startMinutes === null ? 1500 : right.startMinutes));
+
+  const daily = new Map();
+  const dayFor = date => {
+    if (!daily.has(date)) daily.set(date, {
+      date, diaryCount: 0, planCount: 0, completedCount: 0, sourceCount: 0, totalCount: 0
+    });
+    return daily.get(date);
+  };
+  for (const entry of entries) {
+    const day = dayFor(entry.date);
+    if (entry.kind === 'DIARY') day.diaryCount += 1;
+    if (entry.kind === 'PLAN') day.planCount += 1;
+    if (entry.kind === 'ACTION') day.completedCount += 1;
+    if (entry.kind === 'SOURCE') day.sourceCount += 1;
+    day.totalCount += 1;
+  }
+  return ok(res, { start, end, days: [...daily.values()], entries });
 }));
 
 router.get('/dates', asyncRoute(async (req, res) => {
@@ -280,6 +436,7 @@ router.get('/view', asyncRoute(async (req, res) => {
 router.post('/create', asyncRoute(async (req, res) => {
   const content = text(req.body.content, 5000);
   const occurredAt = occurredAtInput(req.body);
+  assertTodayDiaryWrite(occurredAt);
   const [images, voice, linkedCards] = await Promise.all([
     ownedMediaIds(req.body.images, req.user.id),
     ownedVoice(req.body.voice, req.user.id),
@@ -306,6 +463,7 @@ router.post('/create', asyncRoute(async (req, res) => {
     await enqueueDiaryIndex(client, inserted.rows[0]);
     await enqueueFriendSync(client, inserted.rows[0]);
     await bumpCorpusRevision(client, req.user.id);
+    await maybeAwardSevenDayReward(client, req.user.id);
     return inserted;
   });
   return ok(res, mapDiary(result.rows[0]), '日记已保存');
@@ -322,12 +480,15 @@ router.put('/update', asyncRoute(async (req, res) => {
   if (!content && !voice) return fail(res, 400, '写点文字或留下一段语音吧');
   const result = await db.transaction(async client => {
     const currentResult = await client.query(
-      `SELECT id, user_id, content, voice, content_version, index_epoch, ai_allowed
+      `SELECT id, user_id, content, voice, content_version, index_epoch, ai_allowed,
+              to_char(occurred_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS diary_date
          FROM diaries WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL FOR UPDATE`,
       [req.query.id, req.user.id]
     );
     if (!currentResult.rowCount) return currentResult;
     const current = currentResult.rows[0];
+    assertTodayDiaryWrite(null, current.diary_date);
+    if (occurredAt) assertTodayDiaryWrite(occurredAt);
     const contentChanged = current.content !== content;
     const voiceChanged = JSON.stringify(current.voice || null) !== JSON.stringify(voice || null);
     const analysisChanged = contentChanged || voiceChanged;

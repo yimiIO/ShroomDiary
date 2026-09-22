@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="shell">
 			<view class="header"><view class="back" @tap="goBack">‹</view><view><text class="kicker">DATA OWNERSHIP</text><text class="title">带走我的数据</text></view></view>
 			<view class="statement"><text class="statement-index">YOUR DATA</text><text class="statement-title">你的记忆，不该被困在一个产品里。</text><text class="statement-copy">导出内容包括日记、人脉、互动、评分、承诺、菇卡、待办、人生 OS 和月度复盘；不包含密码或登录会话。</text></view>

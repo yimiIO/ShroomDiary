@@ -1,6 +1,6 @@
 <template>
 	<view class="page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="nav"><view class="back" @tap="goBack">‹</view><view><text>MY OBSERVERS</text><text>我的观察席</text></view></view>
 		<view class="shell">
 			<view class="intro">

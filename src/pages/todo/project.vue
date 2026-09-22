@@ -1,15 +1,22 @@
 <template>
 	<view class="project-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+		<shroom-page-top-spacer />
 		<view class="navbar"><button @tap="goBack">‹</button><text>项目</text><button @tap="menu">···</button></view>
 		<scroll-view v-if="project" class="content" scroll-y>
 			<view class="header"><text class="name">{{ project.name }}</text><text class="goal">{{ project.goal || '还没有填写项目目标' }}</text><view class="counts"><text v-if="project.progressingCount">进行中 {{ project.progressingCount }}</text><text>未完成 {{ project.openCount }}</text></view></view>
 			<button class="add" @tap="addTask">＋ 添加待办</button>
 			<view v-for="group in groups" :key="group.key" class="group">
 				<view class="group-heading"><text>{{ group.label }} · {{ group.items.length }}</text><button v-if="group.collapsible && group.items.length > 4" @tap="toggleGroup(group.key)">{{ expanded[group.key] ? '收起' : '展开' }}</button></view>
+				<!-- #ifdef H5 -->
 				<view v-for="task in groupItems(group)" :key="task.id" class="draggable-task" draggable="true" @dragstart="dragStart(task)" @dragover.prevent @drop="dropTask(task)">
 					<todo-row :task="task" @toggle="toggleTask" @open="openTask" @more="taskMenu" />
 				</view>
+				<!-- #endif -->
+				<!-- #ifndef H5 -->
+				<view v-for="task in groupItems(group)" :key="task.id" class="draggable-task">
+					<todo-row :task="task" @toggle="toggleTask" @open="openTask" @more="taskMenu" />
+				</view>
+				<!-- #endif -->
 			</view>
 			<view v-if="!groups.length" class="empty"><text>项目里还没有待办</text><text>添加第一步，不需要一次规划完所有行动。</text></view>
 			<view class="bottom-space"></view>
@@ -24,7 +31,11 @@ import TodoRow from '@/components/TodoRow.vue';
 import { todoOptions, todoProjects, todoStatus } from '@/api/todo';
 export default {
 	components: { TodoRow },
-	data() { return { statusBarHeight: 0, projectId: '', project: null, projects: [], groups: [], expanded: {}, showProjectEdit: false, projectForm: { name: '', goal: '' }, dragTaskId: '', timeZone: this.localTimeZone() }; },
+	data() { return { statusBarHeight: 0, projectId: '', project: null, projects: [], groups: [], expanded: {}, showProjectEdit: false, projectForm: { name: '', goal: '' },
+		// #ifdef H5
+		dragTaskId: '',
+		// #endif
+		timeZone: this.localTimeZone() }; },
 	onLoad(options) { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 0; this.projectId = options.id; }, onShow() { this.load(); },
 	methods: {
 		localTimeZone() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; } catch (_) { return 'Asia/Shanghai'; } },
@@ -38,9 +49,11 @@ export default {
 		taskMenu(task) { const items = task.status === 'in_progress' ? ['打开详情', '向上移动', '向下移动'] : ['开始推进', '打开详情', '向上移动', '向下移动']; uni.showActionSheet({ itemList: items, success: ({ tapIndex }) => { const label = items[tapIndex]; if (label === '开始推进') this.status(task, 'START'); else if (label === '打开详情') this.openTask(task); else this.moveTask(task, label === '向上移动' ? -1 : 1); } }); },
 		async status(task, action) { try { const res = await this.$http.patch(todoStatus, { id: task.id, action, version: task.version, operationId: this.requestId(), timeZone: this.timeZone }); if (res.code !== 200) throw new Error(res.message); this.load(); } catch (e) { uni.showToast({ title: e.message || '操作失败', icon: 'none' }); } },
 		async moveTask(task, direction) { const group = this.groups.find(item => item.items.some(entry => entry.id === task.id)); if (!group) return; const index = group.items.findIndex(item => item.id === task.id); const next = index + direction; if (next < 0 || next >= group.items.length) return; const ordered = [...group.items]; [ordered[index], ordered[next]] = [ordered[next], ordered[index]]; try { await this.$http.post('/todos/v1/reorder', { ids: ordered.map(item => item.id) }); this.load(); } catch (_) { uni.showToast({ title: '调整顺序失败', icon: 'none' }); } },
+		// #ifdef H5
 		dragStart(task) { this.dragTaskId = task.id; },
 		dropTask(target) { const source = this.groups.reduce((found, group) => found || group.items.find(item => item.id === this.dragTaskId), null); const sourceGroup = this.groups.find(group => group.items.some(item => item.id === this.dragTaskId)); const targetGroup = this.groups.find(group => group.items.some(item => item.id === target.id)); if (!source || !sourceGroup || sourceGroup.key !== targetGroup.key || source.id === target.id) return; const ordered = [...sourceGroup.items]; const from = ordered.findIndex(item => item.id === source.id); const to = ordered.findIndex(item => item.id === target.id); ordered.splice(to, 0, ordered.splice(from, 1)[0]); this.dragTaskId = ''; this.saveOrder(ordered); },
 		async saveOrder(ordered) { try { const res = await this.$http.post('/todos/v1/reorder', { ids: ordered.map(item => item.id) }); if (res.code !== 200) throw new Error(res.message); this.load(); } catch (_) { uni.showToast({ title: '调整顺序失败', icon: 'none' }); } },
+		// #endif
 		menu() { uni.showActionSheet({ itemList: ['编辑名称与目标', '完成项目', '归档项目'], success: ({ tapIndex }) => { if (tapIndex === 0) { this.projectForm = { name: this.project.name, goal: this.project.goal }; this.showProjectEdit = true; } else if (tapIndex === 1) this.completeProject(); else this.archiveProject(); } }); },
 		async saveProject() { try { const res = await this.$http.put(`${todoProjects}/${this.projectId}`, { ...this.projectForm, version: this.project.version }); if (res.code !== 200) throw new Error(res.message); this.showProjectEdit = false; this.load(); } catch (e) { uni.showToast({ title: e.message || '保存失败', icon: 'none' }); } },
 		async completeProject() { try { const res = await this.$http.post(`${todoProjects}/${this.projectId}/complete`, {}); if (res.code !== 200) throw new Error(res.message); this.load(); } catch (e) { uni.showToast({ title: e.message || '还有未完成待办', icon: 'none' }); } },
@@ -57,6 +70,11 @@ button { margin: 0; padding: 0; border: 0; background: transparent; line-height:
 .project-page { min-height: 100vh; background: #f3f1e9; color: #28342c; }
 .navbar { display: flex; align-items: center; padding: 22rpx 30rpx; } .navbar text { flex: 1; text-align: center; font: 700 29rpx/1.2 Georgia, 'Songti SC', serif; } .navbar button { width: 65rpx; color: #637067; font-size: 32rpx; } .navbar button:last-child { text-align: right; }
 .content { height: calc(100vh - 120rpx - env(safe-area-inset-top)); }
+/* #ifdef MP-WEIXIN */
+.project-page { height: 100vh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.navbar { flex: 0 0 auto; }
+.content { min-height: 0; height: 0; flex: 1; }
+/* #endif */
 .header { display: flex; flex-direction: column; margin: 12rpx 30rpx 20rpx; padding: 29rpx; border-radius: 28rpx; background: #25352a; color: #fff; } .name { font: 700 34rpx/1.35 Georgia, 'Songti SC', serif; } .goal { margin-top: 17rpx; color: #c8d1c6; font-size: 22rpx; line-height: 1.58; } .counts { display: flex; gap: 19rpx; margin-top: 22rpx; color: #aebaae; font-size: 18rpx; }
 .add { display: flex; height: 70rpx; align-items: center; justify-content: center; margin: 0 30rpx; border: 1rpx dashed #aeb8aa; border-radius: 21rpx; color: #526057; font-size: 22rpx; }
 .group { margin: 25rpx 30rpx 0; padding: 0 24rpx; border: 1rpx solid rgba(39,52,42,.08); border-radius: 24rpx; background: rgba(255,253,247,.76); } .group-heading { display: flex; justify-content: space-between; padding: 22rpx 0 8rpx; color: #667169; font-size: 20rpx; font-weight: 700; } .group-heading button { color: #758069; font-size: 19rpx; }

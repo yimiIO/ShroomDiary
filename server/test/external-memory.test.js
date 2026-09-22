@@ -100,7 +100,8 @@ test('days with only an allowed Codex source remain visible in the diary calenda
   assert.match(routes, /source_days AS/u);
   assert.match(routes, /c\.include_in_diary/u);
   assert.match(routes, /source_count/u);
-  assert.match(diaryPage, /个 Codex 任务/u);
+  assert.match(diaryPage, /hasSource: sourceCount > 0/u);
+  assert.doesNotMatch(diaryPage, /\$\{sourceCount\} 个 Codex 任务/u);
   assert.match(diaryPage, /最近轮次已结束/u);
   assert.doesNotMatch(diaryPage, /任务运行 \$\{record\.taskRuntimeMinutes\}/u);
 });

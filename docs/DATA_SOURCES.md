@@ -13,6 +13,7 @@
   → ExternalActivityEvent（最小外部活动事实）
       ├─ 日记时间线
       ├─ AI 日记分析（用户单独允许时）
+      ├─ 菇每日总结（用户打开或已授权的 22:00 邮件）
       ├─ 长期回看（后续）
       └─ 复利系统（后续且仍需确认）
 ```
@@ -29,17 +30,16 @@ Codex 任务运行时间不等于用户的人工专注时间。没有 Codex 记�
 
 ## 3. Codex 连接
 
-用户在「我的 → 数据与连接」中创建 10 分钟有效的配对码，再在存有 Codex 数据的电脑上运行本地连接器。服务端通过配对码发放一次性可见的长随机同步凭据，数据库只保存其 SHA-256 摘要。连接器不接收 `userId`；所有者只能由服务端中的连接记录确定。
+用户在「我的 → 数据与连接 → Codex」中创建 10 分钟有效的连接指令，再复制给存有 Codex 数据的电脑执行。连接指令会从菇日记官方服务安装连接器并自动完成配对，不要求用户预先安装或理解 `shroom-codex`。服务端通过指令内的一次性配对码发放长随机同步凭据，数据库只保存其 SHA-256 摘要。连接器不接收 `userId`；所有者只能由服务端中的连接记录确定。
 
 本地连接器通过 [Codex app-server](https://learn.chatgpt.com/docs/app-server#api-overview) 的本机 stdio 接口读取任务列表和任务状态，不直接解析 Codex 的私有数据库。首次默认同步最近 90 天；之后使用任务更新时间作为本地增量水位。
 
 ```bash
-cd server
-npm link
-shroom-codex connect --server https://shroom.example.com --code ABCDE12345
+curl -fsSL 'https://shroom.example.com/api/data-sources/v1/codex/install' | sh -s -- connect --server 'https://shroom.example.com' --code 'ABCDE12345'
 
-# 之后每天触发一次；连接器会读取菇中设置的频率，未到时间会安全跳过
-shroom-codex sync
+# 连接成功后，macOS 会安装本地后台任务：每天 19:00 强制执行增量同步。
+# 19:00 关机或休眠时，系统会在恢复运行后补拉；也可以手动重装后台任务。
+shroom-codex schedule
 ```
 
 定期任务的用户可见名称统一使用「菇日记 · Codex 数据源同步」，使用户知道这个 Codex 任务服务于菇日记。
@@ -59,7 +59,7 @@ shroom-codex sync
 ## 5. 用户控制与生命周期
 
 - 同步状态：待配对、已连接、已暂停、已断开。
-- 同步频率：每天、每 3 天、每周。本机定期任务可每天触发，连接器在读取菇中当前设置后决定执行或跳过。
+- 同步频率：Codex 当前固定每天 19:00 增量同步。macOS 由用户级 LaunchAgent 执行；19:00 关机或休眠时，在当天恢复运行后补拉。增量水位确保较晚恢复时仍会补回遗漏任务。
 - 可见性：用户可单独决定外部活动是否显示在日记时间线。
 - AI 权限：用户可单独决定当天活动是否可在主动发起日记分析时读取。
 - 断开：立即撤销同步凭据，停止新数据；历史记录可选保留。
@@ -68,14 +68,17 @@ shroom-codex sync
 
 ## 6. 当前下游边界
 
-日记首页按天显示 Codex 活动，但不将它写入日记表。日记观察席可读取当天已授权活动，分析结果保存当时的来源快照。外部活动不能单独触发待办、菇卡、身心记录、未解之问或复利方向关联；这些结构仍需日记原文或后续的用户确认。
+各数据源在日视图中使用独立标识和筛选项。点击 Codex 项目打开当前任务聚合详情，而不是返回数据源设置页。
+
+日记首页按天显示 Codex 活动，但不将它写入日记表。日记观察席和菇每日总结可读取当天已授权活动，分析结果保存当时的来源快照。外部活动不能单独触发待办、菇卡、身心记录、未解之问或复利方向关联；这些结构仍需日记原文或后续的用户确认。每日总结只能把 Codex 任务当作工具活动事实，不能把运行时长当成人工专注，也不能把任务完成当成现实结果。
 
 ## 7. 接口
 
 - `GET /api/data-sources/v1/connections`：列出当前用户的连接。
-- `POST /api/data-sources/v1/codex/connections`：生成配对码。
+- `POST /api/data-sources/v1/codex/connections`：生成短时连接指令。
 - `PATCH|DELETE /api/data-sources/v1/connections/:id`：调整权限、暂停、断开或删除。
 - `POST /api/data-sources/v1/codex/pair`：本机连接器换取同步凭据。
 - `POST /api/data-sources/v1/codex/events`：以连接凭据幂等写入任务事实。
 - `GET /api/data-sources/v1/codex/config`：连接器读取用户设置的同步频率和水位。
 - `GET /api/data-sources/v1/activities?date=YYYY-MM-DD`：列出按天的可见活动。
+- `GET /api/data-sources/v1/activities/:id`：按当前用户聚合并返回同一外部任务的详情与各轮事实。
