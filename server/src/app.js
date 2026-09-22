@@ -22,6 +22,7 @@ const compoundRoutes = require('./routes/compound');
 const compoundProgressRoutes = require('./routes/compound-progress');
 const inquiryRoutes = require('./routes/inquiries');
 const wellbeingRoutes = require('./routes/wellbeing');
+const snapshotRoutes = require('./routes/snapshot');
 const dataSourceRoutes = require('./routes/data-sources');
 const { isAiConfigured } = require('./ai-engine');
 const { embeddingProfile, isEmbeddingConfigured } = require('./embedding-provider');
@@ -118,6 +119,7 @@ app.use('/api/compound/v1', compoundRoutes);
 app.use('/api/compound/v2', compoundProgressRoutes);
 app.use('/api/inquiries/v1', inquiryRoutes);
 app.use('/api/wellbeing/v1', wellbeingRoutes);
+app.use('/api/snapshot/v1', snapshotRoutes);
 app.use('/api/data-sources/v1', dataSourceRoutes);
 
 const publicDir = process.env.STATIC_DIR || path.join(__dirname, '..', 'public');
