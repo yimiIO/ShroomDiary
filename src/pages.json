@@ -29,6 +29,27 @@
 			}
 		},
 		{
+			"path": "pages/snapshot/finance",
+			"style": {
+				"navigationBarTitleText": "今日账单",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/snapshot/meal",
+			"style": {
+				"navigationBarTitleText": "记个吃喝",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/snapshot/meditation",
+			"style": {
+				"navigationBarTitleText": "晨间冥想",
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/diary/index",
 			"style": {
 				"enablePullDownRefresh": true,

@@ -19,7 +19,7 @@ export default {
 }
 </script>
 <style lang="scss" scoped>
-.detail-page { min-height: 100vh; background: #F6F4EC; padding: 0 30rpx; }
+.detail-page { min-height: 100vh; background: #f1f8e9; padding: 0 30rpx; }
 .page-header { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 0 30rpx; }
 .back-text { font-size: 40rpx; color: #333; }
 .page-title { font-size: 36rpx; font-weight: 700; color: #333; }

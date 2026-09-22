@@ -61,7 +61,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.history-page { min-height: 100vh; background: #F6F4EC; padding: 0 30rpx 60rpx; }
+.history-page { min-height: 100vh; background: #f1f8e9; padding: 0 30rpx 60rpx; }
 .page-header { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 0 30rpx; }
 .back-btn { width: 60rpx; height: 60rpx; }
 .back-text { font-size: 40rpx; color: #333; }
