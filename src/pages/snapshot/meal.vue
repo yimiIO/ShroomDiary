@@ -95,6 +95,8 @@
 </template>
 
 <script>
+import { addMeal } from '@/api/snapshot';
+
 export default {
 	data() {
 		return {
@@ -133,7 +135,24 @@ export default {
 		addPhoto() {},
 		pickWay() {}, pickTime() {}, pickTags() {},
 		useTemplate() {},
-		save() { uni.showToast({ title: '已保存', icon: 'success' }) }
+		async save() {
+			if (!this.dishes.length) {
+				uni.showToast({ title: '先写下这一餐吃了什么', icon: 'none' })
+				return
+			}
+			const mealTypes = {
+				早餐: 'BREAKFAST', 午餐: 'LUNCH', 晚餐: 'DINNER', 下午茶: 'AFTERNOON_TEA', 夜宵: 'SUPPER'
+			}
+			try {
+				await addMeal({
+					meal_type: mealTypes[this.currentType] || 'BRUNCH',
+					name: this.dishes.join('、'),
+					description: this.description
+				})
+				uni.showToast({ title: '已保存', icon: 'success' })
+				setTimeout(() => uni.navigateBack(), 500)
+			} catch (error) {}
+		}
 	}
 }
 </script>

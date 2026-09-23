@@ -413,7 +413,7 @@ test('legacy long-term directions remain inspectable while new compound plans no
   assert.match(prompt, /最多 3 条/);
   assert.match(prompt, /不是 ACTION/);
   assert.equal((defaults.match(/\['\d{2}',/g) || []).length, 20);
-  assert.equal(pages.tabBar.list.length, 4);
+  assert.equal(pages.tabBar.list.length, 5);
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-plan'));
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-item'));
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
@@ -737,7 +737,7 @@ test('wellbeing records and inquiries independently interpret the same diary', (
   assert.match(decouplingMigration, /DROP COLUMN IF EXISTS health_observation/);
   assert.doesNotMatch(edit, /healthObservationPayload|健康表单|症状严重程度/);
   const tabBar = JSON.parse(pages).tabBar.list;
-  assert.equal(tabBar.length, 4);
+  assert.equal(tabBar.length, 5);
   assert.ok(JSON.parse(pages).pages.some(page => page.path === 'pages/shroom/wellbeing'));
 });
 

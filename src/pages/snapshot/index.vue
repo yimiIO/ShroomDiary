@@ -247,6 +247,15 @@
 				</view>
 				<view class="loc-relocate" @tap="relocate">📍 重新定位当前位置</view>
 			</view>
+			<view class="scene-options">
+				<view
+					v-for="option in sceneOptions"
+					:key="option"
+					class="scene-option"
+					:class="{ active: data.scene === option }"
+					@tap="data.scene = option"
+				>{{ option }}</view>
+			</view>
 
 			<view class="loc-fav-head">
 				<text class="loc-fav-title">常用地址 <text class="loc-fav-count">0 个</text></text>
@@ -326,9 +335,8 @@
 	</view>
 </template>
 
-import { getTodaySnapshot, updateTodaySnapshot } from '@/api/snapshot';
-
 <script>
+import { getTodaySnapshot, updateTodaySnapshot } from '@/api/snapshot';
 const E = '/static/snapshot/emotions/'
 export default {
 	data() {
@@ -461,45 +469,56 @@ export default {
 	},
 	onLoad() {
 		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20
-		this.loadToday()
 	},
+	onShow() { this.loadToday() },
 	methods: {
 		async loadToday() {
 			try {
 				const res = await getTodaySnapshot()
-				if (res.snapshot) {
-					this.data.mood = res.snapshot.mood || ''
-					this.data.weatherCode = res.snapshot.weather_code || ''
-					this.data.weatherTemp = res.snapshot.weather_temp ?? ''
-					this.data.steps = res.snapshot.steps || 0
-					this.data.bedtime = res.snapshot.bedtime || '23:00'
-					this.data.wakeTime = res.snapshot.wake_time || '07:00'
-					this.data.scene = res.snapshot.scene || ''
-					this.data.financeAmount = res.snapshot.expense_amount || ''
-					this.data.financeCategory = res.snapshot.expense_category || ''
-					this.data.incomeAmount = res.snapshot.income_amount || ''
-					this.data.incomeCategory = res.snapshot.income_category || ''
-					this.data.morningIntent = res.snapshot.morning_intent || ''
+				const payload = res.data || res
+				if (payload.snapshot) {
+					this.data.mood = payload.snapshot.mood || ''
+					this.data.weatherCode = payload.snapshot.weather_code || ''
+					this.data.weatherTemp = payload.snapshot.weather_temp === null || payload.snapshot.weather_temp === undefined ? '' : payload.snapshot.weather_temp
+					this.data.steps = payload.snapshot.steps || 0
+					this.data.bedtime = payload.snapshot.bedtime || '23:00'
+					this.data.wakeTime = payload.snapshot.wake_time || '07:00'
+					this.data.scene = payload.snapshot.scene || ''
+					this.data.financeAmount = payload.snapshot.expense_amount || ''
+					this.data.financeCategory = payload.snapshot.expense_category || ''
+					this.data.incomeAmount = payload.snapshot.income_amount || ''
+					this.data.incomeCategory = payload.snapshot.income_category || ''
+					this.data.morningIntent = payload.snapshot.morning_intent || ''
 				}
-				if (res.meals) this.meals = res.meals
+				if (payload.meals) this.meals = payload.meals.map(meal => ({ ...meal, type: meal.meal_type }))
 			} catch (e) { /* mock mode */ }
 		},
 		async sync(patch) {
 			try { await updateTodaySnapshot(patch) } catch (e) {}
 		},
 		openSheet(n) { this.sheet = n },
-		closeSheet() { this.sheet = '' },
+		closeSheet() {
+			const currentSheet = this.sheet
+			this.sheet = ''
+			if (currentSheet === 'weather') {
+				this.sync({ weather_code: this.data.weatherCode, weather_temp: this.data.weatherTemp })
+			} else if (currentSheet === 'steps') {
+				this.sync({ steps: this.data.steps })
+			} else if (currentSheet === 'sleep') {
+				this.sync({ bedtime: this.data.bedtime, wake_time: this.data.wakeTime })
+			}
+		},
 		selectMood(m) { this.data.mood = m.name; this.sync({ mood: m.name }) },
 		selectScene(s) { this.data.scene = s; this.closeSheet(); this.sync({ scene: s }) },
 		relocate() { uni.showToast({ title: '定位中…', icon: 'none' }) },
 		addFav() {},
-		confirmScene() { this.closeSheet(); uni.showToast({ title: '已保存位置', icon: 'success' }) },
+		confirmScene() { this.sync({ scene: this.data.scene }); this.closeSheet(); uni.showToast({ title: '已保存位置', icon: 'success' }) },
 		goHealthProfile() { uni.showToast({ title: '健康档案页开发中', icon: 'none' }) },
 		goFinance() { uni.navigateTo({ url: '/pages/snapshot/finance' }) },
 		goMeal() { uni.navigateTo({ url: '/pages/snapshot/meal' }) },
 		goMeditation() { uni.navigateTo({ url: '/pages/snapshot/meditation' }) },
 		doAiAction() { uni.showToast({ title: '已加入今日计划', icon: 'success' }) },
-		completeChallenge() { uni.showToast({ title: '已完成，真棒', icon: 'success' }) },
+		completeChallenge() { this.sync({ challenge_completed: true }); uni.showToast({ title: '已完成，真棒', icon: 'success' }) },
 		skipChallenge() {},
 		saveMeal() {
 			if (this.editingMealIndex >= 0) {
@@ -653,6 +672,9 @@ export default {
 .loc-input-hint { font-size: 22rpx; color: #999; display: block; margin-top: 8rpx; }
 .loc-edit-btn { width: 64rpx; height: 64rpx; background: #fdebd0; border-radius: 16rpx; text-align: center; line-height: 64rpx; }
 .loc-relocate { font-size: 26rpx; color: #7CAE5A; margin-top: 20rpx; display: block; }
+.scene-options { display: flex; flex-wrap: wrap; gap: 14rpx; margin-bottom: 28rpx; }
+.scene-option { padding: 14rpx 26rpx; background: #f3f3f3; color: #666; border-radius: 30rpx; font-size: 26rpx;
+	&.active { background: #e8f5e9; color: #4f7f38; border: 2rpx solid #7CAE5A; } }
 .loc-fav-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20rpx; }
 .loc-fav-title { font-size: 30rpx; font-weight: 600; color: #333; }
 .loc-fav-count { font-size: 24rpx; color: #bbb; font-weight: 400; }

@@ -82,7 +82,7 @@ test('financial product exposes four tabs without adding a bottom navigation ite
 	assert.match(source('server/src/routes/financial-ledger.js'), /CASE WHEN \$7::varchar='CONFIRMED'/);
 	assert.match(source('server/src/routes/financial-ledger.js'), /unrealizedPnlTone/);
   assert.ok(pages.pages.some(item => item.path === 'pages/shroom/financial-ledger'));
-  assert.equal(pages.tabBar.list.length, 4);
+  assert.equal(pages.tabBar.list.length, 5);
 });
 
 test('first financial setup persists a complete plan and rule instead of an empty ledger', () => {

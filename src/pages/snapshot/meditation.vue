@@ -91,6 +91,8 @@
 </template>
 
 <script>
+import { completeMeditation } from '@/api/snapshot';
+
 export default {
 	data() {
 		return {
@@ -133,14 +135,22 @@ export default {
 				else { this.phase = 'inhale'; this.phaseText = '吸气' }
 			}, 5000)
 		},
-		endMeditation() {
+		async endMeditation() {
+			if (!this.isMeditating) return
 			this.stopAllTimers()
 			this.isMeditating = false
 			this.isFinished = true
 			this.lastMinutes = this.selectedDuration
-			this.streak++
-			this.totalCount++
-			this.totalMinutes += this.selectedDuration
+			try {
+				const response = await completeMeditation({
+					duration_min: this.selectedDuration,
+					affirmation: this.affirmation
+				})
+				const result = response.data || response
+				this.streak = Number(result.streak) || 0
+				this.totalCount = Number(result.totalCount) || 0
+				this.totalMinutes = Number(result.totalMinutes) || 0
+			} catch (error) {}
 		},
 		backHome() { uni.navigateBack() },
 		stopAllTimers() {

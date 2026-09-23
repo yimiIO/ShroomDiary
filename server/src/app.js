@@ -33,12 +33,6 @@ const acquisitionRoutes = require('./routes/acquisition');
 const todoBatchingRoutes = require('./routes/todo-batching');
 const bagRoutes = require('./routes/bags');
 const correctionEventRoutes = require('./routes/correction-events');
-let financialLedgerRoutes = null;
-try {
-  financialLedgerRoutes = require('./routes/financial-ledger');
-} catch (error) {
-  if (error.code !== 'MODULE_NOT_FOUND' || !String(error.message).includes("'./routes/financial-ledger'")) throw error;
-}
 const { isAiConfigured } = require('./ai-engine');
 const { embeddingProfile, isEmbeddingConfigured } = require('./embedding-provider');
 const { isTranscriptionConfigured } = require('./transcription');
@@ -156,7 +150,7 @@ app.use('/api/ai/v1', aiRoutes);
 app.use('/api/memory/v1', memoryRoutes);
 app.use('/api/compound/v1', compoundRoutes);
 app.use('/api/compound/v2', compoundProgressRoutes);
-if (financialLedgerRoutes) app.use('/api/compound/v2/financial', financialLedgerRoutes);
+app.use('/api/compound/v2/financial', financialLedgerRoutes);
 app.use('/api/inquiries/v1', inquiryRoutes);
 app.use('/api/wellbeing/v1', wellbeingRoutes);
 app.use('/api/snapshot/v1', snapshotRoutes);
