@@ -190,4 +190,39 @@ router.get('/trend', asyncRoute(async (req, res) => {
   return ok(res, { trend: rows.rows });
 }));
 
+// 微信步数 AES-128-CBC 解密
+function decryptWeRun(encryptedData, iv, sessionKey) {
+  const key = Buffer.from(sessionKey, 'base64');
+  const enc = Buffer.from(encryptedData, 'base64');
+  const ivBuf = Buffer.from(iv, 'base64');
+  const decipher = crypto.createDecipheriv('aes-128-cbc', key, ivBuf);
+  decipher.setAutoPadding(true);
+  let decoded = decipher.update(enc, 'binary', 'utf8');
+  decoded += decipher.final('utf8');
+  return JSON.parse(decoded);
+}
+
+// POST /api/snapshot/v1/health/wechat/sync  body: { encryptedData, iv }
+router.post('/health/wechat/sync', asyncRoute(async (req, res) => {
+  const { encryptedData, iv } = req.body || {};
+  if (!encryptedData || !iv) return fail(res, 400, 'MISSING_WECHAT_DATA');
+  const u = await db.query(`SELECT wechat_session_key FROM users WHERE id = $1`, [req.user.id]);
+  const sk = u.rows[0] && u.rows[0].wechat_session_key;
+  if (!sk) return fail(res, 401, 'WECHAT_NOT_LOGGED_IN');
+  let data;
+  try { data = decryptWeRun(encryptedData, iv, sk); }
+  catch (e) { return fail(res, 400, 'DECRYPT_FAILED'); }
+  const todayTs = Math.floor(new Date(new Date().toDateString()).getTime() / 1000);
+  const todayRow = (data.stepInfoList || []).find(r => r.timestamp === todayTs);
+  const steps = todayRow ? todayRow.step : 0;
+  const day = today();
+  await db.query(
+    `INSERT INTO snapshots (id, user_id, day, steps)
+     VALUES ($1,$2,$3::date,$4)
+     ON CONFLICT (user_id, day) DO UPDATE SET steps = $4`,
+    [uuid(), req.user.id, day, steps]
+  );
+  return ok(res, { steps, day });
+}));
+
 module.exports = router;
