@@ -25,14 +25,31 @@ test('compound onboarding asks for user decisions and keeps validation internals
 test('financial capital supplies a tailored, non-advisory setup instead of asking for expected returns', () => {
   const archetypes = source('server/src/compound-archetypes.js');
   const route = source('server/src/routes/compound-progress.js');
+  const page = source('src/pages/shroom/compound.vue');
 
+  assert.match(archetypes, /这项长期本金计划叫什么/);
   assert.match(archetypes, /这项长期本金计划为了什么/);
-  assert.match(archetypes, /你准备怎样稳定增加本金/);
-  assert.match(archetypes, /12 周后看到什么，说明这套机制在正常运行/);
+  assert.match(archetypes, /第一项核对行动/);
   assert.match(archetypes, /不承诺收益/);
   assert.doesNotMatch(archetypes, /预期收益率|预计年化收益/);
+  assert.match(archetypes, /不提供具体产品、买卖时点、仓位比例、收益预测或自动交易/);
+  assert.match(archetypes, /requiresBoundaryAcceptance: true/);
   assert.match(route, /text\(setup\.returnDefinition/);
   assert.match(route, /text\(setup\.reinvestmentDefinition/);
   assert.match(route, /Number\(setup\.principalMetricTarget/);
   assert.match(route, /Number\(setup\.returnMetricTarget/);
+  assert.match(route, /financialBoundaryAccepted !== true/);
+  assert.match(route, /containsFinancialSecret/);
+  assert.match(route, /isFinancialCompound\(thread\) \? thread\.id : null/);
+  assert.match(route, /financial-policy-blocked/);
+  assert.match(page, /financialBoundaryAccepted/);
+	assert.match(page, /准备坚持多少年/);
+	assert.match(page, /每次计划投入多少/);
+	assert.match(page, /多久投入一次/);
+	assert.match(page, /自己选择了哪些投资方向/);
+	assert.match(page, /写进计划，不代表已经买入/);
+	assert.match(page, /financialSensitiveConsent/);
+	assert.match(page, /每月检查一次/);
+  assert.doesNotMatch(page.match(/financialContributionOptions:[^\n]+/)[0], /FLEXIBLE/);
+  assert.doesNotMatch(page, /新增本金<\/text>/);
 });

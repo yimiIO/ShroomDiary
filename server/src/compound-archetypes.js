@@ -81,21 +81,24 @@ const STARTER_PLANS_BY_KEY = Object.freeze({
 
 const SETUP_BY_KEY = Object.freeze({
   financial_capital: {
-    titleLabel: '这项长期本金计划为了什么？',
-    titlePlaceholder: '例如：长期安全垫或未来选择权；不要填写账户信息',
-    commitmentLabel: '你准备怎样稳定增加本金？',
-    commitmentPlaceholder: '例如：每月固定转入可承担的金额，同时保留应急资金',
-    outcomeLabel: '12 周后看到什么，说明这套机制在正常运行？',
-    outcomePlaceholder: '例如：连续完成 3 次投入，费用和风险清楚，实际收益按计划处理',
-    nextStepLabel: '建立这套机制的下一步是什么？',
-    nextStepPlaceholder: '例如：确认可承担金额，并设置第一次定期转入',
-    returnDefinition: '本金按用户选择的工具产生经费用核对后的实际收益；收益可能为负，本功能不承诺收益。',
-    reinvestmentSummary: '只有你确认已经保留或再投入的实际收益，才算进入下一轮；系统不会自动交易。',
-    reinvestmentDefinition: '只有用户确认已经保留或再投入的实际收益，才计入下一轮；系统不会自动执行交易。',
+    titleLabel: '这项长期本金计划叫什么？',
+    titlePlaceholder: '例如：长期选择权资金；不要填写账户信息',
+    commitmentLabel: '计划范围稍后在投资计划中确认',
+    commitmentPlaceholder: '创建后选择全部长期投资或一部分长期资金',
+    outcomeLabel: '这项长期本金计划为了什么？',
+    outcomePlaceholder: '描述长期目的；不需要填写目标收益率',
+    nextStepLabel: '第一项核对行动',
+    nextStepPlaceholder: '例如：确认今天纳入计划的资产总额',
+    returnDefinition: '只记录用户已经确认、扣除可知费用后的实际结果；结果可能为负，本功能不预测、不承诺收益。',
+    reinvestmentSummary: '记录收益实际去向，不以是否手动再投入判断计划成功。',
+    reinvestmentDefinition: '收益去向由用户记录为基金内累积、计划内现金、再次买入、转出或待确认；系统不会自动交易。',
+    riskDisclosure: '仅用于管理你自己的长期资金计划和记录已发生事实，不提供具体产品、买卖时点、仓位比例、收益预测或自动交易。投资有风险，结果可能为负。请勿填写银行或证券账户、卡号、密码、验证码。',
+    requiresBoundaryAcceptance: true,
+    boundaryVersion: '2026-09-14-v1',
     weeklyTimeBudgetMinutes: 15,
-    principalMetricTarget: 3,
-    returnMetricTarget: 1,
-    currentMilestone: '四周内完成第一轮本金投入，并确认费用、风险和收益处理方式'
+    principalMetricTarget: 0,
+    returnMetricTarget: 0,
+    currentMilestone: '完成计划范围、期初资产与一条有效资金记录的核对'
   }
 });
 
@@ -222,13 +225,13 @@ const ARCHETYPES = [
     kind: 'GROWTH',
     category: '资本',
     name: '财务本金复利',
-    summary: '让本金产生可核对收益，并将收益继续投入。',
-    mechanism: '收益不全部被消费，而是重新成为下一期本金。',
+    summary: '记清投入、实际赚亏和持有结构，对照自己制定的长期规则执行。',
+    mechanism: '持续把可支配资金转化为长期资产；系统分开核算外部投入与投资损益，不用短期盈利证明计划成立。',
     fits: '有稳定结余、理解风险并愿意长期执行的人。',
     notThis: '频繁交易、追涨杀跌、忽略费用和风险的短期投机。',
-    defaultPrincipalMetric: '按计划增加本金的次数',
-    defaultReturnMetric: '已确认收益再投入的次数',
-    examples: ['建立稳定、低费用并且自动再投入的长期本金计划']
+    defaultPrincipalMetric: '已确认外部净投入',
+    defaultReturnMetric: '排除资金进出后的投资损益',
+    examples: ['按月核对资金进出和市值，按季度回看持有结构与计划偏离']
   },
   {
     key: 'body_capacity',

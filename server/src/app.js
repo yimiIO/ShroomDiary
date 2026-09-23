@@ -20,6 +20,7 @@ const aiRoutes = require('./routes/ai');
 const memoryRoutes = require('./routes/memory');
 const compoundRoutes = require('./routes/compound');
 const compoundProgressRoutes = require('./routes/compound-progress');
+const financialLedgerRoutes = require('./routes/financial-ledger');
 const inquiryRoutes = require('./routes/inquiries');
 const wellbeingRoutes = require('./routes/wellbeing');
 const dataSourceRoutes = require('./routes/data-sources');

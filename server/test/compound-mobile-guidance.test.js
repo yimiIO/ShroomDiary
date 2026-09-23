@@ -28,7 +28,7 @@ test('compound phone layout progressively reveals dense information', () => {
   assert.match(page, /expandedPlanId === plan\.id/);
   assert.match(page, /查看完整计划和进度/);
   assert.match(page, /showActivityHistory/);
-  assert.match(page, /input, textarea \{ font-size: 28rpx; \}/);
+  assert.match(page, /input, textarea \{ font-size: 30rpx; \}/);
   assert.match(page, /\.catalog-intro \{[^}]*font-size: 29rpx;/);
   assert.match(page, /\.loop-statement text:last-child \{[^}]*font-size: 31rpx;/);
   assert.doesNotMatch(page, /class="secondary-links"|openYogaPractice|openPrinciples/);

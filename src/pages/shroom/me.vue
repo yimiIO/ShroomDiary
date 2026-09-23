@@ -784,6 +784,34 @@ export default {
 	color: #786741;
 }
 
+.menu-item.locked .menu-icon {
+	filter: saturate(.7);
+}
+
+.lock-price {
+	flex: 0 0 auto;
+	padding: 8rpx 12rpx;
+	border-radius: 999rpx;
+	background: #f4edcf;
+	font-size: 17rpx;
+	font-weight: 700;
+	color: #786741;
+}
+
+.unread-count {
+	display: flex;
+	min-width: 42rpx;
+	height: 42rpx;
+	padding: 0 8rpx;
+	align-items: center;
+	justify-content: center;
+	border-radius: 999rpx;
+	background: #a45e50;
+	color: #fff;
+	font-size: 17rpx;
+	font-weight: 750;
+}
+
 .version {
 	display: block;
 	margin-top: 35rpx;

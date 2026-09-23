@@ -239,6 +239,16 @@
 			}
 		},
 		{
+			"path": "pages/shroom/financial-ledger",
+			"style": {
+				"navigationBarTitleText": "财务本金复利",
+				"navigationStyle": "custom",
+				"backgroundColorTop": "#f1f8e9",
+				"backgroundColorBottom": "#f1f8e9",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/yoga-practice",
 			"style": {
 				"navigationBarTitleText": "每日自主练习",

@@ -120,6 +120,7 @@ export default {
 .setting-row { display: flex; align-items: center; gap: 19rpx; padding: 28rpx 0; border-bottom: 1rpx solid #edf0eb; }
 .setting-row:last-child { border-bottom: 0; }
 .setting-icon { display: flex; width: 62rpx; height: 62rpx; flex: 0 0 62rpx; align-items: center; justify-content: center; border-radius: 20rpx; font-family: Georgia, serif; font-size: 25rpx; font-weight: 700; }
+.setting-icon.inbox { background: #e4ebd2; color: #526755; }
 .setting-icon.codex { background: #172019; color: #eef4e8; }
 .setting-icon.inbox { background: #e4ebd2; color: #526755; }
 .setting-icon.review { background: #e7eed6; color: #526755; }

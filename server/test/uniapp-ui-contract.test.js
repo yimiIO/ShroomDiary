@@ -419,7 +419,7 @@ test('legacy long-term directions remain inspectable while new compound plans no
   assert.ok(pages.pages.some(page => page.path === 'pages/shroom/life-os-weekly'));
   const compound = source('src/pages/shroom/compound.vue');
   assert.doesNotMatch(compound, /与哪个长期方向一致|compoundStartItemKey|openDirections/);
-  assert.doesNotMatch(compound, /class="secondary-links"|openPrinciples|人生 OS/);
+  assert.doesNotMatch(compound, /class="secondary-links"|openPrinciples/);
 });
 
 test('compound system starts from a shared archetype catalog and verifies private compounding evidence', () => {
@@ -439,7 +439,7 @@ test('compound system starts from a shared archetype catalog and verifies privat
 	assert.match(api, /\/compound\/v2\/archetypes/);
 	assert.match(api, /\/validation/);
 	assert.match(compound, /从真正会积累的东西里/);
-	assert.match(compound, /这些是所有用户共享的复利原型/);
+	assert.match(compound, /先选择类型，再决定它在你的生活中具体是什么/);
 	assert.match(compound, /直接产生积累/);
 	assert.match(compound, /保护长期底盘/);
 	assert.match(compound, /只需要回答 4 件事/);
@@ -448,8 +448,8 @@ test('compound system starts from a shared archetype catalog and verifies privat
 	assert.match(compound, /先运行，再判断/);
 	assert.match(compound, /复利已出现/);
 	assert.match(compound, /目前线性/);
-	assert.match(compound, /新增本金/);
-	assert.match(compound, /新增复用 \/ 回报/);
+	assert.match(compound, /查看我的投资计划/);
+	assert.match(compound, /投入多少 · 实际赚亏 · 持有什么 · 是否按计划/);
 	assert.match(compound, /当前里程碑/);
 	assert.match(compound, /修改复利项名称/);
 	assert.match(compound, /openRename\(plan\)/);
@@ -457,7 +457,7 @@ test('compound system starts from a shared archetype catalog and verifies privat
 	assert.match(compound, /为了保护它/);
 	assert.match(compound, /本周真实分给它多少分钟/);
 	assert.match(compound, /可能影响计划的现实反馈/);
-	assert.doesNotMatch(compound, /class="secondary-links"|openYogaPractice|openPrinciples|人生 OS/);
+	assert.doesNotMatch(compound, /class="secondary-links"|openYogaPractice|openPrinciples/);
 	assert.match(compound, /重新读取/);
 	assert.doesNotMatch(compound, /setTimeout\(\(\) => this\.goBack/);
 	assert.doesNotMatch(compound, /今天不推进/);
