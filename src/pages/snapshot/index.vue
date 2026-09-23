@@ -326,6 +326,8 @@
 	</view>
 </template>
 
+import { getTodaySnapshot, updateTodaySnapshot } from '@/api/snapshot';
+
 <script>
 const E = '/static/snapshot/emotions/'
 export default {
@@ -459,12 +461,36 @@ export default {
 	},
 	onLoad() {
 		this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20
+		this.loadToday()
 	},
 	methods: {
+		async loadToday() {
+			try {
+				const res = await getTodaySnapshot()
+				if (res.snapshot) {
+					this.data.mood = res.snapshot.mood || ''
+					this.data.weatherCode = res.snapshot.weather_code || ''
+					this.data.weatherTemp = res.snapshot.weather_temp ?? ''
+					this.data.steps = res.snapshot.steps || 0
+					this.data.bedtime = res.snapshot.bedtime || '23:00'
+					this.data.wakeTime = res.snapshot.wake_time || '07:00'
+					this.data.scene = res.snapshot.scene || ''
+					this.data.financeAmount = res.snapshot.expense_amount || ''
+					this.data.financeCategory = res.snapshot.expense_category || ''
+					this.data.incomeAmount = res.snapshot.income_amount || ''
+					this.data.incomeCategory = res.snapshot.income_category || ''
+					this.data.morningIntent = res.snapshot.morning_intent || ''
+				}
+				if (res.meals) this.meals = res.meals
+			} catch (e) { /* mock mode */ }
+		},
+		async sync(patch) {
+			try { await updateTodaySnapshot(patch) } catch (e) {}
+		},
 		openSheet(n) { this.sheet = n },
 		closeSheet() { this.sheet = '' },
-		selectMood(m) { this.data.mood = m.name },
-		selectScene(s) { this.data.scene = s; this.closeSheet() },
+		selectMood(m) { this.data.mood = m.name; this.sync({ mood: m.name }) },
+		selectScene(s) { this.data.scene = s; this.closeSheet(); this.sync({ scene: s }) },
 		relocate() { uni.showToast({ title: '定位中…', icon: 'none' }) },
 		addFav() {},
 		confirmScene() { this.closeSheet(); uni.showToast({ title: '已保存位置', icon: 'success' }) },
