@@ -470,7 +470,7 @@ export default {
 				if (res.snapshot) {
 					this.data.mood = res.snapshot.mood || ''
 					this.data.weatherCode = res.snapshot.weather_code || ''
-					this.data.weatherTemp = res.snapshot.weather_temp ?? ''
+					this.data.weatherTemp = res.snapshot.weather_temp || ''
 					this.data.steps = res.snapshot.steps || 0
 					this.data.bedtime = res.snapshot.bedtime || '23:00'
 					this.data.wakeTime = res.snapshot.wake_time || '07:00'
