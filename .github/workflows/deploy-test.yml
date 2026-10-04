@@ -1,4 +1,4 @@
-name: Test and deploy personal environment
+name: Validate personal test branch
 
 on:
   push:
@@ -48,35 +48,3 @@ jobs:
             ! -name 'xiaohongshu-pilot.test.js' \
             -print0 | xargs -0 node --test
           npm run build:admin
-
-      - name: Package release
-        run: |
-          mkdir -p .release/public .release/server
-          cp -R dist/build/h5/. .release/public/
-          rsync -a --exclude node_modules --exclude test server/ .release/server/
-          printf '%s\n' "$GITHUB_SHA" > .release/REVISION
-          tar -czf shroom-release.tgz -C .release public server REVISION
-
-      - name: Configure deployment SSH
-        env:
-          DEPLOY_KEY: ${{ secrets.SHROOM_TEST_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.SHROOM_TEST_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/shroom_test
-          chmod 600 ~/.ssh/shroom_test
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-      - name: Deploy personal test environment
-        env:
-          DEPLOY_HOST: ${{ secrets.SHROOM_TEST_HOST }}
-          DEPLOY_USER: ${{ secrets.SHROOM_TEST_USER }}
-        run: |
-          test -n "$DEPLOY_HOST"
-          test -n "$DEPLOY_USER"
-          scp -i ~/.ssh/shroom_test shroom-release.tgz "$DEPLOY_USER@$DEPLOY_HOST:/var/lib/shroom-deploy/incoming/$GITHUB_SHA.tgz"
-          ssh -i ~/.ssh/shroom_test "$DEPLOY_USER@$DEPLOY_HOST" "sudo /usr/local/sbin/shroom-test-deploy /var/lib/shroom-deploy/incoming/$GITHUB_SHA.tgz $GITHUB_SHA"
-
-      - name: Verify public health
-        run: curl -fsS --retry 5 --retry-delay 2 https://shroom.evox.run/api/health

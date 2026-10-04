@@ -7,12 +7,12 @@
   → Agent 修改 cloud-test
   → GitHub Actions 运行 API 测试、H5 与管理后台构建
   → 生成单一发布包
-  → 专用 shroomdeploy 账号上传
+  → 测试环境部署入口执行迁移、备份与发布
   → 服务器运行迁移、备份、替换、重启与健康检查
   → 失败自动恢复上一版
 ```
 
-`shroom.evox.run` 当前被定义为所有者个人测试环境。`cloud-test` 每次通过验证的 push 都会自动部署，不需要额外的生产审批。
+`shroom.evox.run` 当前被定义为所有者个人测试环境。已具备可回滚的标准部署入口；把 `cloud-test` push 永久连接为无人值守部署，仍需所有者明确批准服务器持续执行远程代码这一权限边界。
 
 ## GitHub Actions secrets
 

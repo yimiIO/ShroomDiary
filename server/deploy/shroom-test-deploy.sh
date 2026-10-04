@@ -25,12 +25,17 @@ esac
 exec 9>/run/lock/shroom-test-deploy.lock
 flock -n 9 || { echo "another deployment is running" >&2; exit 75; }
 
-if tar -tzf "$ARCHIVE" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+ARCHIVE_LIST=$(mktemp)
+trap 'rm -f "$ARCHIVE_LIST"' EXIT
+tar -tzf "$ARCHIVE" > "$ARCHIVE_LIST"
+if grep -Eq '(^/|(^|/)\.\.(/|$))' "$ARCHIVE_LIST"; then
   echo "unsafe archive paths" >&2
   exit 65
 fi
-tar -tzf "$ARCHIVE" | grep -qx 'public/index.html' || { echo "public/index.html missing" >&2; exit 65; }
-tar -tzf "$ARCHIVE" | grep -qx 'server/package.json' || { echo "server/package.json missing" >&2; exit 65; }
+grep -qx 'public/index.html' "$ARCHIVE_LIST" || { echo "public/index.html missing" >&2; exit 65; }
+grep -qx 'server/package.json' "$ARCHIVE_LIST" || { echo "server/package.json missing" >&2; exit 65; }
+rm -f "$ARCHIVE_LIST"
+trap - EXIT
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 RELEASE_ID="${STAMP}-${REVISION:0:12}"
@@ -41,7 +46,13 @@ FAILED="$APP_ROOT/releases/failed-$RELEASE_ID"
 mkdir -p "$APP_ROOT/releases" "$APP_ROOT/backups" "$STAGING" "$BACKUP"
 tar -xzf "$ARCHIVE" -C "$STAGING"
 
-npm --prefix "$STAGING/server" ci --omit=dev --no-audit --no-fund
+# ffmpeg-static's installer downloads from GitHub Releases, which is not
+# reliably reachable from this mainland test host. Install the locked tree
+# without lifecycle scripts, then reuse the already verified runtime binary.
+npm --prefix "$STAGING/server" ci --omit=dev --no-audit --no-fund --ignore-scripts
+install -m 0755 "$APP_ROOT/server/node_modules/ffmpeg-static/ffmpeg" \
+  "$STAGING/server/node_modules/ffmpeg-static/ffmpeg"
+node -e "require('$STAGING/server/node_modules/sharp'); const ffmpeg=require('$STAGING/server/node_modules/ffmpeg-static'); if (!ffmpeg) process.exit(1)"
 set -a
 . /etc/shroom/shroom.env
 [[ -f /etc/shroom/cos.env ]] && . /etc/shroom/cos.env
