@@ -1,5 +1,6 @@
 const memoryStatus = '/memory/v1/status';
 const memoryConversations = '/memory/v1/conversations';
+const memoryResultConversations = '/memory/v1/result-conversations';
 const memoryThemeOpen = key => `/memory/v1/themes/${encodeURIComponent(key)}/open`;
 
 const memoryConversation = id => `/memory/v1/conversations/${id}`;
@@ -16,6 +17,7 @@ export {
 	memoryConversations,
 	memoryFeedback,
 	memoryMessages,
+	memoryResultConversations,
 	memoryRetry,
 	memoryStatus,
 	memoryThemeOpen

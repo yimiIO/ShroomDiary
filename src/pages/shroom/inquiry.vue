@@ -81,6 +81,13 @@
 					</view>
 					<text v-if="isHealth" class="inline-disclaimer">{{ inquiry.currentSynthesis.medicalDisclaimer || inquiry.medicalDisclaimer }}</text>
 					<text v-if="inquiry.currentSynthesis.statusSuggestion === 'RESOLVED' && inquiry.status !== 'RESOLVED'" class="status-suggestion">AI 认为证据已经接近稳定，但是否“想明白”仍由你确认。</text>
+					<ai-result-continue
+						:result-id="inquiry.id"
+						:result-version="inquiry.synthesisVersion"
+						result-type="INQUIRY_SYNTHESIS"
+						title="继续讨论这份当前理解"
+						description="质疑原因假设、补充新事实，或看看认识发生了什么变化。"
+					/>
 					<button v-if="inquiry.history && inquiry.history.length > 1" class="history-toggle" @tap="historyOpen = !historyOpen">{{ historyOpen ? '收起过去的理解' : `查看过去 ${inquiry.history.length - 1} 个版本` }} <text>›</text></button>
 					<view v-if="historyOpen" class="history-list">
 						<view v-for="item in inquiry.history.slice(1)" :key="item.version" class="history-item">
@@ -161,8 +168,10 @@
 
 <script>
 import { inquiryDetail, inquiryEvidence, inquiryHealthSummary, inquiryReview } from '@/api/inquiry';
+import AiResultContinue from '@/components/AiResultContinue.vue';
 
 export default {
+	components: { AiResultContinue },
 	data() {
 		return {
 			statusBarHeight: 0,

@@ -11,6 +11,11 @@ const { planQuestion } = require('./question-planner');
 const { analyzeSemanticCensus } = require('./semantic-census');
 const { resolveAnalysisPlan } = require('./theme-presets');
 const {
+  AI_RESULT_CONVERSATION_VERSION,
+  continueAiResultConversation,
+  requiresExpandedRetrieval
+} = require('./ai-result-conversation');
+const {
   REFLECTION_PROMPT_VERSION,
   analyzeReflection,
   publicCitation,
@@ -79,7 +84,9 @@ async function progress(taskId, value) {
 async function taskContext(task) {
   const result = await db.query(
     `SELECT c.id AS conversation_id, c.user_id, c.seed_diary_id, c.mode, c.scope,
-            c.corpus_revision, m.content AS question, u.corpus_revision AS current_revision
+            c.corpus_revision, c.origin_type, c.origin_id, c.origin_version,
+            c.origin_snapshot, c.context_snapshot, c.conversation_summary,
+            m.content AS question, u.corpus_revision AS current_revision
        FROM reflection_conversations c
        JOIN reflection_messages m ON m.id = $2 AND m.conversation_id = c.id AND m.user_id = c.user_id
        JOIN users u ON u.id = c.user_id
@@ -120,6 +127,111 @@ async function conversationContext(context, currentMessageId) {
     })),
     feedback: feedback.rows.reverse()
   };
+}
+
+async function validateAnchoredSources(context) {
+  const sources = Array.isArray(context.context_snapshot?.sources) ? context.context_snapshot.sources : [];
+  const diarySources = sources.filter(item => item.diaryId);
+  if (!diarySources.length) return true;
+  const ids = [...new Set(diarySources.map(item => item.diaryId))];
+  const result = await db.query(
+    `SELECT id, content, content_version FROM diaries
+      WHERE user_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL AND ai_allowed`,
+    [context.user_id, ids]
+  );
+  if (result.rowCount !== ids.length) return false;
+  const current = new Map(result.rows.map(row => [String(row.id), row]));
+  return diarySources.every(source => {
+    const row = current.get(String(source.diaryId));
+    if (!row) return false;
+    if (source.sourceVersion && Number(source.sourceVersion) !== Number(row.content_version)) return false;
+    const captured = String(source.content || '');
+    return !captured || String(row.content || '').slice(0, captured.length) === captured;
+  });
+}
+
+function anchoredCitation(source) {
+  return {
+    sourceRef: source.sourceRef,
+    sourceType: source.sourceType,
+    sourceId: source.sourceId || null,
+    diaryId: source.diaryId || null,
+    sourceVersion: source.sourceVersion || null,
+    sourceStart: source.sourceStart || 0,
+    sourceEnd: source.sourceEnd || String(source.excerpt || '').length,
+    excerpt: source.excerpt || '',
+    occurredAt: source.occurredAt || null,
+    role: source.role || 'origin_context',
+    label: source.label || ''
+  };
+}
+
+async function finishAnchoredTask(task, context, result) {
+  return db.transaction(async client => {
+    const active = await client.query(
+      `SELECT t.id FROM reflection_tasks t
+       JOIN reflection_conversations c ON c.id = t.conversation_id AND c.user_id = t.user_id
+      WHERE t.id = $1 AND t.lease_owner = $2 AND t.status = 'processing'
+        AND c.status <> 'cancelled' FOR UPDATE OF t, c`,
+      [task.id, owner]
+    );
+    if (!active.rowCount) return false;
+    const messageId = crypto.randomUUID();
+    const savedResult = result.stageCognition ? {
+      ...result,
+      stageCognition: {
+        ...result.stageCognition,
+        sourceMessageId: task.user_message_id,
+        observedAt: new Date().toISOString(),
+        origin: {
+          type: context.origin_type,
+          id: context.origin_id,
+          version: Number(context.origin_version || 1)
+        }
+      }
+    } : result;
+    const citations = (Array.isArray(savedResult.sources) ? savedResult.sources : []).map(anchoredCitation);
+    await client.query(
+      `INSERT INTO reflection_messages
+        (id, conversation_id, user_id, role, content, structured_result, citations,
+         model_version, prompt_version)
+       VALUES ($1, $2, $3, 'assistant', $4, $5::jsonb, $6::jsonb, $7, $8)`,
+      [
+        messageId, context.conversation_id, context.user_id, savedResult.summary,
+        JSON.stringify(savedResult), JSON.stringify(citations), config.aiModel,
+        AI_RESULT_CONVERSATION_VERSION
+      ]
+    );
+    for (const source of savedResult.sources || []) {
+      if (source.sourceType !== 'DIARY' || !source.diaryId || !source.sourceVersion) continue;
+      await client.query(
+        `INSERT INTO reflection_message_sources (message_id, diary_id, source_version)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [messageId, source.diaryId, source.sourceVersion]
+      );
+    }
+    const summary = savedResult.rollingSummary ? {
+      text: savedResult.rollingSummary,
+      nature: 'AI_GENERATED_CONVERSATION_SUMMARY',
+      coveredThroughMessageId: task.user_message_id,
+      updatedAt: new Date().toISOString()
+    } : (context.conversation_summary || {});
+    await client.query(
+      `UPDATE reflection_conversations SET status = 'completed', coverage = $3::jsonb,
+         conversation_summary = $4::jsonb, corpus_revision = $5,
+         error_message = NULL, updated_at = now()
+       WHERE id = $1 AND user_id = $2`,
+      [context.conversation_id, context.user_id, JSON.stringify(savedResult.coverage),
+        JSON.stringify(summary), context.current_revision]
+    );
+    await client.query(
+      `UPDATE reflection_tasks SET status = 'completed', progress = 100, lease_owner = NULL,
+        lease_expires_at = NULL, error_message = NULL, finished_at = now(), updated_at = now()
+       WHERE id = $1 AND lease_owner = $2`,
+      [task.id, owner]
+    );
+    return messageId;
+  });
 }
 
 async function finishTask(task, context, result, key, sourceManifest = null) {
@@ -240,6 +352,37 @@ async function processOne() {
     }
     await progress(task.id, 18);
     const conversation = await conversationContext(context, task.user_message_id);
+    if (context.origin_type && !requiresExpandedRetrieval(context.question)) {
+      if (!await validateAnchoredSources(context)) {
+        throw Object.assign(new Error('原始内容或授权已经变化，请从最新分析重新进入对话'), {
+          code: 'SHROOM_SOURCE_CHANGED', retryable: false
+        });
+      }
+      await progress(task.id, 48);
+      const result = await continueAiResultConversation({
+        userId: context.user_id,
+        originSnapshot: context.origin_snapshot,
+        contextSnapshot: context.context_snapshot,
+        conversationSummary: context.conversation_summary,
+        history: conversation.history,
+        feedback: conversation.feedback,
+        currentUserMessage: context.question,
+        usageContext: {
+          conversationId: context.conversation_id,
+          taskId: task.id,
+          diaryId: context.seed_diary_id
+        }
+      });
+      await progress(task.id, 88);
+      await finishAnchoredTask(task, context, result);
+      return true;
+    }
+    if (context.origin_type) {
+      conversation.history.unshift({
+        role: 'assistant',
+        content: `当前讨论所基于的旧分析（AI 解释，不是用户事实）：${JSON.stringify(context.origin_snapshot?.content || {}).slice(0, 12000)}`
+      });
+    }
     const plan = await resolveAnalysisPlan({
       scope: context.scope,
       planner: () => planQuestion({

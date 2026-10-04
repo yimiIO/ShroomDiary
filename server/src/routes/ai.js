@@ -83,7 +83,7 @@ async function mapAnalysisWithCandidates(row, userId, queryable = db) {
 
 const analysisFields = `id, diary_id, engine_version, five_views, observer_snapshot, observations,
   source_activities, todo_candidates, card_suggestion, friend_changes, cost_summary, status, error_message,
-  started_at, finished_at, created_at, updated_at`;
+  ai_context_snapshot, started_at, finished_at, created_at, updated_at`;
 
 async function ownedDiary(userId, diaryId) {
   const result = await db.query(
@@ -273,16 +273,35 @@ async function executeAnalysis(userId, analysisId, diaryId) {
     const lifeOsLinks = normalizeLifeOsLinks(followup.compoundLinks || followup.lifeOsLinks, lifeOsItemsResult.rows, diary.content);
     const friendChanges = await latestFriendChanges(userId, diaryId);
     const costSummary = await usageSummary(userId, { analysisId });
+    const diaryContent = text(diary.content, 16000);
+    const contextSnapshot = {
+      version: 'diary-analysis-context-v1',
+      capturedAt: new Date().toISOString(),
+      sources: [{
+        sourceRef: 'D1', sourceType: 'DIARY', sourceId: diary.id, diaryId: diary.id,
+        sourceVersion: Number(diary.content_version || 1), occurredAt: diary.occurred_at,
+        label: '日记原文', content: diaryContent, sourceStart: 0, sourceEnd: diaryContent.length
+      }],
+      importantContext: {
+        mood: diary.mood || null,
+        lifeOs: text(os, 12000),
+        cards,
+        inquiries: existingInquiries,
+        compoundDirections: lifeOsItemsResult.rows,
+        sourceActivities
+      }
+    };
     return db.transaction(async client => {
       const result = await client.query(
         `UPDATE diary_analysis SET status = 'done', five_views = $3::jsonb, observations = $4::jsonb,
            todo_candidates = $5::jsonb, card_suggestion = $6::jsonb, friend_changes = $7::jsonb,
            cost_summary = $8::jsonb, source_activities = $9::jsonb,
+           ai_context_snapshot = $10::jsonb,
            finished_at = now(), updated_at = now()
          WHERE id = $1 AND user_id = $2 RETURNING ${analysisFields}`,
         [analysisId, userId, JSON.stringify(fiveViews), JSON.stringify(observations), JSON.stringify(candidates),
           JSON.stringify(cardSuggestion), JSON.stringify(friendChanges), JSON.stringify(costSummary),
-          JSON.stringify(sourceActivities)]
+          JSON.stringify(sourceActivities), JSON.stringify(contextSnapshot)]
       );
       await syncDiaryCandidates(client, {
         userId,
@@ -339,6 +358,7 @@ async function startAnalysis(req, res) {
        five_views = '{}'::jsonb, observer_snapshot = EXCLUDED.observer_snapshot, observations = '[]'::jsonb,
        todo_candidates = '[]'::jsonb, card_suggestion = '{}'::jsonb, cost_summary = '{}'::jsonb,
        source_activities = '[]'::jsonb,
+       ai_context_snapshot = '{}'::jsonb,
        error_message = NULL, started_at = NULL, finished_at = NULL, updated_at = now()
      RETURNING ${analysisFields}`,
     [taskId, req.user.id, diary.id, VERSION, JSON.stringify(observers)]

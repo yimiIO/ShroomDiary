@@ -12,6 +12,8 @@ const { bumpCorpusRevision } = require('../memory-store');
 const { themeCatalog, themePreset } = require('../theme-presets');
 const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 const { ensureAiFunds } = require('../billing-store');
+const { publicOrigin } = require('../ai-result-conversation');
+const { loadAiResultOrigin } = require('../ai-result-origins');
 
 const router = express.Router();
 router.use(requireUser);
@@ -51,6 +53,14 @@ function mapConversation(row, messages = undefined, costs = {}) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+  if (row.origin_type) {
+    value.origin = {
+      type: row.origin_type,
+      id: row.origin_id,
+      version: Number(row.origin_version || 1),
+      ...publicOrigin(row.origin_snapshot)
+    };
+  }
   if (messages) value.messages = messages;
   return value;
 }
@@ -254,6 +264,42 @@ router.post('/conversations', asyncRoute(async (req, res) => {
     scope,
     task: { id: created.taskId, status: 'pending', progress: 0 }
   }, '正在从日记中核对');
+}));
+
+router.post('/result-conversations', asyncRoute(async (req, res) => {
+  if (!isAiConfigured()) return fail(res, 503, 'AI 连续对话尚未配置');
+  const opened = await db.transaction(async client => {
+    const origin = await loadAiResultOrigin(client, req.user.id, req.body);
+    if (!origin) return null;
+    const revision = await client.query(
+      'SELECT corpus_revision FROM users WHERE id = $1 FOR UPDATE',
+      [req.user.id]
+    );
+    const conversationId = crypto.randomUUID();
+    const result = await client.query(
+      `INSERT INTO reflection_conversations
+        (id, user_id, seed_diary_id, title, mode, scope, initial_question,
+         corpus_revision, status, origin_type, origin_id, origin_version,
+         origin_snapshot, context_snapshot)
+       VALUES ($1, $2, $3, $4, 'related', $5::jsonb, $6, $7, 'completed',
+         $8, $9, $10, $11::jsonb, $12::jsonb)
+       ON CONFLICT (user_id, origin_type, origin_id, origin_version)
+         WHERE origin_type IS NOT NULL
+       DO UPDATE SET title = EXCLUDED.title, origin_snapshot = EXCLUDED.origin_snapshot,
+         context_snapshot = EXCLUDED.context_snapshot, updated_at = now()
+       RETURNING *`,
+      [
+        conversationId, req.user.id, origin.seedDiaryId, origin.title,
+        JSON.stringify({ originType: origin.type, originId: origin.id, originVersion: origin.version }),
+        '围绕这份分析继续聊聊', Number(revision.rows[0]?.corpus_revision || 0),
+        origin.type, origin.id, origin.version,
+        JSON.stringify(origin.originSnapshot), JSON.stringify(origin.contextSnapshot)
+      ]
+    );
+    return result.rows[0];
+  });
+  if (!opened) return fail(res, 404, '这份 AI 分析不存在、已失效或不属于当前账号');
+  return ok(res, mapConversation(opened), '已接上这份分析的上下文');
 }));
 
 router.get('/conversations/:id', asyncRoute(async (req, res) => {

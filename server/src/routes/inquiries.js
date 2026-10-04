@@ -666,7 +666,7 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
       return fail(res, 409, '暂无新的问题线索；如需重新核对旧记录，请选择“用全部线索重新分析”');
     }
     const selectedResult = await db.query(
-      `SELECT e.id, e.source_type, e.source_label, e.updated_at,
+      `SELECT e.id, e.source_type, e.source_label, e.updated_at, e.diary_id, d.content_version,
               CASE WHEN e.diary_id IS NOT NULL THEN d.content ELSE e.excerpt END AS excerpt,
               e.note, e.relation,
               to_char(COALESCE(d.occurred_at, e.created_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
@@ -679,7 +679,7 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
     evidenceRows = healthSelection.selectedIds.map(id => selectedById.get(id)).filter(Boolean);
   } else {
     const evidenceResult = await db.query(
-    `SELECT e.id, e.source_type, e.source_label,
+    `SELECT e.id, e.source_type, e.source_label, e.diary_id, d.content_version,
             CASE WHEN e.diary_id IS NOT NULL THEN d.content ELSE e.excerpt END AS excerpt,
             e.note, e.relation,
             to_char(COALESCE(d.occurred_at, e.created_at) AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS source_date
@@ -698,6 +698,8 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
     id: row.id,
     date: row.source_date,
     type: row.source_type,
+    diaryId: row.diary_id || null,
+    sourceVersion: row.content_version ? Number(row.content_version) : null,
     label: row.source_label,
     relationMarkedByUser: row.relation,
     content: text(row.excerpt, 1800),
@@ -769,10 +771,39 @@ router.post('/:id/review', asyncRoute(async (req, res) => {
     const version = Number(locked.rows[0].synthesis_version || 0) + 1;
     const currentRefs = evidence.map(item => ({ key: item.key, evidenceId: item.id, date: item.date, label: item.label }));
     const refs = healthReview ? mergeEvidenceRefs(previousEvidenceRefs, currentRefs) : currentRefs;
+    const aiContextSnapshot = {
+      version: 'inquiry-synthesis-context-v1',
+      capturedAt: new Date().toISOString(),
+      sources: evidence.map(item => ({
+        sourceRef: item.key,
+        sourceType: item.diaryId ? 'DIARY' : item.type,
+        sourceId: item.id,
+        diaryId: item.diaryId,
+        sourceVersion: item.sourceVersion,
+        occurredAt: item.date,
+        label: item.label || item.type,
+        content: item.content,
+        sourceStart: 0,
+        sourceEnd: item.content.length
+      })),
+      importantContext: {
+        inquiry: {
+          question: inquiry.question,
+          context: inquiry.context,
+          inquiryType: inquiry.inquiry_type,
+          observationStartedOn: inquiry.observation_started_on || null,
+          personalBaseline: inquiry.personal_baseline || ''
+        },
+        previousSynthesis: inquiry.current_synthesis || null,
+        coverage
+      }
+    };
     await client.query(
-      `INSERT INTO inquiry_syntheses (id, user_id, inquiry_id, version, result, evidence_refs)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
-      [crypto.randomUUID(), req.user.id, inquiryId, version, JSON.stringify(synthesis), JSON.stringify(refs)]
+      `INSERT INTO inquiry_syntheses
+        (id, user_id, inquiry_id, version, result, evidence_refs, ai_context_snapshot)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb)`,
+      [crypto.randomUUID(), req.user.id, inquiryId, version, JSON.stringify(synthesis),
+        JSON.stringify(refs), JSON.stringify(aiContextSnapshot)]
     );
     await client.query(
       `UPDATE inquiries SET current_synthesis = $3::jsonb, synthesis_version = $4,

@@ -63,6 +63,11 @@
 								<text v-else-if="conversation.coverage && !conversation.coverage.semanticIndexEnabled">大模型规划 · 证据检索</text>
 							</view>
 					</view>
+					<view class="origin-anchor" v-if="conversation.origin">
+						<text>接着当前分析继续</text>
+						<text>{{ conversation.origin.summary || '原分析和生成时使用的重要上下文已经接入。' }}</text>
+						<text>此前 AI 的判断仍是可质疑的解释，不会自动变成你的事实。</text>
+					</view>
 					<view class="usage-strip" v-if="visibleCost && visibleCost.calls">
 						<view><text>本次回看用量</text><text>{{ visibleCost.calls }} 次调用 · {{ formatTokens(visibleCost.totalTokens) }} tokens</text></view>
 						<view><text>{{ formatBilling(visibleCost) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
@@ -312,7 +317,8 @@ export default {
 			const task = this.conversation && this.conversation.task;
 			return Math.max(0, Math.min(100, Number(task && task.progress) || 0));
 		},
-			processingLabel() {
+		processingLabel() {
+				if (this.conversation && this.conversation.origin && this.taskProgress < 88) return '接着这份分析回答';
 				if (this.taskProgress < 20) return '确认授权范围';
 				if (this.taskProgress < 30) return '理解你的问题';
 				if (this.taskProgress < 50) return '执行分析计划';
@@ -321,14 +327,17 @@ export default {
 			},
 			processingNote() {
 				if (this.pollFailures) return '网络刚刚有波动，后台任务仍在继续；正在自动重新连接。';
+					if (this.conversation && this.conversation.origin) return '普通追问直接复用原分析上下文；只有你要求结合过去记录时，才重新检索。';
 					if (this.isThemeConversation) return '以前核对过的日记会直接复用，只分析新增或修改过的正文。离开页面后更新也会继续。';
 					return '先理解问题，再选择完整普查或证据检索；最后校验数字与原文。离开页面后任务也会继续。';
 			},
 		modeLabel() {
+			if (this.conversation && this.conversation.origin) return '继续聊聊';
 			const mode = this.modes.find(item => item.value === (this.conversation && this.conversation.mode));
 			return mode ? mode.label.toUpperCase() : 'MEMORY REVIEW';
 		},
 			coverageSummary() {
+				if (this.conversation && this.conversation.origin && !(this.conversation.coverage && this.conversation.coverage.totalAvailable)) return '已接入原分析与当时的重要上下文';
 				const coverage = (this.conversation && this.conversation.coverage) || {};
 				if (!coverage.totalAvailable) return '只读取当前账号已授权的记录';
 				if (coverage.semanticMethod === 'full_range_content_classification') {
@@ -524,9 +533,11 @@ export default {
 		},
 		sourceLabel(source) {
 			if (!source) return '来源已失效';
+			if (source.sourceType === 'CONTEXT_RECORD') return this.sourceDate(source) + ' · 已确认上下文';
 			return this.sourceDate(source) + (source.sourceType === 'CODEX_TASK' ? ' · Codex 任务' : ' · 日记原文');
 		},
 		sourceLinkLabel(source) {
+			if (source && source.sourceType === 'CONTEXT_RECORD') return '查看当时的上下文';
 			return source && source.sourceType === 'CODEX_TASK' ? '查看 Codex 任务事实' : '打开这篇日记 ↗';
 		},
 		openSource(source) {
@@ -543,6 +554,15 @@ export default {
 				});
 				return;
 			}
+			if (source.sourceType === 'CONTEXT_RECORD') {
+				uni.showModal({
+					title: source.label || '当时使用的上下文',
+					content: source.excerpt || '内容不可用',
+					showCancel: false,
+					confirmText: '知道了'
+				});
+				return;
+			}
 			if (!source.diaryId) {
 				uni.showToast({ title: '来源已经失效', icon: 'none' });
 				return;
@@ -550,6 +570,7 @@ export default {
 			uni.navigateTo({ url: '/pages/diary/edit?id=' + source.diaryId });
 		},
 		resultStatus(status) {
+			if (this.conversation && this.conversation.origin) return '连续对话';
 			return {
 				completed: '范围已覆盖',
 				partial: '部分覆盖',
@@ -646,6 +667,10 @@ button::after { border: 0; }
 .start-button[disabled] { opacity: .42; }
 .privacy-note { display: block; margin: 20rpx 8rpx 0; font-size: 19rpx; line-height: 1.6; color: #8a9488; }
 .conversation-head { margin-bottom: 32rpx; }
+.origin-anchor { display: flex; flex-direction: column; gap: 9rpx; margin: -12rpx 0 25rpx; padding: 22rpx 24rpx; border-radius: 22rpx; background: #e3ecd9; }
+.origin-anchor text:first-child { font-size: 18rpx; font-weight: 720; color: #516153; }
+.origin-anchor text:nth-child(2) { font-size: 22rpx; line-height: 1.55; color: #172019; }
+.origin-anchor text:last-child { font-size: 16rpx; line-height: 1.5; color: #718075; }
 .conversation-kicker, .conversation-title { display: block; }
 .conversation-title { margin-top: 13rpx; font-family: Georgia, 'Songti SC', serif; font-size: 48rpx; font-weight: 500; line-height: 1.25; }
 .scope-summary { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 18rpx; }

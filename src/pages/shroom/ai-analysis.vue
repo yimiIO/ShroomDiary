@@ -157,6 +157,11 @@
 						<view class="todo-created-notice" v-if="createdTodoNotice" @tap="openTodos"><text>{{ createdTodoNotice }}</text><text>查看待办　›</text></view>
 				</view>
 				<view class="rerun" @tap="confirmRerun">用当前观察席重新分析</view>
+				<ai-result-continue
+					:result-id="analysis.taskId"
+					result-type="DIARY_ANALYSIS"
+					title="不只看结论，继续把它想清楚"
+				/>
 			</view>
 		</view>
 		<health-consent-sheet
@@ -172,10 +177,11 @@
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
+import AiResultContinue from '@/components/AiResultContinue.vue';
 import { wellbeingStatus } from '@/api/wellbeing';
 
 export default {
-	components: { HealthConsentSheet },
+	components: { AiResultContinue, HealthConsentSheet },
 		data() { return { statusBarHeight: 0, diaryId: '', invalidDiaryContext: false, autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
