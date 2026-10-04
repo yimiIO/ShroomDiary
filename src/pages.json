@@ -17,7 +17,7 @@
 		{
 			"path": "pages/snapshot/trend",
 			"style": {
-				"navigationBarTitleText": "7日趋势",
+				"navigationBarTitleText": "睡眠趋势",
 				"navigationStyle": "custom"
 			}
 		},
@@ -46,6 +46,13 @@
 			"path": "pages/snapshot/meditation",
 			"style": {
 				"navigationBarTitleText": "晨间冥想",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/snapshot/health",
+			"style": {
+				"navigationBarTitleText": "健康记录",
 				"navigationStyle": "custom"
 			}
 		},
@@ -131,6 +138,14 @@
 						"style": "default"
 					}
 				}
+			}
+		},
+		{
+			"path": "pages/shroom/cards-review",
+			"style": {
+				"navigationBarTitleText": "复习菇卡",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
 			}
 		},
 		{
@@ -475,6 +490,14 @@
 			}
 		},
 		{
+			"path": "pages/common/cards/share",
+			"style": {
+				"navigationBarTitleText": "引用这张菇卡",
+				"navigationStyle": "custom",
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/common/diary/search",
 			"style": {
 				"enablePullDownRefresh": true,
@@ -526,39 +549,39 @@
 		}
 	},
 	"tabBar": {
-		"color": "#9aa39a",
-		"selectedColor": "#172019",
+		"color": "#737373",
+		"selectedColor": "#171717",
 		"borderStyle": "white",
 		"backgroundColor": "#ffffff",
 		"list": [
 			{
 				"pagePath": "pages/diary/index",
-				"iconPath": "static/tab-home.png",
-				"selectedIconPath": "static/tab-home-black.png",
-				"text": "日记"
+				"iconPath": "static/icons/tab-diary-outline.png",
+				"selectedIconPath": "static/icons/tab-diary-selected.png",
+				"text": "记录"
 			},
 			{
 				"pagePath": "pages/shroom/cards",
-				"iconPath": "static/tab-level.png",
-				"selectedIconPath": "static/tab-level-black.png",
+				"iconPath": "static/icons/tab-cards-outline.png",
+				"selectedIconPath": "static/icons/tab-cards-selected.png",
 				"text": "菇卡"
 			},
 			{
 				"pagePath": "pages/snapshot/index",
-				"iconPath": "static/snapshot/icons/tab-record.png",
-				"selectedIconPath": "static/snapshot/icons/tab-record.png",
-				"text": "快照"
+				"iconPath": "static/icons/tab-snapshot-outline.png",
+				"selectedIconPath": "static/icons/tab-snapshot-selected.png",
+				"text": "今日"
 			},
 			{
 				"pagePath": "pages/shroom/discover",
-				"iconPath": "static/tab-spot.png",
-				"selectedIconPath": "static/tab-spot-black.png",
+				"iconPath": "static/icons/tab-discover-outline.png",
+				"selectedIconPath": "static/icons/tab-discover-selected.png",
 				"text": "发现"
 			},
 			{
 				"pagePath": "pages/shroom/me",
-				"iconPath": "static/tab-my.png",
-				"selectedIconPath": "static/tab-my-black.png",
+				"iconPath": "static/icons/tab-me-outline.png",
+				"selectedIconPath": "static/icons/tab-me-selected.png",
 				"text": "我的"
 			}
 		]

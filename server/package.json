@@ -11,6 +11,8 @@
     "start": "node src/server.js",
     "test": "node --test test/*.test.js",
     "test:integration": "node test/integration.js",
+    "migrate:sql": "node scripts/run-sql-migrations.js",
+    "migrate:baseline": "node scripts/run-sql-migrations.js --baseline",
     "seed:editorial-cards": "node migrate/editorial_cards.js",
     "backfill:memory": "node migrate/backfill_memory.js",
     "backfill:inquiries": "node migrate/backfill_inquiry_candidates.js",

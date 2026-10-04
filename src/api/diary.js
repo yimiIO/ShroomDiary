@@ -20,6 +20,7 @@ const diaryDetail = '/diaries/v1/view';
 // 创建日记
 // POST /api/rf-diary/v1/diary/create
 const diaryCreate = '/diaries/v1/create';
+const diaryBatchCreate = '/diaries/v1/batch-create';
 
 // 更新日记
 // PUT /api/rf-diary/v1/diary/update?id=1
@@ -41,6 +42,7 @@ export {
 	diaryOverview,
 	diaryDetail,
 	diaryCreate,
+	diaryBatchCreate,
 	diaryUpdate,
 	diaryDelete,
 	diaryAiAccess,

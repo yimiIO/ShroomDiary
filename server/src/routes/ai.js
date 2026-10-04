@@ -23,6 +23,7 @@ const { hasDiaryHealthExtraction, legacyHealthObservation, normalizeDiaryHealthE
 const { WELLBEING_REVIEW_VERSION, reviewDiaryWellbeing } = require('../wellbeing-review');
 const { listDiarySourceActivities } = require('../data-sources');
 const { ensureAiFunds } = require('../billing-store');
+const { shouldReuseSavedResult } = require('../analysis-reuse-policy');
 
 const router = express.Router();
 router.use(requireUser);
@@ -329,7 +330,12 @@ async function executeAnalysis(userId, analysisId, diaryId) {
   } catch (error) {
     const costSummary = await usageSummary(userId, { analysisId }).catch(() => null);
     await db.query(
-      `UPDATE diary_analysis SET status = 'failed', error_message = $3,
+      `UPDATE diary_analysis SET
+         status = CASE
+           WHEN five_views <> '{}'::jsonb OR jsonb_array_length(observations) > 0 THEN 'done'
+           ELSE 'failed'
+         END,
+         error_message = $3,
          cost_summary = COALESCE($4::jsonb, cost_summary), finished_at = now(), updated_at = now()
        WHERE id = $1 AND user_id = $2`,
       [analysisId, userId, text(error.message, 1000) || '分析失败', costSummary ? JSON.stringify(costSummary) : null]
@@ -339,41 +345,62 @@ async function executeAnalysis(userId, analysisId, diaryId) {
 }
 
 async function startAnalysis(req, res) {
+  const diaryId = text(req.body.diaryId, 64);
+  if (!diaryId) return fail(res, 400, '请选择一篇日记');
+  const regenerate = req.body.regenerate === true;
+  const saved = await db.query(
+    `SELECT ${analysisFields} FROM diary_analysis WHERE user_id = $1 AND diary_id = $2`,
+    [req.user.id, diaryId]
+  );
+  if (saved.rowCount && shouldReuseSavedResult(saved.rows[0], regenerate)) {
+    const analysis = await mapAnalysisWithCandidates(saved.rows[0], req.user.id);
+    return ok(res, analysis, analysis.status === 'done' ? '已打开保存的观察结果' : '已打开现有分析任务');
+  }
   if (!isAiConfigured()) return fail(res, 503, '观察席 AI 尚未配置；日记不会发送给第三方模型');
   await ensureAiFunds(req.user.id);
-  const diaryId = text(req.body.diaryId, 64);
   const diary = await ownedDiary(req.user.id, diaryId);
   if (!diary) return fail(res, 404, '日记不存在');
   const observers = await activeObserverSnapshot(req.user.id);
   if (!observers.length) return fail(res, 400, '请至少启用一个观察席');
   const taskId = crypto.randomUUID();
-  const result = await db.query(
-    `INSERT INTO diary_analysis
-      (id, user_id, diary_id, engine_version, status, five_views, observer_snapshot, observations,
-       todo_candidates, card_suggestion, friend_changes, cost_summary, source_activities)
-     VALUES ($1, $2, $3, $4, 'pending', '{}'::jsonb, $5::jsonb, '[]'::jsonb,
-       '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb)
-     ON CONFLICT (user_id, diary_id) DO UPDATE SET
-       id = EXCLUDED.id, engine_version = EXCLUDED.engine_version, status = 'pending',
-       five_views = '{}'::jsonb, observer_snapshot = EXCLUDED.observer_snapshot, observations = '[]'::jsonb,
-       todo_candidates = '[]'::jsonb, card_suggestion = '{}'::jsonb, cost_summary = '{}'::jsonb,
-       source_activities = '[]'::jsonb,
-       ai_context_snapshot = '{}'::jsonb,
-       error_message = NULL, started_at = NULL, finished_at = NULL, updated_at = now()
-     RETURNING ${analysisFields}`,
-    [taskId, req.user.id, diary.id, VERSION, JSON.stringify(observers)]
-  );
+  const reservation = await db.transaction(async client => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`diary-analysis:${req.user.id}:${diary.id}`]);
+    const current = await client.query(
+      `SELECT ${analysisFields} FROM diary_analysis WHERE user_id = $1 AND diary_id = $2 FOR UPDATE`,
+      [req.user.id, diary.id]
+    );
+    if (current.rowCount && shouldReuseSavedResult(current.rows[0], regenerate)) {
+      return { row: current.rows[0], reused: true };
+    }
+    const result = await client.query(
+      `INSERT INTO diary_analysis
+        (id, user_id, diary_id, engine_version, status, five_views, observer_snapshot, observations,
+         todo_candidates, card_suggestion, friend_changes, cost_summary, source_activities)
+       VALUES ($1, $2, $3, $4, 'pending', '{}'::jsonb, $5::jsonb, '[]'::jsonb,
+         '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb)
+       ON CONFLICT (user_id, diary_id) DO UPDATE SET
+         id = EXCLUDED.id, engine_version = EXCLUDED.engine_version, status = 'pending',
+         observer_snapshot = EXCLUDED.observer_snapshot, cost_summary = '{}'::jsonb,
+         error_message = NULL, started_at = NULL, finished_at = NULL, updated_at = now()
+       RETURNING ${analysisFields}`,
+      [taskId, req.user.id, diary.id, VERSION, JSON.stringify(observers)]
+    );
+    return { row: result.rows[0], reused: false };
+  });
+  if (reservation.reused) {
+    return ok(res, await mapAnalysisWithCandidates(reservation.row, req.user.id), '已打开现有分析任务');
+  }
   if (req.body.sync === true) {
     try {
-      const completed = await executeAnalysis(req.user.id, result.rows[0].id, diary.id);
+      const completed = await executeAnalysis(req.user.id, reservation.row.id, diary.id);
       return ok(res, completed, '观察席分析完成');
     } catch (error) {
       return fail(res, 503, error.message || '观察席分析失败');
     }
   }
-  setImmediate(() => executeAnalysis(req.user.id, result.rows[0].id, diary.id)
-    .catch(error => console.error('background diary analysis failed', { analysisId: result.rows[0].id, message: error.message })));
-  return ok(res, await mapAnalysisWithCandidates(result.rows[0], req.user.id), '分析任务已创建');
+  setImmediate(() => executeAnalysis(req.user.id, reservation.row.id, diary.id)
+    .catch(error => console.error('background diary analysis failed', { analysisId: reservation.row.id, message: error.message })));
+  return ok(res, await mapAnalysisWithCandidates(reservation.row, req.user.id), '分析任务已创建');
 }
 
 router.get('/status', asyncRoute(async (req, res) => ok(res, {

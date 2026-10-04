@@ -1,12 +1,13 @@
 const LAST_NOTICE_KEY = 'shroomLastInboxNoticeId';
+const MY_TAB_INDEX = 4;
 
 function setInboxBadge(count) {
 	const value = Math.max(0, Number(count || 0));
 	try {
 		if (value) {
-			uni.setTabBarBadge({ index: 3, text: value > 99 ? '99+' : String(value) });
+			uni.setTabBarBadge({ index: MY_TAB_INDEX, text: value > 99 ? '99+' : String(value) });
 		} else {
-			uni.removeTabBarBadge({ index: 3 });
+			uni.removeTabBarBadge({ index: MY_TAB_INDEX });
 		}
 	} catch (error) {
 		// 非 tabBar 页面或旧运行时不支持角标时，收件箱内的未读状态仍然有效。

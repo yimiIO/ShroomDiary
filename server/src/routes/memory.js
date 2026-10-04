@@ -14,6 +14,7 @@ const { asyncRoute, fail, ok, requireUser, text } = require('../http');
 const { ensureAiFunds } = require('../billing-store');
 const { publicOrigin } = require('../ai-result-conversation');
 const { loadAiResultOrigin } = require('../ai-result-origins');
+const { shouldReuseSavedResult } = require('../analysis-reuse-policy');
 
 const router = express.Router();
 router.use(requireUser);
@@ -98,6 +99,23 @@ async function createTask(client, userId, conversationId, messageId) {
   return id;
 }
 
+async function matchingConversation(queryable, userId, { seedDiaryId, mode, scope, question }, { lock = false } = {}) {
+  const result = await queryable.query(
+    `SELECT * FROM reflection_conversations
+      WHERE user_id = $1
+        AND seed_diary_id IS NOT DISTINCT FROM $2::uuid
+        AND mode = $3 AND scope = $4::jsonb AND initial_question = $5
+        AND status <> 'cancelled'
+      ORDER BY CASE
+        WHEN status = 'processing' THEN 0
+        WHEN status IN ('completed', 'partial', 'insufficient_evidence') THEN 1
+        ELSE 2
+      END, updated_at DESC LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+    [userId, seedDiaryId, mode, JSON.stringify(scope), question]
+  );
+  return result.rows[0] || null;
+}
+
 router.get('/status', asyncRoute(async (req, res) => {
   const [counts, jobs, sources] = await Promise.all([
     db.query(
@@ -161,9 +179,26 @@ router.get('/conversations', asyncRoute(async (req, res) => {
 router.get('/themes', asyncRoute(async (req, res) => ok(res, themeCatalog())));
 
 router.post('/themes/:key/open', asyncRoute(async (req, res) => {
-  if (!isAiConfigured()) return fail(res, 503, '日记回看 AI 尚未配置');
   const preset = themePreset(req.params.key);
   if (!preset) return fail(res, 404, '主题不存在');
+  const regenerate = req.body.regenerate === true;
+  const saved = await db.query(
+    `SELECT * FROM reflection_conversations
+      WHERE user_id = $1 AND scope->>'themeKey' = $2 AND status <> 'cancelled'
+      ORDER BY updated_at DESC LIMIT 1`,
+    [req.user.id, preset.key]
+  );
+  if (saved.rowCount && shouldReuseSavedResult(saved.rows[0], regenerate)) {
+    const existing = saved.rows[0];
+    return ok(res, {
+      id: existing.id,
+      status: existing.status,
+      reused: true,
+      refreshing: existing.status === 'processing'
+    }, existing.status === 'processing' ? '主题回看仍在进行' : '已打开保存的主题回看');
+  }
+  if (!isAiConfigured()) return fail(res, 503, '日记回看 AI 尚未配置');
+  await ensureAiFunds(req.user.id);
 
   const opened = await db.transaction(async client => {
     const revisionResult = await client.query(
@@ -173,18 +208,14 @@ router.post('/themes/:key/open', asyncRoute(async (req, res) => {
     const revision = Number(revisionResult.rows[0]?.corpus_revision || 0);
     const existingResult = await client.query(
       `SELECT * FROM reflection_conversations
-        WHERE user_id = $1 AND scope->>'themeKey' = $2
+        WHERE user_id = $1 AND scope->>'themeKey' = $2 AND status <> 'cancelled'
         ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
       [req.user.id, preset.key]
     );
     const existing = existingResult.rows[0];
 
-    if (existing && existing.status === 'processing') {
-      return { id: existing.id, status: existing.status, reused: true, refreshing: true };
-    }
-    if (existing && Number(existing.corpus_revision) === revision &&
-      ['completed', 'partial', 'insufficient_evidence'].includes(existing.status)) {
-      return { id: existing.id, status: existing.status, reused: true, refreshing: false };
+    if (existing && shouldReuseSavedResult(existing, regenerate)) {
+      return { id: existing.id, status: existing.status, reused: true, refreshing: existing.status === 'processing' };
     }
 
     const scope = { ...normalizedScope({}), themeKey: preset.key };
@@ -225,8 +256,6 @@ router.post('/themes/:key/open', asyncRoute(async (req, res) => {
 }));
 
 router.post('/conversations', asyncRoute(async (req, res) => {
-  if (!isAiConfigured()) return fail(res, 503, '日记回看 AI 尚未配置；不会把日记发送给未配置的服务');
-  await ensureAiFunds(req.user.id);
   const seedDiaryId = text(req.body.seedDiaryId, 64) || null;
   const scope = normalizedScope(req.body.scope);
   const question = text(req.body.question, 1000) ||
@@ -236,7 +265,25 @@ router.post('/conversations', asyncRoute(async (req, res) => {
     return fail(res, 404, '所选日记不存在或没有授权 AI 读取');
   }
   const mode = inferMode(req.body.mode, question);
+  const regenerate = req.body.regenerate === true;
+  const request = { seedDiaryId, mode, scope, question };
+  const saved = await matchingConversation(db, req.user.id, request);
+  if (shouldReuseSavedResult(saved, regenerate)) {
+    return ok(res, {
+      id: saved.id,
+      status: saved.status,
+      mode: saved.mode,
+      scope: saved.scope,
+      reused: true
+    }, saved.status === 'processing' ? '回看仍在进行' : '已打开保存的回看');
+  }
+  if (!isAiConfigured()) return fail(res, 503, '日记回看 AI 尚未配置；不会把日记发送给未配置的服务');
+  await ensureAiFunds(req.user.id);
   const created = await db.transaction(async client => {
+    const current = await matchingConversation(client, req.user.id, request, { lock: true });
+    if (shouldReuseSavedResult(current, regenerate)) {
+      return { conversationId: current.id, taskId: null, reused: true, status: current.status };
+    }
     const revision = await client.query('SELECT corpus_revision FROM users WHERE id = $1 FOR UPDATE', [req.user.id]);
     const conversationId = crypto.randomUUID();
     const messageId = crypto.randomUUID();
@@ -259,11 +306,12 @@ router.post('/conversations', asyncRoute(async (req, res) => {
   });
   return ok(res, {
     id: created.conversationId,
-    status: 'processing',
+    status: created.status || 'processing',
     mode,
     scope,
-    task: { id: created.taskId, status: 'pending', progress: 0 }
-  }, '正在从日记中核对');
+    reused: Boolean(created.reused),
+    task: created.taskId ? { id: created.taskId, status: 'pending', progress: 0 } : null
+  }, created.reused ? '已打开保存的回看' : '正在从日记中核对');
 }));
 
 router.post('/result-conversations', asyncRoute(async (req, res) => {

@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   clockTime,
+  compareTasksByCreatedAt,
+  compareTasksByTime,
   groupCurrentTasks,
   normalizeRecurrence,
   recurrenceDates,
@@ -82,4 +84,30 @@ test('recurring habits keep a validated fixed time window', () => {
 test('PostgreSQL Date values keep their calendar date in API mapping helpers', () => {
   const task = { id: 'db-date', status: 'pending', scheduledDate: new Date('2026-09-13T00:00:00.000Z') };
   assert.equal(taskMatchesView(task, 'current', '2026-09-13'), true);
+});
+
+test('todo lists sort by scheduled date and time with undated tasks last', () => {
+  const tasks = [
+    { id: 'undated', createdAt: '2026-09-15T10:00:00Z' },
+    { id: 'later', scheduledDate: '2026-09-28', scheduledStartTime: '09:00' },
+    { id: 'same-day-late', scheduledDate: '2026-09-27', scheduledStartTime: '18:00' },
+    { id: 'same-day-early', scheduledDate: '2026-09-27', scheduledStartTime: '08:30' },
+    { id: 'deadline-only', deadline: '2026-09-26' }
+  ];
+
+  assert.deepEqual(tasks.sort(compareTasksByTime).map(item => item.id), [
+    'deadline-only', 'same-day-early', 'same-day-late', 'later', 'undated'
+  ]);
+});
+
+test('todo lists can sort by newest creation time', () => {
+  const tasks = [
+    { id: 'middle', createdAt: '2026-09-24T10:00:00Z' },
+    { id: 'oldest', createdAt: '2026-09-20T10:00:00Z' },
+    { id: 'newest', createdAt: '2026-09-26T10:00:00Z' }
+  ];
+
+  assert.deepEqual(tasks.sort(compareTasksByCreatedAt).map(item => item.id), [
+    'newest', 'middle', 'oldest'
+  ]);
 });

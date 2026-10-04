@@ -56,7 +56,7 @@ app.use(cors({
     if (!origin || allowedOrigins.has(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed'));
   },
-  allowedHeaders: ['Content-Type', 'x-api-key', 'x-rfdiary-token', 'x-shroom-source-token',
+  allowedHeaders: ['Content-Type', 'Content-Range', 'x-api-key', 'x-rfdiary-token', 'x-shroom-source-token',
     'x-shroom-admin-csrf', 'x-shroom-agent-token', 'x-shroom-platform'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   maxAge: 86400
@@ -189,17 +189,25 @@ app.use((error, req, res, next) => {
   if (error.code === 'SHROOM_CARD_OWNER') return fail(res, 400, '关联菇卡不属于当前账号');
   if (error.code === 'SHROOM_DIARY_READ_ONLY') return fail(res, 409, error.message);
   if (error.code === 'SHROOM_MEDIA_TYPE') return fail(res, 400, '文件格式不受支持');
+  if (['SHROOM_VOICE_UPLOAD_NOT_FOUND', 'SHROOM_VOICE_UPLOAD_SIZE', 'SHROOM_VOICE_UPLOAD_RANGE'].includes(error.code)) {
+    return fail(res, 400, error.message);
+  }
+  if (['SHROOM_VOICE_UPLOAD_OFFSET', 'SHROOM_VOICE_UPLOAD_CONFLICT'].includes(error.code)) {
+    return fail(res, 409, error.message);
+  }
   if (error.code === 'SHROOM_IMAGE_INVALID') return fail(res, 400, error.message);
   if (['SHROOM_FRIEND_INPUT', 'SHROOM_FRIEND_RULE', 'SHROOM_FRIEND_SCORE'].includes(error.code)) {
     return fail(res, 400, error.message);
   }
-  if (error.code === 'LIMIT_FILE_SIZE') return fail(res, 400, '图片和语音不能超过 10MB');
+  if (error.code === 'LIMIT_FILE_SIZE') return fail(res, 400, '图片不能超过 10MB，语音不能超过 20MB');
   if (error.code === 'SHROOM_ASR_UNAVAILABLE') return fail(res, 503, error.message);
   if (['SHROOM_ASR_TIMEOUT', 'SHROOM_ASR_FAILED', 'SHROOM_ASR_CONFIG', 'SHROOM_ASR_EMPTY'].includes(error.code)) {
     return fail(res, 503, error.message);
   }
   if (error.code === 'SHROOM_AI_UNAVAILABLE') return fail(res, 503, error.message);
-  if (['SHROOM_COS_CONFIG', 'SHROOM_COS_UNAVAILABLE'].includes(error.code)) return fail(res, 503, error.message);
+  if (['SHROOM_COS_CONFIG', 'SHROOM_COS_UNAVAILABLE', 'SHROOM_COS_SIGNING_UNAVAILABLE'].includes(error.code)) {
+    return fail(res, 503, error.message);
+  }
   if (error.code === 'SHROOM_API_SCOPE') return fail(res, 403, error.message);
   if (error.code === 'SHROOM_TODO_INPUT') return fail(res, 400, error.message);
   if (error.code === 'SHROOM_BAG_INPUT') return fail(res, 400, error.message);

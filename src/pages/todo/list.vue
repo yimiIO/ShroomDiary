@@ -5,9 +5,6 @@
 			<view class="desktop-sidebar">
 				<text class="brand">SHROOM · ACTION</text>
 				<text class="sidebar-title">待办</text>
-				<text class="sidebar-section-label">按时间</text>
-				<button v-for="view in timeViews" :key="view.key" :class="{ active: currentView === view.key }" @tap="setView(view.key)">{{ view.label }}</button>
-				<view class="sidebar-divider"></view>
 				<text class="sidebar-section-label">组织方式</text>
 				<button :class="{ active: currentView === 'projects' }" @tap="setView('projects')">按项目查看</button>
 				<view class="sidebar-divider"></view>
@@ -33,11 +30,18 @@
 					<button @tap="clearSearch">取消</button>
 				</view>
 
-				<scroll-view class="mobile-tabs" scroll-x :show-scrollbar="false">
-					<view class="tab-row">
-						<button v-for="view in timeViews" :key="view.key" :class="{ active: currentView === view.key }" @tap="setView(view.key)">{{ view.label }}</button>
-					</view>
-				</scroll-view>
+				<view v-if="currentView !== 'projects'" class="filter-bar" data-testid="todo-filters">
+					<picker :range="timeFilterOptions" range-key="label" :value="timeFilterIndex" @change="chooseTimeFilter">
+						<button :class="{ active: currentView !== 'all' }"><text class="filter-label">时间</text><text>{{ selectedTimeFilterLabel }}</text><text class="filter-arrow">⌄</text></button>
+					</picker>
+					<picker :range="projectFilterOptions" range-key="name" :value="projectFilterIndex" @change="chooseProjectFilter">
+						<button :class="{ active: !!selectedProjectId }"><text class="filter-label">项目</text><text>{{ selectedProjectFilterName }}</text><text class="filter-arrow">⌄</text></button>
+					</picker>
+					<picker data-testid="todo-sort" :range="sortOptions" range-key="label" :value="sortIndex" @change="chooseSort">
+						<button :class="{ active: sortKey !== 'scheduled' }"><text class="filter-label">排序</text><text>{{ selectedSortLabel }}</text><text class="filter-arrow">⌄</text></button>
+					</picker>
+					<button v-if="hasActiveFilters" class="clear-filters" @tap="clearFilters">清除</button>
+				</view>
 
 				<scroll-view class="content-scroll" scroll-y refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="refresh">
 					<view v-if="loading && !loaded" class="loading">正在整理你的行动…</view>
@@ -102,35 +106,6 @@
 			</view>
 		</view>
 
-		<view v-if="showQuickSheet" class="sheet-mask" @tap.self="closeQuickAdd">
-			<view class="sheet" @tap.stop>
-				<view class="sheet-handle"></view>
-				<view class="sheet-heading"><text>{{ editingTask ? '调整待办' : '新增待办' }}</text><button @tap="closeQuickAdd">关闭</button></view>
-				<textarea v-model="draft.title" class="title-input" maxlength="500" auto-height placeholder="要做什么？" :focus="!editingTask" />
-				<view class="quick-fields">
-					<picker :range="projectOptions" range-key="name" :value="projectIndex" @change="chooseProject"><button>{{ selectedProjectName || '项目' }}</button></picker>
-					<button :class="{ active: !!draft.scheduledDate }" @tap="showDateChoices">{{ draft.scheduledDate ? shortDate(draft.scheduledDate) : '安排日期' }}</button>
-					<picker :range="repeatLabels" :value="repeatIndex" @change="chooseRepeat"><button :class="{ active: repeatIndex > 0 }">{{ repeatLabels[repeatIndex] }}</button></picker>
-				</view>
-
-				<view v-if="repeatIndex > 0" class="repeat-panel">
-					<view class="field-line"><text>开始日期</text><picker mode="date" :value="draft.recurrence.startsOn" @change="draft.recurrence.startsOn = $event.detail.value"><text>{{ draft.recurrence.startsOn }}</text></picker></view>
-					<view v-if="draft.recurrence.frequency === 'WEEKLY'" class="week-days"><button v-for="day in weekDayOptions" :key="day.value" :class="{ active: draft.recurrence.weekDays.includes(day.value) }" @tap="toggleWeekday(day.value)">{{ day.label }}</button></view>
-					<view v-if="draft.recurrence.frequency === 'MONTHLY'" class="field-line"><text>每月日期</text><input v-model.number="draft.recurrence.monthDay" type="number" maxlength="2" /></view>
-					<view class="field-line"><text>结束日期（可选）</text><picker mode="date" :value="draft.recurrence.endsOn || draft.recurrence.startsOn" @change="draft.recurrence.endsOn = $event.detail.value"><text>{{ draft.recurrence.endsOn || '不设置' }}</text></picker><button v-if="draft.recurrence.endsOn" @tap="draft.recurrence.endsOn = ''">清除</button></view>
-				</view>
-
-				<button class="text-toggle" @tap="showDetails = !showDetails">{{ showDetails ? '收起设置' : '添加说明 · 更多设置' }}　›</button>
-				<view v-if="showDetails" class="detail-fields">
-					<textarea v-model="draft.description" maxlength="5000" auto-height placeholder="任务说明、完成标准或本次边界（可选）" />
-					<view class="field-line"><text>截止日期</text><picker mode="date" :value="draft.deadline || today" @change="draft.deadline = $event.detail.value"><text>{{ draft.deadline || '未设置' }}</text></picker><button v-if="draft.deadline" @tap="draft.deadline = ''">清除</button></view>
-					<picker :range="directionOptions" range-key="name" :value="directionIndex" @change="chooseDirection"><view class="field-line"><text>复利方向</text><text>{{ selectedDirectionName || '不关联' }}　›</text></view></picker>
-				</view>
-				<view v-if="draft.sourceType === 'COMPOUND'" class="source-note">来自复利系统 · 保存后仍是同一套待办</view>
-				<button class="save-button" :disabled="saving || !draft.title.trim()" @tap="saveTask">{{ saving ? '保存中…' : '保存' }}</button>
-			</view>
-		</view>
-
 		<view v-if="showProjectSheet" class="sheet-mask" @tap.self="closeProjectSheet">
 			<view class="sheet small project-sheet" @tap.stop>
 				<view class="sheet-handle"></view><view class="sheet-heading"><view><text>新建项目</text><text>为一个需要多步完成的结果命名</text></view><button @tap="closeProjectSheet">关闭</button></view>
@@ -172,30 +147,21 @@
 
 <script>
 import TodoRow from '@/components/TodoRow.vue';
-import { todoBulk, todoCreate, todoDelete, todoExport, todoHome, todoProjects, todoStatus } from '@/api/todo';
-
-const emptyDraft = today => ({
-	title: '', description: '', projectId: '', scheduledDate: '', deadline: '', compoundItemId: '',
-	sourceType: 'MANUAL', sourceRefId: '', sourceDiaryId: '', sourceCompoundThreadId: '',
-	clientRequestId: '',
-	recurrence: { frequency: '', startsOn: today, endsOn: '', weekDays: [], monthDay: Number(today.slice(8, 10)) }
-});
+import { todoBulk, todoDelete, todoExport, todoHome, todoProjects, todoStatus } from '@/api/todo';
 
 export default {
 	components: { TodoRow },
 	data() {
 		return {
-			statusBarHeight: 0, customBarHeight: 0, currentView: 'current', loading: false, loaded: false, refreshing: false,
-			groups: [], projects: [], directions: [], unscheduledCount: 0, today: this.localToday(), timeZone: this.localTimeZone(),
+			statusBarHeight: 0, customBarHeight: 0, currentView: 'current', selectedProjectId: '', loading: false, loaded: false, refreshing: false,
+			groups: [], projects: [], unscheduledCount: 0, today: this.localToday(), timeZone: this.localTimeZone(),
 			searchVisible: false, searchQuery: '', historyExpanded: false, historyLimit: 5,
-			showQuickSheet: false, showProjectSheet: false, showPageMenu: false, showDetails: false, saving: false, editingTask: null,
-			draft: emptyDraft(this.localToday()), repeatIndex: 0,
+			showProjectSheet: false, showPageMenu: false,
 			projectDraft: { name: '', goal: '' }, projectNameFocused: false, savingProject: false,
 			selectionMode: false, selectedIds: [], undoTask: null, undoTimer: null,
 			coordinationGroups: [], adjustmentCount: 0, coordinationLoading: false, showCoordinationSheet: false, adoptingGroupKey: '',
-			timeViews: [{ key: 'current', label: '现在要做' }, { key: 'upcoming', label: '未来安排' }, { key: 'unscheduled', label: '待安排' }],
-			repeatLabels: ['不重复', '每天', '每周', '每月'],
-			weekDayOptions: [{ value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' }, { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' }]
+			timeFilterOptions: [{ key: 'all', label: '全部时间' }, { key: 'current', label: '现在要做' }, { key: 'upcoming', label: '未来安排' }, { key: 'unscheduled', label: '待安排' }, { key: 'completed', label: '已完成' }],
+			sortKey: 'scheduled', sortOptions: [{ key: 'scheduled', label: '计划时间' }, { key: 'created', label: '创建时间' }]
 		};
 	},
 	computed: {
@@ -203,12 +169,15 @@ export default {
 		taskCount() { return this.groups.reduce((count, group) => count + group.items.length, 0); },
 		coordinationTaskCount() { return this.coordinationGroups.reduce((count, group) => count + group.tasks.length, 0); },
 		visibleGroups() { return this.groups.filter(group => group.items && group.items.length); },
+		projectFilterOptions() { return [{ id: '', name: '全部项目' }, { id: '__none__', name: '无项目' }, ...this.projects]; },
+		timeFilterIndex() { const index = this.timeFilterOptions.findIndex(item => item.key === this.currentView); return Math.max(0, index); },
+		projectFilterIndex() { const index = this.projectFilterOptions.findIndex(item => item.id === this.selectedProjectId); return Math.max(0, index); },
+		sortIndex() { const index = this.sortOptions.findIndex(item => item.key === this.sortKey); return Math.max(0, index); },
+		selectedTimeFilterLabel() { return this.timeFilterOptions[this.timeFilterIndex].label; },
+		selectedProjectFilterName() { return this.projectFilterOptions[this.projectFilterIndex].name; },
+		selectedSortLabel() { return this.sortOptions[this.sortIndex].label; },
+		hasActiveFilters() { return this.currentView !== 'all' || Boolean(this.selectedProjectId) || this.sortKey !== 'scheduled'; },
 		projectOptions() { return [{ id: '', name: '不属于项目' }, ...this.projects]; },
-		directionOptions() { return [{ id: '', name: '不关联复利方向' }, ...this.directions]; },
-		projectIndex() { return Math.max(0, this.projectOptions.findIndex(item => item.id === this.draft.projectId)); },
-		directionIndex() { return Math.max(0, this.directionOptions.findIndex(item => item.id === this.draft.compoundItemId)); },
-		selectedProjectName() { const item = this.projectOptions[this.projectIndex]; return item && item.id ? item.name : ''; },
-		selectedDirectionName() { const item = this.directionOptions[this.directionIndex]; return item && item.id ? item.name : ''; },
 		viewLabel() {
 			return { current: '现在要做', upcoming: '未来安排', unscheduled: '待安排', all: '全部待办', completed: '已完成' }[this.currentView] || '';
 		},
@@ -218,9 +187,10 @@ export default {
 	onLoad(options) {
 		const info = uni.getSystemInfoSync(); this.statusBarHeight = info.statusBarHeight || 0; this.customBarHeight = this.statusBarHeight + 44;
 		if (options && ['current', 'upcoming', 'unscheduled', 'projects', 'all', 'completed'].includes(options.view)) this.currentView = options.view;
+		const savedSort = uni.getStorageSync('todoSortKey'); if (['scheduled', 'created'].includes(savedSort)) this.sortKey = savedSort;
 	},
 	onShow() {
-		this.consumeCompoundPrefill();
+		uni.showTabBar({ animation: false, fail: () => {} });
 		this.load();
 	},
 	onUnload() { if (this.undoTimer) clearTimeout(this.undoTimer); },
@@ -232,13 +202,12 @@ export default {
 			if (!this.$mStore.getters.hasLogin) return;
 			this.loading = true;
 			try {
-				const res = await this.$http.get(todoHome, { view: this.currentView, q: this.searchQuery.trim(), timeZone: this.timeZone });
+				const res = await this.$http.get(todoHome, { view: this.currentView, projectId: this.selectedProjectId, sort: this.sortKey, q: this.searchQuery.trim(), timeZone: this.timeZone });
 				if (res.code !== 200) throw new Error(res.message);
 				this.groups = res.data.groups || []; this.projects = res.data.projects || []; this.today = res.data.today || this.today;
 				this.unscheduledCount = res.data.unscheduledCount || 0;
-				if (this.currentView === 'current' || this.currentView === 'all') await this.loadCoordination();
+				if ((this.currentView === 'current' || this.currentView === 'all') && !this.selectedProjectId) await this.loadCoordination();
 				else this.coordinationGroups = [];
-				if (!this.directions.length) await this.loadDirections();
 				this.loaded = true;
 			} catch (error) { uni.showToast({ title: typeof error === 'string' ? error : '待办加载失败', icon: 'none' }); }
 			finally { this.loading = false; this.refreshing = false; }
@@ -298,11 +267,12 @@ export default {
 			} catch (error) { uni.showToast({ title: error.message || '采纳失败', icon: 'none' }); }
 			finally { this.adoptingGroupKey = ''; }
 		},
-		async loadDirections() {
-			try { const res = await this.$http.get('/todos/v1/options'); if (res.code === 200) this.directions = res.data.directions || []; } catch (_) {}
-		},
 		refresh() { this.refreshing = true; this.load(); },
 		setView(view) { this.currentView = view; this.historyExpanded = false; this.load(); },
+		chooseTimeFilter(e) { const item = this.timeFilterOptions[Number(e.detail.value)]; if (item) this.setView(item.key); },
+		chooseProjectFilter(e) { const item = this.projectFilterOptions[Number(e.detail.value)]; this.selectedProjectId = item ? item.id : ''; this.historyExpanded = false; this.load(); },
+		chooseSort(e) { const item = this.sortOptions[Number(e.detail.value)]; if (!item) return; this.sortKey = item.key; uni.setStorageSync('todoSortKey', this.sortKey); this.historyExpanded = false; this.load(); },
+		clearFilters() { this.currentView = 'all'; this.selectedProjectId = ''; this.sortKey = 'scheduled'; uni.setStorageSync('todoSortKey', this.sortKey); this.historyExpanded = false; this.load(); },
 		limitedItems(group) { return group.collapsible && !this.historyExpanded ? group.items.slice(0, this.historyLimit) : group.items; },
 		toggleSearch() { this.searchVisible = !this.searchVisible; if (!this.searchVisible) this.clearSearch(); },
 		searchAll() { this.currentView = 'all'; this.load(); },
@@ -314,46 +284,7 @@ export default {
 		selectManagedView(view) { this.closePageMenu(); this.setView(view); },
 		startSelection() { this.closePageMenu(); this.selectionMode = true; this.selectedIds = []; },
 		exportFromMenu() { this.closePageMenu(); this.exportTasks(); },
-		consumeCompoundPrefill() {
-			const value = uni.getStorageSync('todoPrefill'); if (!value) return;
-			uni.removeStorageSync('todoPrefill'); this.openQuickAdd(value);
-		},
-		openQuickAdd(prefill = {}) {
-			this.editingTask = null; this.draft = { ...emptyDraft(this.today), ...prefill, recurrence: { ...emptyDraft(this.today).recurrence, ...(prefill.recurrence || {}) } };
-			if (!this.draft.clientRequestId) this.draft.clientRequestId = this.requestId();
-			this.repeatIndex = { DAILY: 1, WEEKLY: 2, MONTHLY: 3 }[this.draft.recurrence.frequency] || 0;
-			this.showDetails = Boolean(this.draft.description || this.draft.deadline || this.draft.compoundItemId); this.showQuickSheet = true;
-		},
-		closeQuickAdd() { if (!this.saving) { this.showQuickSheet = false; this.editingTask = null; } },
-		chooseProject(e) { const item = this.projectOptions[Number(e.detail.value)]; this.draft.projectId = item ? item.id : ''; },
-		chooseDirection(e) { const item = this.directionOptions[Number(e.detail.value)]; this.draft.compoundItemId = item ? item.id : ''; },
-		chooseRepeat(e) {
-			this.repeatIndex = Number(e.detail.value); this.draft.recurrence.frequency = ['', 'DAILY', 'WEEKLY', 'MONTHLY'][this.repeatIndex];
-			if (this.draft.recurrence.frequency === 'WEEKLY' && !this.draft.recurrence.weekDays.length) this.draft.recurrence.weekDays = [((new Date(`${this.draft.recurrence.startsOn}T00:00:00`).getDay() + 6) % 7) + 1];
-		},
-		toggleWeekday(value) { const days = this.draft.recurrence.weekDays; this.draft.recurrence.weekDays = days.includes(value) ? days.filter(day => day !== value) : [...days, value].sort(); },
-		showDateChoices() {
-			uni.showActionSheet({ itemList: ['今天', '明天', '选择日期', '清除日期'], success: ({ tapIndex }) => {
-				if (tapIndex === 0) this.draft.scheduledDate = this.today;
-				else if (tapIndex === 1) { const d = new Date(`${this.today}T12:00:00`); d.setDate(d.getDate() + 1); this.draft.scheduledDate = this.localDate(d); }
-				else if (tapIndex === 2) this.pickCustomDate(); else this.draft.scheduledDate = '';
-			} });
-		},
-		pickCustomDate() { uni.showModal({ title: '选择日期', editable: true, placeholderText: 'YYYY-MM-DD', success: res => { if (res.confirm && /^\d{4}-\d{2}-\d{2}$/.test(res.content || '')) this.draft.scheduledDate = res.content; } }); },
-		localDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; },
-		shortDate(value) { return value ? String(value).slice(5).replace('-', '月') + '日' : ''; },
-		async saveTask() {
-			if (!this.draft.title.trim() || this.saving) return; this.saving = true;
-			if (!this.draft.clientRequestId) this.draft.clientRequestId = this.requestId();
-			const payload = { ...this.draft, title: this.draft.title.trim(), timeZone: this.timeZone, recurrence: this.repeatIndex ? this.draft.recurrence : null };
-			try {
-				const res = await this.$http.post(todoCreate, payload); if (res.code !== 200) throw new Error(res.message);
-				this.showQuickSheet = false; uni.showToast({ title: this.taskFitsCurrent(res.data) ? '已保存' : '已保存，可在相应视图查看', icon: 'none' });
-				this.load();
-			} catch (error) { uni.showToast({ title: error.message || '保存失败，请重试', icon: 'none' }); }
-			finally { this.saving = false; }
-		},
-		taskFitsCurrent(task) { if (this.currentView === 'unscheduled') return !task.scheduledDate; if (this.currentView === 'current') return task.status === 'in_progress' || Boolean(task.scheduledDate && task.scheduledDate <= this.today) || Boolean(task.deadline && task.deadline <= this.today); return true; },
+		openQuickAdd() { uni.navigateTo({ url: '/pages/todo/edit' }); },
 		async toggleTask(task) {
 			if (this.selectionMode) { this.selectedIds = this.selectedIds.includes(task.id) ? this.selectedIds.filter(id => id !== task.id) : [...this.selectedIds, task.id]; return; }
 			const action = task.status === 'completed' ? 'RESTORE' : 'COMPLETE';
@@ -424,11 +355,14 @@ button::after { border: 0; }
 .search-row { display: flex; gap: 12rpx; padding: 0 30rpx 18rpx; }
 .search-row input { min-width: 0; flex: 1; padding: 17rpx 21rpx; border-radius: 19rpx; background: #fffdf7; font-size: 23rpx; }
 .search-row button { padding: 0 8rpx; color: #526057; font-size: 21rpx; }
-.mobile-tabs { width: 100%; white-space: nowrap; border-bottom: 1rpx solid rgba(40,54,44,.1); }
-.tab-row { display: flex; padding: 0 30rpx; }
-.tab-row button { position: relative; flex: 1; min-width: 130rpx; padding: 20rpx 10rpx 22rpx; color: #7a827c; font-size: 23rpx; }
-.tab-row button.active { color: #25352a; font-weight: 700; }
-.tab-row button.active::after { position: absolute; right: 26rpx; bottom: 0; left: 26rpx; height: 4rpx; border-radius: 4rpx; background: #617244; content: ''; }
+.filter-bar { display: flex; align-items: center; gap: 12rpx; padding: 8rpx 30rpx 20rpx; border-bottom: 1rpx solid rgba(40,54,44,.1); }
+.filter-bar picker { min-width: 0; flex: 1; }
+.filter-bar picker button { display: flex; box-sizing: border-box; width: 100%; min-width: 0; height: 68rpx; align-items: center; gap: 9rpx; padding: 0 17rpx; border: 1rpx solid rgba(52,68,56,.1); border-radius: 19rpx; background: rgba(255,255,255,.62); color: #344038; font-size: 21rpx; }
+.filter-bar picker button.active { border-color: rgba(82,100,61,.26); background: #e6ead7; }
+.filter-label { display: none; flex: 0 0 auto; color: #899189; font-size: 17rpx; }
+.filter-bar picker button > text:nth-child(2) { min-width: 0; flex: 1; overflow: hidden; font-weight: 680; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.filter-arrow { flex: 0 0 auto; color: #69756d; font-size: 20rpx; }
+.clear-filters { flex: 0 0 auto; padding: 20rpx 2rpx 20rpx 8rpx; color: #68755f; font-size: 19rpx; }
 .content-scroll { height: calc(100vh - 205rpx - env(safe-area-inset-top)); }
 .loading, .empty-copy { display: flex; flex-direction: column; align-items: center; padding: 100rpx 50rpx; color: #7a847d; font-size: 23rpx; text-align: center; }
 .empty-copy > text:first-child { margin-bottom: 14rpx; color: #3e4a41; font: 600 29rpx/1.3 Georgia, 'Songti SC', serif; }
@@ -526,7 +460,7 @@ button::after { border: 0; }
 	.desktop-sidebar button.active { background: #e2e8d2; color: #2e3c31; font-weight: 700; }
 	.sidebar-divider { height: 1px; margin: 15px 8px; background: rgba(38,52,42,.09); }
 	.main-panel { max-height: calc(100vh - 80px); border: 1px solid rgba(38,52,42,.08); border-radius: 28px; background: rgba(255,253,247,.46); overflow: hidden; }
-	.mobile-tabs { display: none; }
+	.filter-bar { padding: 4px 30px 18px; }
 	.navbar { padding: 28px 30px 20px !important; }
 	.back { display: none; }
 	.content-scroll { height: calc(100vh - 170px); }

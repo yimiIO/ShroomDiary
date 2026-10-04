@@ -3,38 +3,52 @@
 		<shroom-page-top-spacer />
 		<view class="cards-shell">
 			<view class="page-header">
-				<view>
-					<text class="eyebrow">MY SHROOM CARDS</text>
-					<text class="page-title">菇卡</text>
-					<text class="page-subtitle">{{ librarySubtitle }}</text>
-				</view>
-				<view class="create-button" v-if="hasLogin && activeLibrary === 'mine'" @tap="createCard">
-					<text class="create-plus">+</text>
-					<text>新建菇卡</text>
-				</view>
+				<text class="page-title">菇卡</text>
+				<view class="header-actions"><text @tap="toggleSearch">⌕</text><text v-if="hasLogin" @tap="createCard">＋</text></view>
 			</view>
+			<view class="search-field" v-if="searchOpen && hasLogin"><input v-model="searchTerm" placeholder="搜索我的菇卡" confirm-type="search" /></view>
 
 			<view class="library-switch" v-if="hasLogin">
 				<button :class="{ active: activeLibrary === 'mine' }" @tap="switchLibrary('mine')">我的菇卡</button>
 				<button :class="{ active: activeLibrary === 'favorites' }" @tap="switchLibrary('favorites')">我的收藏</button>
 			</view>
 
-			<view class="guest-panel" v-if="!hasLogin">
-				<view class="guest-illustration" aria-hidden="true">
-					<view class="mushroom-cap"></view>
-					<view class="mushroom-stem"></view>
-					<view class="growth-line line-one"></view>
-					<view class="growth-line line-two"></view>
-				</view>
-				<view class="guest-copy">
-					<text class="guest-kicker">YOUR LIVING NOTES</text>
-					<text class="guest-title">让日记不止停在“写过”</text>
-					<text class="guest-description">菇卡会保留你的觉察句、个人理解和真实练习。登录后才会读取你的私人内容。</text>
-					<view class="guest-actions">
-						<view class="primary-button" @tap="goLogin">登录 / 注册</view>
-						<view class="secondary-button" @tap="openDiscover">先看看发现</view>
+			<view class="shroom-home" v-if="activeLibrary === 'mine'">
+				<view class="shroom-manifesto">
+					<view class="manifesto-copy">
+						<text class="manifesto-title">过去的自己，<br>保护未来的自己。</text>
+						<text class="manifesto-subtitle">那些付过代价才明白的事，<br>别让未来的你再经历一次。</text>
+						<text class="manifesto-note">记住，<br>是为了走更远的路。</text>
 					</view>
+					<image class="manifesto-mascot" src="/static/images/shroom-card-mascot-v2.webp" mode="widthFix" />
 				</view>
+
+				<view class="review-panel">
+					<view>
+						<text class="review-label">今天待复习</text>
+						<text class="review-number">{{ hasLogin ? reviewDueCount : 3 }} 张菇卡 <text v-if="!hasLogin" class="sample-note">示例</text></text>
+					</view>
+					<button class="review-button" @tap="startReview">开始复习 <text>→</text></button>
+				</view>
+
+				<view class="library-stats">
+					<view><text>{{ hasLogin ? allCards.length : '—' }}</text><text>全部菇卡</text></view>
+					<view><text class="stat-red">{{ hasLogin ? reviewDueCount : '—' }}</text><text>待复习</text></view>
+					<view><text class="stat-green">{{ hasLogin ? reviewedCount : '—' }}</text><text>正在记忆</text></view>
+					<view><text class="stat-green">{{ hasLogin ? practicedCount : '—' }}</text><text>真实用过</text></view>
+				</view>
+
+				<view class="recent-heading">
+					<text>最近回顾</text>
+					<text @tap="toggleAll">{{ showAll ? '收起' : '查看全部' }} ›</text>
+				</view>
+			</view>
+			<view class="guest-recent" v-if="!hasLogin">
+				<view class="recent-row" v-for="(item, index) in sampleCards" :key="item.title" @tap="openPreviewDetail">
+					<view class="recent-thumb" :class="'thumb-' + index"><image v-if="index !== 2" src="/static/images/shroom-card-mascot-v2.webp" mode="aspectFit" /><text v-else>☀</text></view>
+					<view class="recent-copy"><text>{{ item.title }}</text><text>示例 · {{ item.tag }}</text></view>
+				</view>
+				<button class="guest-login" @tap="goLogin">登录后查看我的菇卡 →</button>
 			</view>
 
 			<view class="loading-state" v-else-if="loading">
@@ -42,7 +56,7 @@
 				<text>正在找回你的理解…</text>
 			</view>
 
-			<view class="empty-state" v-else-if="allCards.length === 0">
+			<view class="empty-state" v-else-if="hasLogin && allCards.length === 0">
 				<text class="empty-number">{{ activeLibrary === 'mine' ? '01' : '◇' }}</text>
 				<text class="empty-title">{{ activeLibrary === 'mine' ? '从一句真话开始' : '还没有收藏的菇卡' }}</text>
 				<text class="empty-copy">{{ activeLibrary === 'mine' ? '你不需要总结人生。只要写下此刻真正意识到的事，再为它设计一个能实践的动作。' : '收藏只是稍后再看；当你想真正使用别人的理解时，再把它引用为自己的私密菇卡。' }}</text>
@@ -50,39 +64,13 @@
 				<view class="primary-button" v-else @tap="openDiscover">去发现广场看看</view>
 			</view>
 
-			<view v-else>
-				<view class="mobile-deck">
-					<view class="deck-hint"><text>左右滑动</text><text>点开查看、练习或引用到日记</text></view>
-					<swiper class="cards-swiper" :current="currentCardIndex" @change="onSwiperChange" :circular="false" previous-margin="10rpx" next-margin="42rpx">
-						<swiper-item v-for="card in allCards" :key="card.id" class="swiper-item">
-							<view class="shroom-card" @tap="viewCardDetail(card.id)">
-							<view class="card-hero" :class="card._tone">
-									<view class="card-sequence">
-									<text>{{ card._displayIndex }}</text>
-									<text class="sequence-total">/ {{ totalDisplay }}</text>
-									</view>
-									<text class="seed-sentence">{{ card.seedSentence || '暂无觉察句' }}</text>
-									<text class="understanding-preview" v-if="card.myUnderstanding">{{ card.myUnderstanding }}</text>
-								</view>
-								<view class="card-body">
-								<view class="usage-list" v-if="card._usageItems.length">
-										<text class="section-label">我要怎么去用</text>
-									<view class="usage-row" v-for="(item, itemIndex) in card._usageItems" :key="itemIndex">
-											<text class="usage-dot"></text>
-											<text>{{ item }}</text>
-										</view>
-									</view>
-									<view class="card-footer">
-										<view class="tag-list">
-										<text class="tag" v-for="tag in card._tags" :key="tag">#{{ tag }}</text>
-										</view>
-									<text class="practice-count">{{ card._practiceCount }} 次练习 ↗</text>
-									</view>
-								</view>
-							</view>
-						</swiper-item>
-					</swiper>
+			<view class="recent-list" v-else>
+				<view class="recent-row" v-for="(card, index) in visibleCards" :key="card.id" @tap="viewCardDetail(card.id)">
+					<view class="recent-thumb" :class="'thumb-' + index % 3"><image v-if="index % 3 !== 2" src="/static/images/shroom-card-mascot-v2.webp" mode="aspectFit" /><text v-else>☀</text></view>
+					<view class="recent-copy"><text>{{ card.seedSentence || '暂无觉察句' }}</text><text>{{ relativeTime(card.lastReviewedAt || card.createdAt) }} · {{ firstTag(card) }}</text></view><text class="recent-arrow">›</text>
 				</view>
+			</view>
+			<view class="library-link" @tap="switchLibrary(activeLibrary === 'mine' ? 'favorites' : 'mine')">{{ activeLibrary === 'mine' ? '我的收藏 ›' : '返回我的菇卡 ›' }}</view>
 			</view>
 		</view>
 	</view>
@@ -100,7 +88,15 @@ export default {
 			favoriteCards: [],
 			activeLibrary: 'mine',
 			loading: false,
-			currentCardIndex: 0
+			currentCardIndex: 0,
+			showAll: false,
+			searchOpen: false,
+			searchTerm: '',
+			sampleCards: [
+				{ title: '情绪上头时，先暂停。', tag: '情绪管理' },
+				{ title: '好的身体状态，是长期自由。', tag: '健康' },
+				{ title: '重要决定前，先核对事实。', tag: '决策' }
+			]
 		};
 	},
 	computed: {
@@ -110,10 +106,27 @@ export default {
 		allCards() {
 			return this.activeLibrary === 'favorites' ? (this.favoriteCards || []) : (this.shroomCards || []);
 		},
+		visibleCards() {
+			const term = this.searchTerm.trim().toLowerCase();
+			const cards = term ? this.allCards.filter(card => `${card.seedSentence || ''} ${card.myUnderstanding || ''} ${(card.tags || []).join(' ')}`.toLowerCase().includes(term)) : this.allCards;
+			return this.showAll || term ? cards : cards.slice(0, 3);
+		},
 		librarySubtitle() {
 			if (!this.hasLogin) return '把一次觉察，变成可以练习的理解。';
 			if (this.activeLibrary === 'favorites') return this.allCards.length ? `${this.allCards.length} 张想再回来的理解` : '收藏和引用是两件不同的事。';
 			return this.allCards.length ? `${this.allCards.length} 个正在生长的理解` : '把一次觉察，变成可以练习的理解。';
+		},
+		reviewDueCount() {
+			return Math.min(3, this.shroomCards.filter(card => !card.lastReviewedAt || Date.now() - new Date(card.lastReviewedAt).getTime() >= 86400000).length);
+		},
+		reviewedCount() {
+			return this.shroomCards.filter(card => card.lastReviewedAt).length;
+		},
+		practicedCount() {
+			return this.shroomCards.filter(card => card._practiceCount > 0).length;
+		},
+		publicCount() {
+			return this.allCards.filter(card => card.visibility && card.visibility !== 'PRIVATE').length;
 		},
 		totalDisplay() {
 			return this.allCards.length < 10 ? `0${this.allCards.length}` : String(this.allCards.length);
@@ -130,6 +143,14 @@ export default {
 		this.loadShroomCards().finally(() => uni.stopPullDownRefresh());
 	},
 	methods: {
+		firstTag(card) { return card._tags && card._tags.length ? card._tags[0] : '菇卡'; },
+		relativeTime(value) {
+			if (!value) return '刚刚';
+			const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000);
+			return !Number.isFinite(days) ? '最近' : days <= 0 ? '今天' : days === 1 ? '昨天' : `${days} 天前`;
+		},
+		toggleAll() { this.showAll = !this.showAll; },
+		toggleSearch() { if (!this.hasLogin) return this.goLogin(); this.searchOpen = !this.searchOpen; if (!this.searchOpen) this.searchTerm = ''; },
 		normalizeList(data) {
 			let cards = [];
 			if (Array.isArray(data)) cards = data;
@@ -167,11 +188,16 @@ export default {
 			if (this.activeLibrary === library || this.loading) return;
 			this.activeLibrary = library;
 			this.currentCardIndex = 0;
+			this.showAll = false;
 			this.loadShroomCards();
 		},
 		onSwiperChange(e) {
 			this.currentCardIndex = e.detail.current;
 		},
+		startReview() {
+			uni.navigateTo({ url: this.hasLogin ? '/pages/shroom/cards-review' : '/pages/shroom/cards-review?preview=1' });
+		},
+		openPreviewDetail() { uni.navigateTo({ url: '/pages/common/cards/detail?preview=1' }); },
 		viewCardDetail(cardId) {
 			uni.navigateTo({ url: `/pages/common/cards/detail?id=${cardId}` });
 		},
@@ -639,6 +665,139 @@ export default {
 	color: #3e5141;
 }
 
+.shroom-home {
+	display: flex;
+	flex-direction: column;
+	gap: 22rpx;
+	margin-bottom: 26rpx;
+}
+
+.shroom-manifesto {
+	position: relative;
+	display: flex;
+	box-sizing: border-box;
+	min-height: 330rpx;
+	align-items: stretch;
+	overflow: hidden;
+	padding: 38rpx 24rpx 30rpx 34rpx;
+	border: 1rpx solid rgba(91, 116, 82, .12);
+	border-radius: 34rpx;
+	background: linear-gradient(140deg, #fffdf6 0%, #f1f4e7 100%);
+	box-shadow: 0 20rpx 54rpx rgba(48, 63, 45, .08);
+}
+
+.shroom-manifesto::after {
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(90deg, rgba(255, 253, 246, .98) 0%, rgba(255, 253, 246, .9) 44%, rgba(255, 253, 246, .22) 70%, transparent 84%);
+	content: '';
+	pointer-events: none;
+}
+
+.manifesto-copy {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	width: 62%;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.manifesto-title,
+.manifesto-subtitle,
+.manifesto-note { display: block; }
+
+.manifesto-title {
+	font-size: 38rpx;
+	font-weight: 790;
+	line-height: 1.28;
+	letter-spacing: -1rpx;
+}
+
+.manifesto-subtitle {
+	margin-top: 17rpx;
+	font-size: 21rpx;
+	line-height: 1.65;
+	color: #687168;
+}
+
+.manifesto-note {
+	margin-top: 24rpx;
+	font-size: 18rpx;
+	font-weight: 680;
+	color: #5d794f;
+}
+
+.manifesto-mascot {
+	position: absolute;
+	z-index: 1;
+	right: -56rpx;
+	bottom: -14rpx;
+	width: 385rpx;
+}
+
+.review-panel {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 24rpx;
+	padding: 28rpx 30rpx;
+	border-radius: 30rpx;
+	background: #192027;
+	color: #fff;
+	box-shadow: 0 18rpx 40rpx rgba(25, 32, 39, .16);
+}
+
+.review-panel > view { display: flex; flex-direction: column; gap: 7rpx; }
+.review-label { font-size: 19rpx; color: #abb5ac; }
+.review-number { font-size: 31rpx; font-weight: 760; }
+
+.review-button {
+	display: flex;
+	height: 70rpx;
+	align-items: center;
+	gap: 16rpx;
+	margin: 0;
+	padding: 0 25rpx;
+	border-radius: 999rpx;
+	background: #fff;
+	color: #192027;
+	font-size: 22rpx;
+	font-weight: 720;
+	line-height: 1;
+}
+.review-button::after { border: 0; }
+.review-button text { font-size: 28rpx; }
+
+.library-stats {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 10rpx;
+}
+
+.library-stats view {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	padding: 19rpx 5rpx;
+	border-radius: 22rpx;
+	background: rgba(255, 255, 255, .62);
+	flex-direction: column;
+	box-shadow: 0 8rpx 24rpx rgba(53, 72, 55, .04);
+}
+
+.library-stats text:first-child { font-size: 28rpx; font-weight: 790; color: #243129; }
+.library-stats text:last-child { margin-top: 5rpx; font-size: 17rpx; color: #7a867c; }
+
+.recent-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 7rpx 5rpx 0;
+}
+.recent-heading text:first-child { font-size: 29rpx; font-weight: 750; }
+.recent-heading text:last-child { font-size: 18rpx; color: #849087; }
+
 @keyframes spin {
 	to { transform: rotate(360deg); }
 }
@@ -705,4 +864,52 @@ export default {
 	}
 }
 /* #endif */
+.cards-page { background: #fffefa; color: #15191f; }
+.cards-shell { box-sizing: border-box; width: 100%; max-width: 750rpx; margin: 0 auto; padding: 18rpx 27rpx 150rpx; }
+.page-header { align-items: center; height: 66rpx; margin-bottom: 10rpx; }
+.page-title { font-size: 43rpx; line-height: 1; font-weight: 800; color: #15191f; }
+.header-actions { display: flex; align-items: center; gap: 22rpx; font-size: 42rpx; line-height: 1; }
+.search-field { margin-bottom: 12rpx; padding: 8rpx 16rpx; border: 1rpx solid #e8eae4; border-radius: 14rpx; background: #fff; }
+.search-field input { height: 58rpx; font-size: 24rpx; }
+.library-switch { max-width: none; margin: 0 0 10rpx; padding: 0; background: transparent; }
+.library-switch button { height: 46rpx; line-height: 46rpx; font-size: 19rpx; }
+.library-switch button.active { background: transparent; color: #15191f; font-weight: 750; box-shadow: inset 0 -3rpx 0 #15191f; border-radius: 0; }
+.shroom-home { gap: 14rpx; margin-bottom: 0; }
+.shroom-manifesto { height: 350rpx; min-height: 0; padding: 33rpx 26rpx; border: 0; border-radius: 23rpx; background: radial-gradient(circle at 70% 66%, #f1f4df, #fbfbf2 72%); box-shadow: none; }
+.shroom-manifesto::after { display: none; }
+.manifesto-copy { width: 100%; justify-content: flex-start; }
+.manifesto-title { font-size: 39rpx; line-height: 1.36; color: #15191f; }
+.manifesto-subtitle { margin-top: 8rpx; font-size: 22rpx; line-height: 1.52; color: #4b5260; }
+.manifesto-note { position: absolute; left: 0; bottom: 16rpx; margin: 0; transform: rotate(-13deg); font-size: 18rpx; line-height: 1.5; color: #29333c; }
+.manifesto-mascot { right: -25rpx; bottom: -25rpx; width: 430rpx; }
+.review-panel { display: flex; height: 194rpx; box-sizing: border-box; align-items: stretch; flex-direction: column; gap: 0; padding: 19rpx 21rpx 16rpx; border-radius: 22rpx; background: #20262b; box-shadow: none; }
+.review-panel > view { gap: 2rpx; }.review-label { font-size: 23rpx; color: #fff; }.review-number { font-size: 34rpx; line-height: 1.1; color: #fff; }
+.sample-note { margin-left: 8rpx; font-size: 17rpx; font-weight: 400; color: #b7bfc0; }
+.review-button { width: 100%; height: 66rpx; margin-top: auto; justify-content: center; border-radius: 999rpx; background: #fff; color: #15191f; font-size: 24rpx; }
+.library-stats { gap: 8rpx; }.library-stats view { height: 81rpx; box-sizing: border-box; padding: 8rpx 2rpx; border: 1rpx solid #eef0eb; border-radius: 13rpx; background: #fff; box-shadow: 0 5rpx 14rpx rgba(38,47,38,.04); }
+.library-stats text:first-child { font-size: 27rpx; color: #15191f; }.library-stats text:first-child.stat-red { color: #ef5951; }.library-stats text:first-child.stat-green { color: #4e9951; }.library-stats text:last-child { font-size: 16rpx; color: #868c95; }
+.recent-heading { padding: 9rpx 2rpx 0; }.recent-heading text:first-child { font-size: 25rpx; }.recent-heading text:last-child { font-size: 18rpx; }
+.recent-list, .guest-recent { margin-top: 8rpx; }.recent-row { display: flex; align-items: center; gap: 14rpx; min-height: 78rpx; border-bottom: 1rpx solid #f0f1ed; }
+.recent-thumb { display: flex; width: 67rpx; height: 64rpx; flex-shrink: 0; align-items: center; justify-content: center; overflow: hidden; border-radius: 11rpx; background: #f3eadf; }.recent-thumb image { width: 86rpx; height: 72rpx; }.recent-thumb text { font-size: 42rpx; color: #dca968; }.thumb-1 { background: #e4eee5; }.thumb-2 { background: #e1edf3; }
+.recent-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4rpx; }.recent-copy text:first-child { overflow: hidden; font-size: 21rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.recent-copy text:last-child { font-size: 17rpx; color: #8c939a; }.recent-arrow { font-size: 28rpx; color: #a5aaa7; }
+.library-link { margin-top: 18rpx; text-align: center; font-size: 20rpx; color: #778378; }.guest-login { width: 100%; margin: 20rpx 0 0; height: 68rpx; border-radius: 999rpx; background: #20262b; color: #fff; font-size: 22rpx; line-height: 68rpx; }.guest-login::after { border: 0; }
+.empty-state { min-height: 280rpx; }
+@media (max-width: 750px) {
+	.cards-shell { padding: 30rpx 46rpx 180rpx; }
+	.page-header { height: 100rpx; margin-bottom: 10rpx; }
+	.page-title { font-size: 58rpx; }
+	.header-actions { font-size: 58rpx; }
+	.shroom-manifesto { height: 660rpx; padding: 45rpx 35rpx; border-radius: 26rpx; }
+	.manifesto-title { font-size: 60rpx; }
+	.manifesto-subtitle { margin-top: 13rpx; font-size: 35rpx; }
+	.manifesto-note { bottom: 40rpx; font-size: 28rpx; }
+	.manifesto-mascot { width: 545rpx; right: -65rpx; bottom: -35rpx; }
+	.review-panel { height: 295rpx; margin-top: 20rpx; padding: 25rpx 25rpx 18rpx; border-radius: 22rpx; }
+	.review-label { font-size: 33rpx; }.review-number { font-size: 45rpx; }.sample-note { font-size: 22rpx; }
+	.review-button { height: 102rpx; font-size: 32rpx; }
+	.library-stats { gap: 10rpx; }.library-stats view { height: 125rpx; }.library-stats text:first-child { font-size: 40rpx; }.library-stats text:last-child { font-size: 23rpx; }
+	.recent-heading { padding-top: 26rpx; }.recent-heading text:first-child { font-size: 36rpx; }.recent-heading text:last-child { font-size: 24rpx; }
+	.recent-row { min-height: 125rpx; gap: 15rpx; }.recent-thumb { width: 100rpx; height: 95rpx; }.recent-thumb image { width: 122rpx; height: 105rpx; }.recent-copy text:first-child { font-size: 28rpx; }.recent-copy text:last-child { font-size: 22rpx; }
+	.guest-login { height: 100rpx; line-height: 100rpx; font-size: 29rpx; }
+}
 </style>

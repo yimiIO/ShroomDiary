@@ -39,6 +39,7 @@ uni.onNetworkStatusChange(result => {
 const TAB_ROUTES = [
 	'/pages/diary/index',
 	'/pages/shroom/cards',
+	'/pages/snapshot/index',
 	'/pages/shroom/discover',
 	'/pages/shroom/me'
 ];

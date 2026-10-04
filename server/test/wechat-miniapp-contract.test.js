@@ -80,6 +80,56 @@ test('photo and microphone entry points complete WeChat privacy authorization fi
 	assert.match(todo, /sourceType: \['album'\]/);
 });
 
+test('WeChat voice diaries keep a durable local recovery copy across upload failures', () => {
+	const diary = source('src/pages/diary/edit.vue');
+	assert.match(diary, /await this\.persistPlatformVoiceDraft\(result\.tempFilePath\)/);
+	assert.match(diary, /retryPendingVoiceUpload/);
+	assert.match(diary, /VOICE_UPLOAD_TIMEOUT_MS = 180000/);
+	assert.match(diary, /timeout: VOICE_UPLOAD_TIMEOUT_MS/);
+	assert.match(diary, /录音已保存在本机/);
+	assert.match(diary, /await this\.clearPendingVoiceDraft\(\)/);
+	const platformFinish = diary.slice(diary.indexOf('async finishPlatformRecording'), diary.indexOf('// #ifdef H5', diary.indexOf('async finishPlatformRecording')));
+	assert.doesNotMatch(platformFinish, /录音未能保存，请重新录制/);
+});
+
+test('voice recording stop feedback is separate from local save and network upload progress', () => {
+	const diary = source('src/pages/diary/edit.vue');
+	assert.match(diary, /v-if="isRecording"/);
+	assert.match(diary, /v-else-if="voiceFinalizing \|\| voiceUploading"/);
+	assert.match(diary, /录音已停止/);
+	assert.match(diary, /正在保存到本机，请稍候/);
+	assert.match(diary, /正在安全上传/);
+	assert.match(diary, /stopRecordingState/);
+	assert.match(diary, /this\.clearRecordTimer\(\)/);
+});
+
+test('PWA voice diaries persist the Blob before upload and restore it after reload', () => {
+	const diary = source('src/pages/diary/edit.vue');
+	const media = source('server/src/routes/media.js');
+	const resumable = source('src/utils/resumable-voice-upload.js');
+	assert.match(diary, /audioBitsPerSecond: 32000/);
+	assert.match(diary, /await persistH5VoiceRecording\(\{[\s\S]*await this\.retryPendingVoiceUpload\(\)/);
+	assert.match(diary, /await loadH5VoiceDraft\(\{ ownerId: this\.currentVoiceOwnerId\(\) \}\)/);
+	assert.match(diary, /await markH5VoiceDraftUploaded/);
+	assert.match(diary, /await discardH5VoiceDraft\(\{ draft \}\)/);
+	assert.match(media, /voiceUpload = uploadFor\(voiceExtensions, 20 \* 1024 \* 1024\)/);
+	assert.match(media, /router\.put\('\/voice\/uploads\/:id\/:start'/);
+	assert.match(media, /router\.post\('\/voice\/uploads\/:id\/complete'/);
+	assert.match(media, /router\.post\('\/voice\/direct-uploads'/);
+	assert.match(media, /router\.post\('\/voice\/direct-uploads\/:id\/complete'/);
+	assert.match(resumable, /DEFAULT_CHUNK_SIZE = 32 \* 1024/);
+	assert.match(diary, /maxChunkSize: 128 \* 1024/);
+	assert.match(diary, /directUploadVoice/);
+	assert.match(resumable, /receivedBytes/);
+});
+
+test('voice uploads allow slow iPhone connections at both client and edge', () => {
+	const manifest = JSON.parse(source('src/manifest.json'));
+	const nginx = source('server/deploy/shroom-evox-run.nginx.conf');
+	assert.equal(manifest.networkTimeout.uploadFile, 180000);
+	assert.match(nginx, /client_body_timeout 180s;/);
+});
+
 test('WeChat diary keeps today writable while historical dates stay read-only', () => {
 	const diary = source('src/pages/diary/index.vue');
 	const editor = source('src/pages/diary/edit.vue');

@@ -1,23 +1,28 @@
 <template>
 	<view class="diary-page">
-		<!-- 状态栏占位 -->
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-
-		<!-- 紧凑日期控制区：保留菇的颜色，学习 aDiary 的信息密度。 -->
-		<view class="title-row" :style="{ paddingTop: (customBarHeightRpx + 10) + 'rpx' }">
-			<view class="selected-date-label" @tap="showFullCalendar">
-				<text class="selected-date-text">{{ isSelectedToday ? '菇日记' : selectedDateHeaderTitle }}</text>
-				<view class="date-dropdown-arrow" aria-hidden="true"></view>
-				<text class="today-jump" v-if="!isSelectedToday" @tap.stop="goToday">回到今天</text>
+		<!-- 列表视图的主视觉区；视图、选项和设置入口继续保留。 -->
+		<view class="diary-top-shell" :class="{ 'has-story-scene': isSelectedToday && periodView === 'day' }">
+			<!-- 状态栏仍占位，但放进主视觉层，避免顶部出现一条纯色断层。 -->
+			<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
+			<view class="title-row" :style="{ paddingTop: (customBarHeightRpx + 10) + 'rpx' }">
+				<view class="selected-date-label" @tap="showFullCalendar">
+					<text class="selected-date-text">{{ isSelectedToday ? '菇日记' : selectedDateHeaderTitle }}</text>
+					<view class="date-dropdown-arrow" aria-hidden="true"></view>
+					<text class="today-jump" v-if="!isSelectedToday" @tap.stop="goToday">回到今天</text>
+				</view>
+				<view class="home-top-controls" aria-label="首页控制">
+					<button data-testid="home-open-view-panel" class="home-top-control view-trigger" :class="{ active: activeHomePanel === 'view' }" aria-label="视图" @tap.stop="openHomePanel('view')">
+						<view class="view-control-glyph"><text></text><text></text><text></text></view>
+					</button>
+					<button data-testid="home-open-options-panel" class="home-top-control" :class="{ active: activeHomePanel === 'options' }" aria-label="选项" @tap.stop="openHomePanel('options')">
+						<view class="options-control-glyph"><text></text><text></text><text></text></view>
+					</button>
+					<button data-testid="home-open-settings" class="home-top-control" :class="{ active: activeHomePanel === 'settings' }" aria-label="首页设置" @tap.stop="openHomePanel('settings')"><text class="settings-control-glyph">⚙</text></button>
+				</view>
 			</view>
-			<view class="home-top-controls" aria-label="首页控制">
-				<button data-testid="home-open-view-panel" class="home-top-control view-trigger" :class="{ active: activeHomePanel === 'view' }" aria-label="视图" @tap.stop="openHomePanel('view')">
-					<view class="view-control-glyph"><text></text><text></text><text></text></view>
-				</button>
-				<button data-testid="home-open-options-panel" class="home-top-control" :class="{ active: activeHomePanel === 'options' }" aria-label="选项" @tap.stop="openHomePanel('options')">
-					<view class="options-control-glyph"><text></text><text></text><text></text></view>
-				</button>
-				<button data-testid="home-open-settings" class="home-top-control" :class="{ active: activeHomePanel === 'settings' }" aria-label="首页设置" @tap.stop="openHomePanel('settings')"><text class="settings-control-glyph">⚙</text></button>
+			<view v-if="isSelectedToday && periodView === 'day'" class="diary-story-copy" aria-label="记录更真实的每一天">
+				<text>记录更真实的每一天</text>
+				<text>让自己变得更好。♡</text>
 			</view>
 		</view>
 
@@ -43,27 +48,29 @@
 		<view class="home-discovery" v-if="periodView === 'day'">
 			<button class="home-search-entry" data-testid="home-search-diary" @tap="goToSearch">
 				<text class="home-search-icon">⌕</text>
-				<text>搜索日记</text>
+				<text>搜索日记...</text>
 			</button>
 			<view class="home-pending-review" data-testid="home-pending-wellbeing" v-if="isSelectedToday && hasPendingWellbeingChanges" @tap="openWellbeing">
-				<view><text>最近有变化待确认</text><text>{{ pendingWellbeingPreview }}</text></view>
-				<view><text>{{ pendingWellbeingCount }} 条</text><text>›</text></view>
+				<view class="pending-review-mark" aria-hidden="true"><text></text><text></text></view>
+				<view class="pending-review-copy"><text>最近有变化待确认</text><text>{{ pendingWellbeingPreview }}</text></view>
+				<image class="pending-review-mascot" src="/static/images/shroom-card-mascot-v2.webp" mode="aspectFit"></image>
+				<view class="pending-review-count"><text>{{ pendingWellbeingCount }} 条</text><text>›</text></view>
 			</view>
 		</view>
 
 		<view v-if="periodView === 'day'" :key="selectedDate" class="day-content" :class="dateMotionClass" @animationend="dateMotionClass = ''">
 
 		<view class="day-flow-view" v-if="dayViewMode === 'flow'">
-			<view class="stream-day-header">
+			<view class="stream-day-header" v-if="!isSelectedToday">
 				<view><text>{{ streamDayNumber }}</text><text>{{ streamWeekday }}</text><text>{{ streamMonthYear }}</text></view>
 				<text>{{ dayStreamEntries.length }} 条</text>
 			</view>
 			<view class="day-stream" v-if="dayStreamEntries.length">
 				<view
 					class="stream-entry"
-					v-for="entry in dayStreamEntries"
+					v-for="(entry, entryIndex) in dayStreamEntries"
 					:key="entry.key"
-					:class="'entry-' + entry.tone"
+					:class="['entry-' + entry.tone, 'entry-visual-' + (entryIndex % 4)]"
 					@tap="openDayEntry(entry)"
 				>
 					<view class="stream-time" :class="{ 'time-open': !entry.endLabel }">
@@ -72,15 +79,22 @@
 						<text v-if="entry.endLabel">{{ entry.endLabel }}</text>
 					</view>
 					<view class="stream-entry-body">
+						<view class="stream-entry-heading">
+							<text class="stream-entry-icon">{{ entry.sourceIcon }}</text>
+							<view class="stream-entry-heading-copy">
+								<text class="stream-entry-title">{{ entry.title }}</text>
+								<view class="stream-entry-subline">
+									<text>{{ entry.badge }}</text>
+									<text v-if="entry.meta && homePreferences.showFlowMeta">{{ entry.meta }}</text>
+								</view>
+							</view>
+							<text class="stream-entry-arrow">›</text>
+						</view>
+						<text class="stream-entry-copy" v-if="entry.copy">{{ entry.copy }}</text>
 						<view class="stream-media" v-if="entry.images && entry.images.length">
 							<image v-for="(image, imageIndex) in entry.images.slice(0, 3)" :key="imageIndex" :src="image" mode="aspectFill"></image>
 						</view>
-						<text class="stream-entry-title">{{ entry.title }}</text>
-						<text class="stream-entry-copy" v-if="entry.copy">{{ entry.copy }}</text>
-						<view class="stream-entry-footer">
-							<text class="entry-badge">{{ entry.badge }}</text>
-							<text v-if="entry.meta && homePreferences.showFlowMeta">{{ entry.meta }}</text>
-						</view>
+						<view class="stream-entry-art" aria-hidden="true"></view>
 					</view>
 					<button v-if="entry.kind === 'plan'" class="todo-complete" :disabled="completingTodoId === entry.payload.id" @tap.stop="completeTodoFromHome(entry.payload)" aria-label="完成待办">{{ completingTodoId === entry.payload.id ? '…' : '○' }}</button>
 				</view>
@@ -139,8 +153,10 @@
 				</view>
 			</view>
 			<view class="timeline-empty" v-if="!timelineEntries.length">
+				<text class="timeline-empty-mark" aria-hidden="true">✳</text>
 				<text class="timeline-empty-title">这一天没有带时间的记录</text>
 				<text class="timeline-empty-copy">全天日记仍会保留在列表视图；计划没有具体时间时也不会被伪造到时间轴。</text>
+				<button v-if="isSelectedToday" @tap="handleCaptureTap('record')">留下今天的第一条记录 →</button>
 			</view>
 		</view>
 		</view>
@@ -202,7 +218,7 @@
 
 		<view class="capture-dock" v-if="periodView === 'day' && isSelectedToday">
 			<button class="record-capture" data-testid="home-create-diary" @tap="handleCaptureTap('record')" @touchstart="beginCaptureDrag('record', $event)" @touchmove.stop.prevent="updateCaptureDrag" @touchend.stop="finishCaptureDrag" @touchcancel="cancelCaptureDrag" @mousedown="beginCaptureDrag('record', $event)"><text>□</text><text>记录</text><text class="capture-grip">≡</text></button>
-			<button class="todo-capture" data-testid="home-create-todo" @tap="handleCaptureTap('todo')" @touchstart="beginCaptureDrag('todo', $event)" @touchmove.stop.prevent="updateCaptureDrag" @touchend.stop="finishCaptureDrag" @touchcancel="cancelCaptureDrag" @mousedown="beginCaptureDrag('todo', $event)"><text>○</text><text>待办</text><text class="capture-grip">≡</text></button>
+			<button class="todo-capture" data-testid="home-create-todo" @tap="handleCaptureTap('todo')" @touchstart="beginCaptureDrag('todo', $event)" @touchmove.stop.prevent="updateCaptureDrag" @touchend.stop="finishCaptureDrag" @touchcancel="cancelCaptureDrag" @mousedown="beginCaptureDrag('todo', $event)"><text>○</text><text>新建待办</text><text class="capture-grip">≡</text></button>
 		</view>
 		<view v-if="captureDrag.moved" class="capture-drag-ghost" :class="'ghost-' + captureDrag.kind" :style="captureDragGhostStyle"><text>{{ captureDrag.label }}</text><text>{{ captureDrag.overTimeline ? formatMinutes(captureDrag.minutes) : '拖到时间轴' }}</text></view>
 
@@ -310,8 +326,8 @@ import dayTimeline from '@/utils/day-timeline.js';
 const { diaryLocalDate, diaryTimeLabel, hasExplicitDiaryTime, isFullDayDiary } = diaryTime;
 const { diaryPreview } = diaryPreviewUtils;
 const { buildTimelineLayout, minutesForTimelineOffset, timelineOffsetForMinutes } = dayTimeline;
-const HOME_PREFERENCES_STORAGE_KEY = 'shroom_home_preferences_v1';
-const DEFAULT_HOME_VIEW = 'timeline';
+const HOME_PREFERENCES_STORAGE_KEY = 'shroom_home_preferences_v2';
+const DEFAULT_HOME_VIEW = 'flow';
 const DEFAULT_HOME_VIEW_KEYS = ['flow', 'timeline', 'week', 'month', 'year'];
 
 export default {
@@ -332,7 +348,7 @@ export default {
 			diaryRequestSequence: 0,
 			calendarRequestSequence: 0,
 			periodRequestSequence: 0,
-			dayViewMode: 'timeline',
+			dayViewMode: 'flow',
 			periodView: 'day',
 			periodLoading: false,
 			periodOverview: { days: [], entries: [] },
@@ -638,7 +654,7 @@ export default {
 					badge: '身心记录', meta: record.status === 'PENDING' ? '等待你确认' : '已确认', images: [],
 					actualMinutes: null, sortMinutes: 690 - index, payload: record
 				}));
-				return entries.sort((left, right) => right.sortMinutes - left.sortMinutes);
+				return entries.sort((left, right) => left.sortMinutes - right.sortMinutes);
 			},
 			dayStreamEntries() {
 				return this.activeSourceFilter === 'all'
@@ -2641,16 +2657,124 @@ export default {
 /* 2026-09 首页第三版：连续事件流 + 整日时间轴。 */
 .diary-page {
 	box-sizing: border-box;
-	padding-bottom: calc(112rpx + env(safe-area-inset-bottom));
-	background: #fbfcf8;
+	min-height: 100vh;
+	padding-bottom: calc(214rpx + env(safe-area-inset-bottom));
+	background: linear-gradient(180deg, #fffef8 0, #f5faef 520rpx, #f8fbf4 100%);
 }
 
-.status-bar { background: #fbfcf8; }
+.status-bar {
+	position: relative;
+	z-index: 3;
+	background: transparent;
+	pointer-events: none;
+}
 
-.title-row {
+.diary-top-shell {
+	position: relative;
 	box-sizing: border-box;
 	min-height: 96rpx;
-	padding: 0 28rpx 14rpx;
+	overflow: hidden;
+	background: #fffef8;
+}
+
+.diary-top-shell.has-story-scene {
+	height: calc(228rpx + env(safe-area-inset-top));
+	background: #f7f5e9 url('/static/images/shroom-diary-hero-art-v5.webp') center center / cover no-repeat;
+}
+
+.diary-top-shell.has-story-scene::after {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	height: 10rpx;
+	background: linear-gradient(180deg, rgba(255, 254, 248, 0), rgba(255, 254, 248, .45));
+	content: '';
+	pointer-events: none;
+}
+
+.title-row {
+	position: relative;
+	z-index: 2;
+	box-sizing: border-box;
+	min-height: 96rpx;
+	padding: 0 28rpx 12rpx;
+}
+
+.diary-top-shell.has-story-scene .title-row {
+	position: absolute;
+	inset: 0;
+	height: 100%;
+	padding: 24rpx 22rpx 12rpx !important;
+	align-items: flex-start;
+}
+
+.diary-top-shell.has-story-scene .selected-date-label {
+	position: relative;
+	z-index: 3;
+	max-width: 300rpx;
+	opacity: 1;
+}
+
+.diary-top-shell.has-story-scene .diary-story-copy {
+	display: flex;
+}
+
+.diary-top-shell.has-story-scene .home-top-controls {
+	position: absolute;
+	z-index: 4;
+	right: 16rpx;
+	bottom: 12rpx;
+}
+
+.diary-top-shell.has-story-scene .home-top-control {
+	width: 44rpx;
+	height: 44rpx;
+	border-color: rgba(69, 82, 71, .12);
+	background: rgba(255, 254, 249, .8);
+	line-height: 44rpx;
+}
+
+.diary-top-shell.has-story-scene .view-control-glyph {
+	width: 27rpx;
+	height: 23rpx;
+	border-width: 2rpx;
+}
+
+.diary-top-shell.has-story-scene .options-control-glyph {
+	width: 27rpx;
+	height: 23rpx;
+}
+
+.diary-top-shell.has-story-scene .settings-control-glyph {
+	font-size: 29rpx;
+}
+
+.diary-story-copy {
+	position: absolute;
+	z-index: 2;
+	left: 44rpx;
+	top: 96rpx;
+	display: flex;
+	max-width: 250rpx;
+	flex-direction: column;
+	gap: 5rpx;
+}
+
+.diary-story-copy text:first-child {
+	color: #1f2821;
+	font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+	font-size: 21rpx;
+	font-weight: 650;
+	line-height: 1.42;
+}
+
+.diary-story-copy text:last-child {
+	color: #435048;
+	font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+	font-size: 20rpx;
+	font-weight: 520;
+	line-height: 1.45;
 }
 
 .selected-date-label {
@@ -2663,10 +2787,13 @@ export default {
 
 .selected-date-text {
 	overflow: hidden;
-	color: #172019;
-	font-size: 30rpx;
-	font-weight: 700;
-	letter-spacing: -.5rpx;
+	color: #151b17;
+	font-family: 'Arial Rounded MT Bold', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+	font-size: 54rpx;
+	font-weight: 950;
+	letter-spacing: -3rpx;
+	line-height: 1.06;
+	text-shadow: .6rpx 0 0 currentColor, 0 .6rpx 0 currentColor;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -2703,8 +2830,8 @@ export default {
 	font-size: 20rpx;
 }
 
-.home-top-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 8rpx; }
-.home-top-control { display: flex; box-sizing: border-box; width: 62rpx; height: 62rpx; margin: 0; padding: 0; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: #4c5a50; line-height: 62rpx; }
+.home-top-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 5rpx; }
+.home-top-control { display: flex; box-sizing: border-box; width: 56rpx; height: 56rpx; margin: 0; padding: 0; align-items: center; justify-content: center; border: 1rpx solid rgba(71, 84, 74, .08); border-radius: 50%; background: rgba(255, 254, 248, .72); color: #4c5a50; line-height: 56rpx; backdrop-filter: blur(8px); }
 .home-top-control::after { border: 0; }
 .home-top-control.active { background: #e5eee0; color: #172019; }
 .view-control-glyph { position: relative; width: 34rpx; height: 30rpx; border: 3rpx solid currentColor; border-radius: 6rpx; }
@@ -2724,29 +2851,32 @@ export default {
 .timeline-view-icon text { display: block; width: 100%; height: 2rpx; background: currentColor; }
 .calendar-view-button { font-size: 25rpx !important; }
 
-.week-swiper { height: 118rpx; }
+.week-swiper { height: 132rpx; background: rgba(255, 254, 249, .94); }
 
 .home-discovery {
 	display: flex;
 	box-sizing: border-box;
 	width: 100%;
-	padding: 12rpx 28rpx 8rpx;
+	padding: 14rpx 24rpx 10rpx;
 	flex-direction: column;
 	gap: 12rpx;
 }
 
 .home-search-entry {
 	display: flex;
+	position: relative;
 	box-sizing: border-box;
 	width: 100%;
-	height: 76rpx;
+	height: 80rpx;
 	margin: 0;
-	padding: 0 22rpx;
+	padding: 0 96rpx 0 22rpx;
+	overflow: hidden;
 	align-items: center;
 	gap: 14rpx;
-	border: 1rpx solid rgba(23, 32, 25, .08);
-	border-radius: 22rpx;
-	background: #f0f3ed;
+	border: 1rpx solid #d9e1d4;
+	border-radius: 24rpx;
+	background-color: #fbfcf4;
+	background-image: linear-gradient(90deg, rgba(255,255,252,.96), rgba(246,250,241,.9));
 	box-shadow: none;
 	color: #68746b;
 	font-size: 25rpx;
@@ -2755,41 +2885,58 @@ export default {
 }
 
 .home-search-entry::after { border: 0; }
+.home-search-entry::before {
+	position: absolute;
+	right: 8rpx;
+	bottom: -17rpx;
+	width: 88rpx;
+	height: 88rpx;
+	background: url('/static/images/shroom-diary-search-sprout-v1.webp') center / contain no-repeat;
+	content: '';
+	pointer-events: none;
+}
+.home-search-entry > text { position: relative; z-index: 1; }
 .home-search-icon { color: #35453a; font-size: 31rpx; font-weight: 700; line-height: 1; }
 
 .home-pending-review {
 	display: grid;
+	position: relative;
 	box-sizing: border-box;
 	width: 100%;
-	min-height: 96rpx;
-	padding: 17rpx 18rpx 17rpx 20rpx;
-	grid-template-columns: minmax(0, 1fr) auto;
+	min-height: 110rpx;
+	padding: 16rpx 18rpx;
+	overflow: hidden;
+	grid-template-columns: 60rpx minmax(0, 1fr) 78rpx;
 	gap: 16rpx;
 	align-items: center;
-	border: 1rpx solid #dce6c8;
-	border-radius: 20rpx;
-	background: #eef3df;
+	border: 1rpx solid #cfdda9;
+	border-radius: 23rpx;
+	background: linear-gradient(105deg, #f4f8e7 0%, #f2f8e9 58%, #fbf8e9 100%);
 }
 
-.home-pending-review > view:first-child { display: flex; min-width: 0; flex-direction: column; gap: 6rpx; }
-.home-pending-review > view:first-child text:first-child { color: #263429; font-size: 25rpx; font-weight: 720; }
-.home-pending-review > view:first-child text:last-child { overflow: hidden; color: #5d695e; font-size: 20rpx; text-overflow: ellipsis; white-space: nowrap; }
-.home-pending-review > view:last-child { display: flex; align-items: center; gap: 10rpx; color: #526158; font-size: 21rpx; }
-.home-pending-review > view:last-child text:last-child { font-size: 32rpx; line-height: 1; }
+.pending-review-mark { position: relative; display: flex; width: 54rpx; height: 54rpx; align-items: center; justify-content: center; border-radius: 50%; background: #e7f0d8; }
+.pending-review-mark text { position: absolute; width: 22rpx; height: 12rpx; border-radius: 100% 0 100% 0; background: #799b4e; transform: rotate(36deg) translate(-3rpx, -3rpx); }
+.pending-review-mark text:last-child { transform: rotate(-36deg) translate(4rpx, 4rpx); }
+.pending-review-copy { position: relative; z-index: 2; display: flex; min-width: 0; flex-direction: column; gap: 6rpx; }
+.pending-review-copy text:first-child { color: #263429; font-size: 25rpx; font-weight: 720; }
+.pending-review-copy text:last-child { overflow: hidden; color: #5d695e; font-size: 20rpx; text-overflow: ellipsis; white-space: nowrap; }
+.pending-review-mascot { position: absolute; z-index: 1; right: 66rpx; bottom: -17rpx; width: 128rpx; height: 112rpx; opacity: .96; }
+.pending-review-count { position: relative; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 8rpx; color: #526158; font-size: 21rpx; }
+.pending-review-count text:last-child { font-size: 32rpx; line-height: 1; }
 
 .date-selector {
 	display: flex;
 	box-sizing: border-box;
-	padding: 0 24rpx 12rpx;
+	padding: 3rpx 26rpx 14rpx;
 	justify-content: space-between;
-	border-bottom: 1rpx solid rgba(23, 32, 25, .08);
+	border-bottom: 1rpx solid rgba(23, 32, 25, .07);
 }
 
 .date-cell {
 	display: flex;
 	box-sizing: border-box;
 	width: 82rpx;
-	height: 106rpx;
+	height: 116rpx;
 	padding: 12rpx 0 9rpx;
 	align-items: center;
 	flex-direction: column;
@@ -2800,7 +2947,7 @@ export default {
 .date-cell .date-number { color: #303a32; font-size: 30rpx; font-weight: 680; line-height: 1; }
 .date-cell .date-dot { display: block; width: 6rpx; height: 6rpx; border-radius: 50%; background: transparent; }
 .date-cell.has-diary .date-dot { background: #5c7558; }
-.date-cell.active { background: #e3e8e0; }
+.date-cell.active { background: #e8f1e2; box-shadow: inset 0 0 0 1rpx rgba(99, 127, 80, .04); }
 .date-cell.active .weekday-item,
 .date-cell.active .date-number { color: #172019; font-weight: 750; }
 
@@ -2808,7 +2955,7 @@ export default {
 @keyframes day-slide-forward { from { opacity: .35; transform: translateX(36rpx); } to { opacity: 1; transform: translateX(0); } }
 @keyframes day-slide-backward { from { opacity: .35; transform: translateX(-36rpx); } to { opacity: 1; transform: translateX(0); } }
 
-.day-flow-view { display: block; padding: 0 28rpx; }
+.day-flow-view { display: block; padding: 15rpx 24rpx 28rpx; }
 .stream-day-header { display: flex; min-height: 76rpx; padding: 15rpx 0 5rpx; align-items: center; justify-content: space-between; }
 .stream-day-header > view { display: flex; align-items: baseline; gap: 9rpx; }
 .stream-day-header > view text:first-child { color: #172019; font-size: 38rpx; font-weight: 800; }
@@ -2817,30 +2964,54 @@ export default {
 .stream-day-header > text { color: #5f6b62; font-size: 21rpx; }
 
 .day-stream { display: flex; margin: 0; flex-direction: column; gap: 0; }
-.stream-entry { position: relative; display: flex; width: 100%; min-height: 116rpx; margin: 0; padding: 12rpx 0; align-items: flex-start; gap: 12rpx; border: 0; border-radius: 0; background: transparent; text-align: left; line-height: 1.45; }
+.stream-entry { position: relative; display: flex; box-sizing: border-box; width: 100%; min-height: 128rpx; margin: 0; padding: 0 0 14rpx; align-items: stretch; gap: 0; border: 0; border-radius: 0; background: transparent; text-align: left; line-height: 1.45; }
 .stream-entry::after { border: 0; }
-.stream-entry + .stream-entry { border-top: 1rpx solid rgba(23, 32, 25, .065); }
-.stream-time { display: flex; box-sizing: border-box; width: 92rpx; min-height: 108rpx; padding: 11rpx 6rpx; align-items: center; flex: 0 0 92rpx; flex-direction: column; justify-content: space-between; border-left: 0; border-radius: 16rpx; background: #e8ece8; color: #172019; }
-.stream-time text:first-child,
-.stream-time text:last-child { font-size: 22rpx; font-weight: 720; line-height: 1; }
-.stream-time text:nth-child(2) { color: #5e6a61; font-size: 20rpx; line-height: 1; }
-.stream-time.time-open { justify-content: flex-start; gap: 17rpx; }
-.stream-entry-body { display: flex; min-width: 0; padding: 2rpx 0 11rpx; flex: 1; flex-direction: column; gap: 7rpx; }
-.stream-media { display: flex; margin-bottom: 2rpx; gap: 9rpx; }
-.stream-media image { width: 112rpx; height: 112rpx; border-radius: 13rpx; background: #e7ece3; }
-.stream-entry-title { display: -webkit-box; overflow: hidden; color: #172019; font-size: 29rpx; font-weight: 680; line-height: 1.4; word-break: break-word; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.stream-entry-copy { display: -webkit-box; overflow: hidden; color: #4f5c52; font-size: 23rpx; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.stream-entry-footer { display: flex; margin-top: 2rpx; align-items: center; gap: 9rpx; color: #59665c; font-size: 21rpx; }
-.entry-badge { padding: 6rpx 11rpx; color: #405444; border: 1rpx solid #dbe5d5; border-radius: 9rpx; background: #f7faf4; font-size: 20rpx; line-height: 1; }
-.entry-plan .entry-badge { color: #66733c; border-color: #dce6bc; background: #f3f7e5; }
-.entry-source .entry-badge { color: #505b53; border-color: #d7ddd8; background: #f0f2f0; }
-.entry-codex .entry-badge { color: #172019; border-color: #cddc7c; background: #eef4c7; }
-.todo-complete { display: flex; width: 48rpx; height: 48rpx; margin: 2rpx 0 0; padding: 0; flex: 0 0 48rpx; align-items: center; justify-content: center; border: 2rpx solid #6f805a; border-radius: 50%; background: #fffdf7; color: #52643d; font-size: 26rpx; line-height: 48rpx; }.todo-complete::after { border: 0; }
+.stream-time { position: relative; display: flex; box-sizing: border-box; width: 82rpx; min-height: 100%; padding: 18rpx 12rpx 0 0; align-items: flex-start; flex: 0 0 82rpx; flex-direction: column; gap: 9rpx; border: 0; border-radius: 0; background: transparent; color: #5a655d; }
+.stream-time::before { position: absolute; z-index: 2; top: 23rpx; right: -6rpx; width: 12rpx; height: 12rpx; border: 3rpx solid #f8fbf4; border-radius: 50%; background: #9db786; content: ''; }
+.stream-time::after { position: absolute; z-index: 1; top: 29rpx; right: -1rpx; bottom: -15rpx; width: 2rpx; background: #cedbc4; content: ''; }
+.stream-entry:last-child .stream-time::after { bottom: 32rpx; }
+.stream-time text:first-child { color: #4d5850; font-size: 22rpx; font-weight: 560; line-height: 1; }
+.stream-time text:nth-child(2),
+.stream-time text:last-child:not(:first-child) { color: #879087; font-size: 18rpx; font-weight: 500; line-height: 1; }
+.stream-time.time-open { justify-content: flex-start; }
+.stream-entry-body { position: relative; display: flex; box-sizing: border-box; min-width: 0; min-height: 132rpx; margin-left: 22rpx; padding: 20rpx 128rpx 18rpx 24rpx; overflow: hidden; flex: 1; flex-direction: column; gap: 11rpx; border: 1rpx solid #d9e3d4; border-radius: 22rpx; background: linear-gradient(105deg, #f5f9f1, #fffefa); box-shadow: 0 4rpx 12rpx rgba(74, 92, 74, .045); isolation: isolate; }
+.stream-entry-heading { position: relative; z-index: 1; display: flex; min-width: 0; align-items: center; gap: 14rpx; }
+.stream-entry-icon { display: flex; width: 56rpx; height: 56rpx; flex: 0 0 56rpx; align-items: center; justify-content: center; border-radius: 16rpx; background: rgba(223, 236, 212, .9); color: #38533f; font-size: 25rpx; font-weight: 850; line-height: 56rpx; text-align: center; }
+.stream-entry-heading-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 5rpx; }
+.stream-entry-title { display: -webkit-box; overflow: hidden; color: #18201a; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 27rpx; font-weight: 760; letter-spacing: -.5rpx; line-height: 1.28; word-break: break-word; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.stream-entry-subline { display: flex; min-width: 0; gap: 9rpx; color: #69736b; font-size: 19rpx; line-height: 1.2; }
+.stream-entry-subline text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-entry-subline text + text::before { margin-right: 9rpx; color: #9ca49d; content: '·'; }
+.stream-entry-arrow { flex: 0 0 auto; color: #48534b; font-size: 38rpx; font-weight: 400; line-height: 1; }
+.stream-entry-copy { position: relative; z-index: 1; display: -webkit-box; margin-left: 70rpx; overflow: hidden; color: #5c665f; font-size: 22rpx; line-height: 1.48; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.stream-media { position: relative; z-index: 1; display: flex; margin-left: 70rpx; gap: 9rpx; }
+.stream-media image { width: 104rpx; height: 82rpx; border-radius: 13rpx; background: #e7ece3; }
+.stream-entry-art { position: absolute; z-index: 0; right: -10rpx; bottom: -13rpx; width: 146rpx; height: 118rpx; background-position: right bottom; background-repeat: no-repeat; background-size: contain; pointer-events: none; }
+.entry-diary .stream-entry-body { border-color: #e7dccb; background: linear-gradient(105deg, #fffcf6, #fffefa); }
+.entry-voice .stream-entry-body { border-color: #dfd5e6; background: linear-gradient(105deg, #f8f4fa, #fffefa); }
+.entry-action .stream-entry-body { border-color: #d3e4cc; background: linear-gradient(105deg, #f1f8ee, #fffefa); }
+.entry-source .stream-entry-body { border-color: #dce2dc; background: linear-gradient(105deg, #f4f6f3, #fffefa); }
+.entry-plan .stream-entry-body { border-color: #eadbb0; background: linear-gradient(105deg, #fff9e8, #fffdfa); }
+.entry-wellbeing .stream-entry-body { border-color: #d4e4e8; background: linear-gradient(105deg, #f0f8f9, #fffefa); }
+.entry-codex .stream-entry-body { border-color: #ceddc7; background: linear-gradient(105deg, #f0f7ed, #fffefa); }
+.entry-visual-0 .stream-entry-body { border-color: #cfdcab; background: linear-gradient(105deg, #f0f6e2 0%, #f7faeb 56%, #fffdf5 100%); }
+.entry-visual-0 .stream-entry-art { right: -18rpx; width: 164rpx; height: 124rpx; background-image: url('/static/images/shroom-card-mascot-v2.webp'); }
+.entry-visual-1 .stream-entry-body { border-color: #ead8c4; background: linear-gradient(105deg, #fff9ef 0%, #fffaf3 58%, #fffdf8 100%); }
+.entry-visual-1 .stream-entry-art { right: -3rpx; width: 138rpx; height: 122rpx; background-image: url('/static/images/shroom-snapshot-mug-v1.webp'); }
+.entry-visual-2 .stream-entry-body { border-color: #c9dfe6; background: linear-gradient(105deg, #eaf6fb 0%, #f2f9fb 58%, #fffefd 100%); }
+.entry-visual-2 .stream-entry-art { right: -18rpx; bottom: -18rpx; width: 158rpx; height: 119rpx; background-image: url('/static/images/shroom-card-mascot-v1.webp'); }
+.entry-visual-3 .stream-entry-body { border-color: #e8d4a5; background: linear-gradient(105deg, #fff6df 0%, #fff9eb 58%, #fffdf7 100%); }
+.entry-visual-3 .stream-entry-art { right: -20rpx; bottom: -20rpx; width: 154rpx; height: 118rpx; background-image: url('/static/images/shroom-card-mascot-v2.webp'); transform: scaleX(-1); }
+.entry-codex .stream-entry-icon { background: #1c251f; color: #ddeb8a; }
+.entry-plan .stream-entry-icon { background: #f6eac5; color: #6f5b22; }
+.entry-voice .stream-entry-icon { background: #eee4f1; color: #725778; }
+.entry-diary .stream-entry-icon { background: #e9f0df; color: #4d6a47; }
+.todo-complete { position: absolute; z-index: 3; right: 44rpx; bottom: 28rpx; display: flex; width: 38rpx; height: 38rpx; margin: 0; padding: 0; align-items: center; justify-content: center; border: 2rpx solid #72805d; border-radius: 50%; background: #fffdf7; color: #52643d; font-size: 22rpx; line-height: 38rpx; }.todo-complete::after { border: 0; }
 
 .flow-empty { margin: 28rpx 0; border: 0; border-radius: 22rpx; background: #f0f4ec; box-shadow: none; }
 
-.timeline-view { display: block; padding: 15rpx 28rpx 30rpx; }
-.timeline-toolbar { display: flex; margin-bottom: 12rpx; align-items: center; justify-content: flex-end; }
+.timeline-view { display: block; padding: 15rpx 24rpx 30rpx; }
+.timeline-toolbar { display: none; }
 .timeline-toolbar > text { color: #526158; font-size: 22rpx; }
 .timeline-untimed { display: flex; margin-bottom: 12rpx; padding: 14rpx 18rpx; align-items: center; justify-content: space-between; border: 1rpx solid #dfe7cf; border-radius: 14rpx; background: #f1f5e7; }
 .timeline-untimed text:first-child { color: #3d493f; font-size: 23rpx; font-weight: 650; }
@@ -2849,7 +3020,7 @@ export default {
 .timeline-stage.capture-drop-active { background: rgba(221, 236, 140, .08); }
 .timeline-stage.capture-drop-ready { background: rgba(221, 236, 140, .18); }
 .timeline-hour { position: absolute; right: 0; left: 0; z-index: 0; display: flex; height: 112rpx; align-items: flex-start; }
-.timeline-hour > text { width: 82rpx; padding-top: 1rpx; flex: 0 0 82rpx; color: #667269; font-size: 24rpx; line-height: 1; }
+.timeline-hour > text { width: 82rpx; padding-top: 1rpx; flex: 0 0 82rpx; color: #657168; font-size: 24rpx; line-height: 1; }
 .timeline-hour > view { height: 1rpx; margin-top: 8rpx; flex: 1; background: rgba(23, 32, 25, .13); }
 .timeline-gap-marker { position: absolute; right: 0; left: 82rpx; z-index: 4; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .timeline-gap-marker button { display: flex; height: 48rpx; min-width: 112rpx; margin: 0; padding: 0 18rpx; align-items: center; justify-content: center; gap: 9rpx; border: 1rpx solid rgba(23, 32, 25, .15); border-radius: 999rpx; background: rgba(245, 247, 241, .96); box-shadow: 0 5rpx 14rpx rgba(23, 32, 25, .09); color: #526158; font-size: 22rpx; font-weight: 700; line-height: 48rpx; pointer-events: auto; }
@@ -2858,7 +3029,7 @@ export default {
 .timeline-gap-marker.expanded button { background: rgba(255, 253, 247, .9); }
 .timeline-gap-marker.locked button text:first-child { display: none; }
 .timeline-events-layer { position: absolute; top: 0; right: 0; bottom: 0; left: 92rpx; z-index: 1; }
-.timeline-event { position: absolute; z-index: 2; display: flex; box-sizing: border-box; margin: 0; padding: 8rpx 11rpx; overflow: hidden; align-items: stretch; flex-direction: column; justify-content: flex-start; border: 1rpx solid #d7e0d2; border-left: 6rpx solid #647867; border-radius: 10rpx; background: rgba(255, 255, 255, .97); text-align: left; box-shadow: 0 3rpx 10rpx rgba(23, 32, 25, .07); }
+.timeline-event { position: absolute; z-index: 2; display: flex; box-sizing: border-box; margin: 0; padding: 11rpx 14rpx; overflow: hidden; align-items: stretch; flex-direction: column; justify-content: flex-start; border: 1rpx solid #d7e0d2; border-left: 4rpx solid #647867; border-radius: 18rpx; background: rgba(255, 255, 255, .97); text-align: left; box-shadow: 0 6rpx 18rpx rgba(65, 83, 67, .07); }
 .timeline-event::after { border: 0; }
 .timeline-event-main { display: flex; min-width: 0; align-items: center; gap: 8rpx; }.timeline-event.entry-plan .timeline-event-main { padding-right: 38rpx; }.timeline-event-main > text:last-child { min-width: 0; overflow: hidden; color: #172019; font-size: 24rpx; font-weight: 720; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }.timeline-source-icon { display: flex; width: 28rpx; height: 28rpx; flex: 0 0 28rpx; align-items: center; justify-content: center; border-radius: 7rpx; background: #e5efd9; color: #42634a; font-size: 18rpx; font-weight: 800; }.timeline-event-meta { display: flex; min-width: 0; margin-top: 4rpx; gap: 8rpx; color: #56635a; font-size: 19rpx; line-height: 1; }.timeline-event-meta text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.timeline-event-meta text:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-event.is-compact { padding-right: 7rpx; padding-left: 7rpx; }
@@ -2867,10 +3038,10 @@ export default {
 .timeline-event.is-compact .timeline-event-main > text:last-child { font-size: 22rpx; }
 .timeline-event.is-compact .timeline-event-meta { font-size: 19rpx; }
 .timeline-event.is-compact .timeline-event-meta text:last-child { display: none; }
-.timeline-event.entry-voice { border-left-color: #8d7599; background: #f2edf4; }
-.timeline-event.entry-action { border-left-color: #678d60; background: #edf5e9; }
-.timeline-event.entry-source { border-left-color: #5e6961; background: #f0f2ef; }
-.timeline-event.entry-plan { border-left-color: #9aac5c; background: #f1f6df; }.timeline-event.entry-codex { border-left-color: #172019; background: #eef4e8; }.timeline-event.entry-codex .timeline-source-icon { background: #172019; color: #ddec8c; }
+.timeline-event.entry-voice { border-color: #dccfe1; background: linear-gradient(100deg, #f8f3f9, #fffdfb); }
+.timeline-event.entry-action { border-color: #cfe2c8; background: linear-gradient(100deg, #f1f8ee, #fffdf8); }
+.timeline-event.entry-source { border-color: #d9dfd8; background: linear-gradient(100deg, #f4f6f3, #fffdf9); }
+.timeline-event.entry-plan { border-color: #e7d9ac; background: linear-gradient(100deg, #fff9e9, #fffdf8); }.timeline-event.entry-codex { border-color: #c9dcc4; background: linear-gradient(100deg, #eff7ec, #fffdf8); }.timeline-event.entry-codex .timeline-source-icon { background: #172019; color: #ddec8c; }
 .timeline-todo-complete { position: absolute; top: 8rpx; right: 8rpx; display: flex; width: 34rpx; height: 34rpx; margin: 0; padding: 0; align-items: center; justify-content: center; border: 2rpx solid #6f805a; border-radius: 50%; background: #fffdf7; color: #52643d; font-size: 21rpx; line-height: 34rpx; }.timeline-todo-complete::after { border: 0; }
 .timeline-selection { position: absolute; right: 8rpx; left: 0; z-index: 5; box-sizing: border-box; padding: 10rpx 14rpx; border: 2rpx solid #789241; border-radius: 12rpx; background: rgba(221, 236, 140, .76); color: #172019; font-size: 22rpx; font-weight: 750; pointer-events: none; }
 .timeline-selection.selection-voice { border-color: #8d7599; background: rgba(226, 210, 232, .82); }
@@ -2941,8 +3112,8 @@ export default {
 .home-setting-row > view text:first-child { color: #172019; font-size: 26rpx; font-weight: 700; }
 .home-setting-row > view text:last-child { color: #59655c; font-size: 21rpx; line-height: 1.35; }
 
-.capture-dock { right: 0; bottom: calc(130rpx + env(safe-area-inset-bottom)); left: 0; width: 430rpx; max-width: calc(100vw - 48rpx); padding: 0; gap: 10rpx; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
-.capture-dock button { height: 76rpx; min-width: 0; padding: 0 15rpx; flex: 1; color: #172019 !important; border: 1rpx solid rgba(23, 32, 25, .13); border-radius: 999rpx; background: rgba(255, 255, 255, .96) !important; box-shadow: 0 9rpx 24rpx rgba(23, 32, 25, .13); font-size: 28rpx; font-weight: 700; line-height: 76rpx; touch-action: none; user-select: none; }
+.capture-dock { box-sizing: border-box; right: 0; bottom: calc(82px + env(safe-area-inset-bottom)); left: 0; width: 430rpx; max-width: calc(100vw - 48rpx); height: 76rpx; padding: 0; align-items: center; justify-content: center; gap: 10rpx; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: none; }
+.capture-dock button { height: 76rpx; min-width: 0; max-width: 210rpx; padding: 0 15rpx; flex: 1; color: #172019 !important; border: 1rpx solid rgba(23, 32, 25, .13); border-radius: 999rpx; background: rgba(255, 255, 255, .95) !important; box-shadow: 0 9rpx 24rpx rgba(23, 32, 25, .13); font-size: 28rpx; font-weight: 700; line-height: 76rpx; pointer-events: auto; touch-action: none; user-select: none; }
 .capture-dock button text:first-child { font-family: inherit; font-size: 24rpx; }
 .capture-dock .capture-grip { margin-left: 2rpx; color: #727e75; font-size: 21rpx; }
 .capture-drag-ghost { position: fixed; z-index: 130; display: flex; min-width: 150rpx; padding: 12rpx 16rpx; flex-direction: column; gap: 3rpx; border: 1rpx solid rgba(23, 32, 25, .16); border-radius: 13rpx; background: rgba(255, 253, 247, .96); box-shadow: 0 12rpx 32rpx rgba(23, 32, 25, .18); color: #172019; pointer-events: none; transform: translateY(-100%); }
@@ -3032,7 +3203,7 @@ export default {
 	.icp-footer { box-sizing: border-box; max-width: 780px; margin-right: auto; margin-left: auto; }
 	.title-row { padding: 62px 10px 14px !important; }
 	.date-selector { padding-right: 10px; padding-left: 10px; }
-	.capture-dock { transform: translateX(48px); }
+	.capture-dock { right: 0; left: 96px; width: 430rpx; max-width: calc(100vw - 144px); transform: none; }
 }
 /* #endif */
 

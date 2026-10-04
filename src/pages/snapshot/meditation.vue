@@ -1,5 +1,5 @@
 <template>
-	<view class="med-page" :class="{ dark: isMeditating }">
+	<view class="med-page snapshot-subpage" :class="{ dark: isMeditating }">
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
 
 		<!-- 首页 -->
@@ -61,9 +61,10 @@
 					<text class="breath-text">{{ phaseText }}</text>
 				</view>
 				<text class="med-quote">{{ affirmation }}</text>
-				<text class="med-timer">{{ remaining }} 秒</text>
+				<text class="med-timer">{{ remainingLabel }}</text>
 			</view>
-			<view class="end-med-btn" @tap="endMeditation">提前结束</view>
+			<view class="saving-label" v-if="isCompleting">正在保存本次完成…</view>
+			<view class="end-med-btn" v-else @tap="cancelMeditation">提前结束</view>
 		</block>
 
 		<!-- 结束总结 -->
@@ -91,7 +92,7 @@
 </template>
 
 <script>
-import { completeMeditation } from '@/api/snapshot';
+import { completeMeditation, getMeditationSummary, getTodaySnapshot, updateTodaySnapshot } from '@/api/snapshot';
 
 export default {
 	data() {
@@ -103,55 +104,101 @@ export default {
 			selectedDuration: 3,
 			isMeditating: false,
 			isFinished: false,
-			remaining: 0,
-			timer: null,
-			phase: 'inhale',
-			phaseText: '吸气',
-			phaseTimer: null,
-			streak: 7,
-			totalCount: 23,
-			totalMinutes: 68,
-			lastMinutes: 3,
-			encourage: '很好，今天的觉察从这一刻开始。',
-		}
-	},
-	onLoad() { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 },
-	onUnload() { this.stopAllTimers() },
-	methods: {
-		goBack() { uni.navigateBack() },
-		saveQuote() { this.editing = false; uni.showToast({ title: '已保存', icon: 'success' }) },
-		startMeditation() {
-			this.isMeditating = true
-			this.remaining = this.selectedDuration * 60
+				remaining: 0,
+				timer: null,
+				phase: 'inhale',
+				phaseText: '吸气',
+				phaseTimer: null,
+				isCompleting: false,
+				streak: 0,
+				totalCount: 0,
+				totalMinutes: 0,
+				lastMinutes: 3,
+				encourage: '很好，今天的觉察从这一刻开始。',
+			}
+		},
+		computed: {
+			remainingLabel() {
+				const minutes = Math.floor(this.remaining / 60)
+				const seconds = this.remaining % 60
+				return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+			}
+		},
+		onLoad() {
+			this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20
+		},
+		onShow() {
+			uni.hideTabBar({ animation: false, fail: () => {} })
+			this.loadSummary()
+		},
+		onUnload() { this.stopAllTimers() },
+		methods: {
+			goBack() { uni.navigateBack() },
+			async loadSummary() {
+				try {
+					const response = await getMeditationSummary()
+					const snapshotResponse = await getTodaySnapshot()
+					this.applySummary(response.data || response)
+					const payload = snapshotResponse.data || snapshotResponse
+					if (payload.snapshot && payload.snapshot.morning_intent) this.affirmation = payload.snapshot.morning_intent
+				} catch (error) { uni.showToast({ title: error.message || '冥想记录读取失败', icon: 'none' }) }
+			},
+			applySummary(result) {
+				this.streak = Number(result.streak) || 0
+				this.totalCount = Number(result.totalCount) || 0
+				this.totalMinutes = Number(result.totalMinutes) || 0
+			},
+			async saveQuote() {
+				this.affirmation = this.affirmation.trim() || '今天我对自己温柔一点，允许一切如其所是。'
+				try { await updateTodaySnapshot({ morning_intent: this.affirmation }); this.editing = false; uni.showToast({ title: '已保存到今日快照', icon: 'success' }) }
+				catch (error) { uni.showToast({ title: error.message || '保存失败', icon: 'none' }) }
+			},
+			startMeditation() {
+				if (this.isCompleting) return
+				this.isFinished = false
+				this.isMeditating = true
+				this.remaining = this.selectedDuration * 60
 			this.phase = 'inhale'
 			this.phaseText = '吸气'
 			this.timer = setInterval(() => {
 				this.remaining--
-				if (this.remaining <= 0) this.endMeditation()
-			}, 1000)
+					if (this.remaining <= 0) this.finishMeditation()
+				}, 1000)
 			// 呼吸引导：4秒吸-6秒呼
 			this.phaseTimer = setInterval(() => {
 				if (this.phase === 'inhale') { this.phase = 'exhale'; this.phaseText = '呼气' }
 				else { this.phase = 'inhale'; this.phaseText = '吸气' }
 			}, 5000)
 		},
-		async endMeditation() {
-			if (!this.isMeditating) return
-			this.stopAllTimers()
-			this.isMeditating = false
-			this.isFinished = true
-			this.lastMinutes = this.selectedDuration
-			try {
-				const response = await completeMeditation({
+			cancelMeditation() {
+				if (!this.isMeditating || this.isCompleting) return
+				this.stopAllTimers()
+				this.isMeditating = false
+				this.remaining = 0
+				uni.showToast({ title: '本次未完成，不计入统计', icon: 'none' })
+			},
+			async finishMeditation() {
+				if (!this.isMeditating || this.isCompleting) return
+				this.stopAllTimers()
+				this.remaining = 0
+				this.isCompleting = true
+				this.lastMinutes = this.selectedDuration
+				try {
+					const response = await completeMeditation({
 					duration_min: this.selectedDuration,
 					affirmation: this.affirmation
-				})
-				const result = response.data || response
-				this.streak = Number(result.streak) || 0
-				this.totalCount = Number(result.totalCount) || 0
-				this.totalMinutes = Number(result.totalMinutes) || 0
-			} catch (error) {}
-		},
+					})
+					const result = response.data || response
+					this.applySummary(result)
+					this.isMeditating = false
+					this.isFinished = true
+				} catch (error) {
+					this.isMeditating = false
+					uni.showToast({ title: '未能保存，本次未计入', icon: 'none' })
+				} finally {
+					this.isCompleting = false
+				}
+			},
 		backHome() { uni.navigateBack() },
 		stopAllTimers() {
 			if (this.timer) clearInterval(this.timer)
@@ -205,6 +252,7 @@ export default {
 .breath-text { font-size: 32rpx; color: #c8e0b8; letter-spacing: 8rpx; }
 .med-quote { font-size: 32rpx; color: #d0d8d0; text-align: center; line-height: 1.8; margin-top: 60rpx; padding: 0 40rpx; }
 .med-timer { font-size: 48rpx; color: #7CAE5A; font-weight: 600; margin-top: 40rpx; }
+.saving-label { position: fixed; bottom: 68rpx; left: 0; right: 0; color: #c8e0b8; font-size: 26rpx; text-align: center; }
 .end-med-btn { position: fixed; bottom: 60rpx; left: 50%; transform: translateX(-50%);
 	color: #888; font-size: 26rpx; padding: 16rpx 40rpx; border: 1rpx solid #555; border-radius: 30rpx; }
 

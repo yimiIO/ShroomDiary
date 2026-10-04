@@ -249,10 +249,13 @@
 						<button @tap="retryReflection">重新核对</button>
 					</view>
 
-					<view class="followup-composer" v-if="!isProcessing && conversation.status !== 'cancelled'">
-						<textarea v-model="followUpText" :maxlength="1000" placeholder="继续追问，或补充当时没有写下的背景…" :show-confirm-bar="false" />
-						<button :disabled="sending || !followUpText.trim()" @tap="sendFollowUp">{{ sending ? '发送中' : '继续讨论' }}</button>
-					</view>
+						<view class="followup-composer" v-if="!isProcessing && conversation.status !== 'cancelled'">
+							<textarea v-model="followUpText" :maxlength="1000" placeholder="继续追问，或补充当时没有写下的背景…" :show-confirm-bar="false" />
+							<button :disabled="sending || !followUpText.trim()" @tap="sendFollowUp">{{ sending ? '发送中' : '继续讨论' }}</button>
+						</view>
+						<button class="regenerate-button" v-if="canRegenerate" :disabled="regenerating" @tap="confirmRegenerate">
+							{{ regenerating ? '正在建立新回看…' : '基于现在的记录重新回看' }}
+						</button>
 				</view>
 
 				<view class="bottom-space"></view>
@@ -270,8 +273,9 @@ import {
 	memoryConversation,
 	memoryConversations,
 	memoryFeedback,
-	memoryMessages,
-	memoryRetry
+		memoryMessages,
+		memoryRetry,
+		memoryThemeOpen
 } from '@/api/memory';
 
 export default {
@@ -285,7 +289,8 @@ export default {
 			dateTo: '',
 			conversation: null,
 			starting: false,
-			sending: false,
+					sending: false,
+					regenerating: false,
 				followUpText: '',
 				pollTimer: null,
 				pollInFlight: false,
@@ -306,7 +311,7 @@ export default {
 		isProcessing() {
 			return this.conversation && this.conversation.status === 'processing';
 		},
-		isThemeConversation() {
+			isThemeConversation() {
 			return Boolean(this.conversation && this.conversation.scope && this.conversation.scope.themeKey);
 		},
 		visibleCost() {
@@ -324,6 +329,9 @@ export default {
 				if (this.taskProgress < 50) return '执行分析计划';
 				if (this.taskProgress < 88) return '阅读正文并聚合';
 				return '校验原文引用';
+			},
+			canRegenerate() {
+				return Boolean(this.conversation && !this.isProcessing && ['completed', 'partial', 'insufficient_evidence'].includes(this.conversation.status));
 			},
 			processingNote() {
 				if (this.pollFailures) return '网络刚刚有波动，后台任务仍在继续；正在自动重新连接。';
@@ -443,8 +451,9 @@ export default {
 				const res = await this.$http.post(memoryConversations, {
 					seedDiaryId: this.seedDiaryId || null,
 					question,
-					mode: this.modeForQuestion(question),
-					scope: { dateFrom: this.dateFrom || null, dateTo: this.dateTo || null }
+						mode: this.modeForQuestion(question),
+						scope: { dateFrom: this.dateFrom || null, dateTo: this.dateTo || null },
+						regenerate: false
 				});
 				if (res.code !== 200 || !res.data || !res.data.id) throw new Error('Invalid conversation');
 				await this.loadConversation(res.data.id);
@@ -466,6 +475,35 @@ export default {
 					console.error('加载回看对话失败', error);
 					this.pollFailures += 1;
 					if (!this.isProcessing) this.stopPolling();
+				}
+			},
+			confirmRegenerate() {
+				uni.showModal({
+					title: '重新回看？',
+					content: '当前回看已保存。确认后才会基于现在可用的记录再次调用 AI，旧结果不会因此丢失。',
+					confirmText: '重新回看',
+					success: result => { if (result.confirm) this.regenerateReflection(); }
+				});
+			},
+			async regenerateReflection() {
+				if (!this.canRegenerate || this.regenerating) return;
+				this.regenerating = true;
+				try {
+					const endpoint = this.isThemeConversation ? memoryThemeOpen(this.conversation.scope.themeKey) : memoryConversations;
+					const payload = this.isThemeConversation ? { regenerate: true } : {
+						seedDiaryId: this.conversation.seedDiaryId || null,
+						question: this.conversation.question,
+						mode: this.conversation.mode,
+						scope: this.conversation.scope || {},
+						regenerate: true
+					};
+					const res = await this.$http.post(endpoint, payload);
+					if (res.code !== 200 || !res.data || !res.data.id) throw new Error('Invalid conversation');
+					await this.loadConversation(res.data.id);
+				} catch (error) {
+					console.error('重新回看失败', error);
+				} finally {
+					this.regenerating = false;
 				}
 			},
 			startPolling() {
@@ -781,6 +819,8 @@ button::after { border: 0; }
 .followup-composer textarea { width: 100%; height: 160rpx; font-size: 24rpx; line-height: 1.6; box-sizing: border-box; }
 .followup-composer button { width: 100%; height: 72rpx; margin-top: 16rpx; border-radius: 999rpx; background: #172019; color: #fff; font-size: 21rpx; font-weight: 680; }
 .followup-composer button[disabled] { opacity: .38; }
+.regenerate-button { width: 100%; margin-top: 22rpx; padding: 22rpx; border: 1rpx solid rgba(23,32,25,.12); border-radius: 999rpx; color: #657263; font-size: 19rpx; }
+.regenerate-button[disabled] { opacity: .42; }
 .bottom-space { height: calc(60rpx + env(safe-area-inset-bottom)); }
 /* #ifdef MP-WEIXIN */
 .memory-page { height: 100vh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

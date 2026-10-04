@@ -43,7 +43,7 @@ export default {
 		async load() { try { const responses = await Promise.all([this.$http.get(`${todoProjects}/${this.projectId}`, { timeZone: this.timeZone }), this.$http.get(todoOptions)]); const res = responses[0]; if (res.code !== 200) throw new Error(res.message); this.project = res.data.project; this.groups = res.data.groups || []; this.projects = ((responses[1].data || {}).projects || []).filter(item => item.id !== this.projectId); } catch (e) { uni.showToast({ title: e.message || '项目加载失败', icon: 'none' }); } },
 		groupItems(group) { return group.collapsible && !this.expanded[group.key] ? group.items.slice(0, 4) : group.items; },
 		toggleGroup(key) { this.$set(this.expanded, key, !this.expanded[key]); },
-		addTask() { uni.setStorageSync('todoPrefill', { projectId: this.projectId, sourceType: 'PROJECT' }); uni.navigateTo({ url: '/pages/todo/list' }); },
+		addTask() { uni.setStorageSync('todoPrefill', { projectId: this.projectId, sourceType: 'PROJECT' }); uni.navigateTo({ url: '/pages/todo/edit' }); },
 		openTask(task) { uni.navigateTo({ url: `/pages/todo/detail?id=${task.id}` }); },
 		async toggleTask(task) { await this.status(task, task.status === 'completed' ? 'RESTORE' : 'COMPLETE'); },
 		taskMenu(task) { const items = task.status === 'in_progress' ? ['打开详情', '向上移动', '向下移动'] : ['开始推进', '打开详情', '向上移动', '向下移动']; uni.showActionSheet({ itemList: items, success: ({ tapIndex }) => { const label = items[tapIndex]; if (label === '开始推进') this.status(task, 'START'); else if (label === '打开详情') this.openTask(task); else this.moveTask(task, label === '向上移动' ? -1 : 1); } }); },

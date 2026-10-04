@@ -49,6 +49,42 @@ function compareDates(left, right) {
   return String(left || '').localeCompare(String(right || ''));
 }
 
+function taskSortDate(task) {
+  return dateOnly(task.scheduledDate || task.scheduled_date)
+    || dateOnly(task.deadline)
+    || null;
+}
+
+function compareTasksByTime(left, right) {
+  const leftDate = taskSortDate(left);
+  const rightDate = taskSortDate(right);
+  if (leftDate && rightDate && leftDate !== rightDate) return compareDates(leftDate, rightDate);
+  if (leftDate && !rightDate) return -1;
+  if (!leftDate && rightDate) return 1;
+
+  const leftTime = clockTime(left.scheduledStartTime || left.scheduled_start_time);
+  const rightTime = clockTime(right.scheduledStartTime || right.scheduled_start_time);
+  if (leftTime && rightTime && leftTime !== rightTime) return leftTime.localeCompare(rightTime);
+  if (leftTime && !rightTime) return -1;
+  if (!leftTime && rightTime) return 1;
+
+  const leftCreatedAt = String(left.createdAt || left.created_at || '');
+  const rightCreatedAt = String(right.createdAt || right.created_at || '');
+  if (leftCreatedAt !== rightCreatedAt) return rightCreatedAt.localeCompare(leftCreatedAt);
+  return String(left.id || '').localeCompare(String(right.id || ''));
+}
+
+function createdTimestamp(task) {
+  const value = task.createdAt || task.created_at;
+  const timestamp = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function compareTasksByCreatedAt(left, right) {
+  const difference = createdTimestamp(right) - createdTimestamp(left);
+  return difference || String(left.id || '').localeCompare(String(right.id || ''));
+}
+
 function isoWeekday(value) {
   const day = utcDate(value).getUTCDay();
   return day === 0 ? 7 : day;
@@ -174,7 +210,9 @@ module.exports = {
   TASK_STATUSES,
   addDays,
   clockTime,
+  compareTasksByCreatedAt,
   compareDates,
+  compareTasksByTime,
   dateOnly,
   decorateTask,
   groupCurrentTasks,
