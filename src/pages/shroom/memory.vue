@@ -63,6 +63,11 @@
 								<text v-else-if="conversation.coverage && !conversation.coverage.semanticIndexEnabled">大模型规划 · 证据检索</text>
 							</view>
 					</view>
+					<view class="origin-anchor" v-if="conversation.origin">
+						<text>接着当前分析继续</text>
+						<text>{{ conversation.origin.summary || '原分析和生成时使用的重要上下文已经接入。' }}</text>
+						<text>此前 AI 的判断仍是可质疑的解释，不会自动变成你的事实。</text>
+					</view>
 					<view class="usage-strip" v-if="visibleCost && visibleCost.calls">
 						<view><text>本次回看用量</text><text>{{ visibleCost.calls }} 次调用 · {{ formatTokens(visibleCost.totalTokens) }} tokens</text></view>
 						<view><text>{{ formatBilling(visibleCost) }}</text><text>实际 Token 如实记录 · 失败不扣菇点</text></view>
@@ -244,10 +249,13 @@
 						<button @tap="retryReflection">重新核对</button>
 					</view>
 
-					<view class="followup-composer" v-if="!isProcessing && conversation.status !== 'cancelled'">
-						<textarea v-model="followUpText" :maxlength="1000" placeholder="继续追问，或补充当时没有写下的背景…" :show-confirm-bar="false" />
-						<button :disabled="sending || !followUpText.trim()" @tap="sendFollowUp">{{ sending ? '发送中' : '继续讨论' }}</button>
-					</view>
+						<view class="followup-composer" v-if="!isProcessing && conversation.status !== 'cancelled'">
+							<textarea v-model="followUpText" :maxlength="1000" placeholder="继续追问，或补充当时没有写下的背景…" :show-confirm-bar="false" />
+							<button :disabled="sending || !followUpText.trim()" @tap="sendFollowUp">{{ sending ? '发送中' : '继续讨论' }}</button>
+						</view>
+						<button class="regenerate-button" v-if="canRegenerate" :disabled="regenerating" @tap="confirmRegenerate">
+							{{ regenerating ? '正在建立新回看…' : '基于现在的记录重新回看' }}
+						</button>
 				</view>
 
 				<view class="bottom-space"></view>
@@ -265,8 +273,9 @@ import {
 	memoryConversation,
 	memoryConversations,
 	memoryFeedback,
-	memoryMessages,
-	memoryRetry
+		memoryMessages,
+		memoryRetry,
+		memoryThemeOpen
 } from '@/api/memory';
 
 export default {
@@ -280,7 +289,8 @@ export default {
 			dateTo: '',
 			conversation: null,
 			starting: false,
-			sending: false,
+					sending: false,
+					regenerating: false,
 				followUpText: '',
 				pollTimer: null,
 				pollInFlight: false,
@@ -301,7 +311,7 @@ export default {
 		isProcessing() {
 			return this.conversation && this.conversation.status === 'processing';
 		},
-		isThemeConversation() {
+			isThemeConversation() {
 			return Boolean(this.conversation && this.conversation.scope && this.conversation.scope.themeKey);
 		},
 		visibleCost() {
@@ -312,23 +322,30 @@ export default {
 			const task = this.conversation && this.conversation.task;
 			return Math.max(0, Math.min(100, Number(task && task.progress) || 0));
 		},
-			processingLabel() {
+		processingLabel() {
+				if (this.conversation && this.conversation.origin && this.taskProgress < 88) return '接着这份分析回答';
 				if (this.taskProgress < 20) return '确认授权范围';
 				if (this.taskProgress < 30) return '理解你的问题';
 				if (this.taskProgress < 50) return '执行分析计划';
 				if (this.taskProgress < 88) return '阅读正文并聚合';
 				return '校验原文引用';
 			},
+			canRegenerate() {
+				return Boolean(this.conversation && !this.isProcessing && ['completed', 'partial', 'insufficient_evidence'].includes(this.conversation.status));
+			},
 			processingNote() {
 				if (this.pollFailures) return '网络刚刚有波动，后台任务仍在继续；正在自动重新连接。';
+					if (this.conversation && this.conversation.origin) return '普通追问直接复用原分析上下文；只有你要求结合过去记录时，才重新检索。';
 					if (this.isThemeConversation) return '以前核对过的日记会直接复用，只分析新增或修改过的正文。离开页面后更新也会继续。';
 					return '先理解问题，再选择完整普查或证据检索；最后校验数字与原文。离开页面后任务也会继续。';
 			},
 		modeLabel() {
+			if (this.conversation && this.conversation.origin) return '继续聊聊';
 			const mode = this.modes.find(item => item.value === (this.conversation && this.conversation.mode));
 			return mode ? mode.label.toUpperCase() : 'MEMORY REVIEW';
 		},
 			coverageSummary() {
+				if (this.conversation && this.conversation.origin && !(this.conversation.coverage && this.conversation.coverage.totalAvailable)) return '已接入原分析与当时的重要上下文';
 				const coverage = (this.conversation && this.conversation.coverage) || {};
 				if (!coverage.totalAvailable) return '只读取当前账号已授权的记录';
 				if (coverage.semanticMethod === 'full_range_content_classification') {
@@ -434,8 +451,9 @@ export default {
 				const res = await this.$http.post(memoryConversations, {
 					seedDiaryId: this.seedDiaryId || null,
 					question,
-					mode: this.modeForQuestion(question),
-					scope: { dateFrom: this.dateFrom || null, dateTo: this.dateTo || null }
+						mode: this.modeForQuestion(question),
+						scope: { dateFrom: this.dateFrom || null, dateTo: this.dateTo || null },
+						regenerate: false
 				});
 				if (res.code !== 200 || !res.data || !res.data.id) throw new Error('Invalid conversation');
 				await this.loadConversation(res.data.id);
@@ -457,6 +475,35 @@ export default {
 					console.error('加载回看对话失败', error);
 					this.pollFailures += 1;
 					if (!this.isProcessing) this.stopPolling();
+				}
+			},
+			confirmRegenerate() {
+				uni.showModal({
+					title: '重新回看？',
+					content: '当前回看已保存。确认后才会基于现在可用的记录再次调用 AI，旧结果不会因此丢失。',
+					confirmText: '重新回看',
+					success: result => { if (result.confirm) this.regenerateReflection(); }
+				});
+			},
+			async regenerateReflection() {
+				if (!this.canRegenerate || this.regenerating) return;
+				this.regenerating = true;
+				try {
+					const endpoint = this.isThemeConversation ? memoryThemeOpen(this.conversation.scope.themeKey) : memoryConversations;
+					const payload = this.isThemeConversation ? { regenerate: true } : {
+						seedDiaryId: this.conversation.seedDiaryId || null,
+						question: this.conversation.question,
+						mode: this.conversation.mode,
+						scope: this.conversation.scope || {},
+						regenerate: true
+					};
+					const res = await this.$http.post(endpoint, payload);
+					if (res.code !== 200 || !res.data || !res.data.id) throw new Error('Invalid conversation');
+					await this.loadConversation(res.data.id);
+				} catch (error) {
+					console.error('重新回看失败', error);
+				} finally {
+					this.regenerating = false;
 				}
 			},
 			startPolling() {
@@ -524,9 +571,11 @@ export default {
 		},
 		sourceLabel(source) {
 			if (!source) return '来源已失效';
+			if (source.sourceType === 'CONTEXT_RECORD') return this.sourceDate(source) + ' · 已确认上下文';
 			return this.sourceDate(source) + (source.sourceType === 'CODEX_TASK' ? ' · Codex 任务' : ' · 日记原文');
 		},
 		sourceLinkLabel(source) {
+			if (source && source.sourceType === 'CONTEXT_RECORD') return '查看当时的上下文';
 			return source && source.sourceType === 'CODEX_TASK' ? '查看 Codex 任务事实' : '打开这篇日记 ↗';
 		},
 		openSource(source) {
@@ -543,6 +592,15 @@ export default {
 				});
 				return;
 			}
+			if (source.sourceType === 'CONTEXT_RECORD') {
+				uni.showModal({
+					title: source.label || '当时使用的上下文',
+					content: source.excerpt || '内容不可用',
+					showCancel: false,
+					confirmText: '知道了'
+				});
+				return;
+			}
 			if (!source.diaryId) {
 				uni.showToast({ title: '来源已经失效', icon: 'none' });
 				return;
@@ -550,6 +608,7 @@ export default {
 			uni.navigateTo({ url: '/pages/diary/edit?id=' + source.diaryId });
 		},
 		resultStatus(status) {
+			if (this.conversation && this.conversation.origin) return '连续对话';
 			return {
 				completed: '范围已覆盖',
 				partial: '部分覆盖',
@@ -646,6 +705,10 @@ button::after { border: 0; }
 .start-button[disabled] { opacity: .42; }
 .privacy-note { display: block; margin: 20rpx 8rpx 0; font-size: 19rpx; line-height: 1.6; color: #8a9488; }
 .conversation-head { margin-bottom: 32rpx; }
+.origin-anchor { display: flex; flex-direction: column; gap: 9rpx; margin: -12rpx 0 25rpx; padding: 22rpx 24rpx; border-radius: 22rpx; background: #e3ecd9; }
+.origin-anchor text:first-child { font-size: 18rpx; font-weight: 720; color: #516153; }
+.origin-anchor text:nth-child(2) { font-size: 22rpx; line-height: 1.55; color: #172019; }
+.origin-anchor text:last-child { font-size: 16rpx; line-height: 1.5; color: #718075; }
 .conversation-kicker, .conversation-title { display: block; }
 .conversation-title { margin-top: 13rpx; font-family: Georgia, 'Songti SC', serif; font-size: 48rpx; font-weight: 500; line-height: 1.25; }
 .scope-summary { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 18rpx; }
@@ -756,6 +819,8 @@ button::after { border: 0; }
 .followup-composer textarea { width: 100%; height: 160rpx; font-size: 24rpx; line-height: 1.6; box-sizing: border-box; }
 .followup-composer button { width: 100%; height: 72rpx; margin-top: 16rpx; border-radius: 999rpx; background: #172019; color: #fff; font-size: 21rpx; font-weight: 680; }
 .followup-composer button[disabled] { opacity: .38; }
+.regenerate-button { width: 100%; margin-top: 22rpx; padding: 22rpx; border: 1rpx solid rgba(23,32,25,.12); border-radius: 999rpx; color: #657263; font-size: 19rpx; }
+.regenerate-button[disabled] { opacity: .42; }
 .bottom-space { height: calc(60rpx + env(safe-area-inset-bottom)); }
 /* #ifdef MP-WEIXIN */
 .memory-page { height: 100vh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

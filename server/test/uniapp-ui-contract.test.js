@@ -28,15 +28,20 @@ test('local H5 development uses the same-origin API proxy without changing nativ
   assert.match(vueConfig, /'\/api':\s*\{[\s\S]*target: 'https:\/\/shroom\.surfplus\.xyz'[\s\S]*changeOrigin: true/);
 });
 
-test('todo creation stays page-local, title-first and exposes visible success state', () => {
+test('todo creation uses one full-page editor and hides the primary tab bar', () => {
   const list = source('src/pages/todo/list.vue');
   const edit = source('src/pages/todo/edit.vue');
+  const app = source('src/App.vue');
   const analysis = source('src/pages/shroom/ai-analysis.vue');
 
   assert.match(list, /data-testid="add-todo"[^>]+@tap="openQuickAdd"/);
-  assert.match(list, /class="save-button"[^>]+@tap="saveTask"/);
-  assert.match(list, /已保存，可在相应视图查看/);
+  assert.match(list, /openQuickAdd\(\) \{ uni\.navigateTo\(\{ url: '\/pages\/todo\/edit' \}\); \}/);
+  assert.doesNotMatch(list, /showQuickSheet|saveTask\(/);
   assert.match(edit, /data-testid="save-todo"[^>]+@tap="save"/);
+  assert.match(edit, /data-testid="open-all-todos"[^>]+@tap="openTodoList"/);
+  assert.match(edit, /todoId \? '保存修改' : '创建待办'/);
+  assert.match(edit, /onShow\(\) \{ uni\.hideTabBar/);
+  assert.match(app, /html:has\(\.todo-edit-page\) uni-tabbar\.uni-tabbar-bottom/);
   assert.match(analysis, /<button[^>]+data-testid="create-analysis-todos"[^>]+@tap="createTodos"/);
   assert.match(analysis, /createdTodoNotice/);
 });
@@ -52,6 +57,7 @@ test('diary home offers two honest day projections and one unified record entry'
 	assert.match(home, /class="timeline-stage"/);
 	assert.match(home, /timelineHours/);
   assert.match(home, /data-testid="home-create-diary"/);
+  assert.match(home, /data-testid="home-create-todo"[^>]*>[\s\S]*?新建待办/);
   assert.doesNotMatch(home, /data-testid="home-create-voice"/);
   assert.doesNotMatch(home, /data-testid="home-create-text"/);
   assert.match(home, /计划，不代表已经发生/);
@@ -60,7 +66,10 @@ test('diary home offers two honest day projections and one unified record entry'
 	assert.doesNotMatch(home, /class="planned-panel"/);
 	assert.match(home, /handleCaptureTap\('record'\)/);
 	assert.doesNotMatch(home, /mode=voice/);
-  assert.match(edit, /if \(!options \|\| !options\.id\) this\.voicePanelOpen = true/);
+  assert.match(edit, /this\.recordMode === 'diary'\) this\.voicePanelOpen = true/);
+  assert.equal((edit.match(/class="record-kind-tab"/g) || []).length, 2);
+  assert.match(edit, /data-testid="record-create-todo"[^>]+@click="openTodoCreator"/);
+  assert.doesNotMatch(edit, /setRecordMode\('todo'\)/);
   assert.ok(edit.indexOf('class="voice-studio"') > edit.indexOf('class="writing-sheet"'));
   assert.match(edit, /\.capture-editor-stack\s*\{[^}]*flex-direction:\s*column/);
   assert.match(edit, /\.voice-studio\s*\{[^}]*order:\s*0/);
@@ -134,7 +143,7 @@ test('home uses an anchored view popover and keeps homepage-only options in seco
 	assert.doesNotMatch(template, /class="source-filter-scroll"/);
 	assert.doesNotMatch(template, /class="period-choice-grid"/);
 	assert.match(streamEntryTemplate, /class="stream-time"/);
-	assert.doesNotMatch(streamEntryTemplate, /entry-source-icon/);
+	assert.match(streamEntryTemplate, /class="stream-entry-icon"/);
 	assert.match(home, /selectHomeView\(period, mode\)[\s\S]{0,420}this\.closeHomePanel\(\)/);
 	assert.match(home, /HOME_PREFERENCES_STORAGE_KEY/);
 	assert.match(home, /uni\.setStorageSync\(HOME_PREFERENCES_STORAGE_KEY/);
@@ -156,7 +165,9 @@ test('diary home restores search and pending review while default view remains u
 	assert.match(template, /data-testid="home-search-diary"[^>]+@tap="goToSearch"/);
 	assert.match(template, /data-testid="home-pending-wellbeing"[^>]+v-if="isSelectedToday && hasPendingWellbeingChanges"/);
 	assert.match(home, /hasPendingWellbeingChanges\(\)[\s\S]{0,100}this\.pendingWellbeingCount > 0/);
-	assert.match(home, /dayViewMode:\s*'timeline'/);
+	assert.match(home, /dayViewMode:\s*'flow'/);
+	assert.match(home, /const DEFAULT_HOME_VIEW = 'flow'/);
+	assert.match(home, /entries\.sort\(\(left, right\) => left\.sortMinutes - right\.sortMinutes\)/);
 	assert.match(home, /homePreferences:\s*\{ defaultView:\s*DEFAULT_HOME_VIEW/);
 	assert.match(template, /data-testid="home-default-view-options"/);
 	for (const view of ['timeline', 'flow', 'week', 'month', 'year']) {
@@ -169,10 +180,23 @@ test('diary home restores search and pending review while default view remains u
 test('diary home typography stays readable at mobile rpx scale', () => {
 	const home = source('src/pages/diary/index.vue');
 	const layout = source('src/utils/day-timeline.js');
+	const template = home.slice(home.indexOf('<template>'), home.indexOf('<script>'));
 
-	assert.match(styleRule(home, '.selected-date-text'), /font-size:\s*30rpx/);
+	assert.match(styleRule(home, '.selected-date-text'), /font-size:\s*54rpx/);
+	assert.doesNotMatch(styleRule(home, '.selected-date-text'), /Kaiti|Songti/);
 	assert.match(home, /\.panel-source-option > view text:first-child[\s\S]{0,240}font-size:\s*26rpx/);
-	assert.match(styleRule(home, '.stream-entry-title'), /font-size:\s*29rpx/);
+	assert.match(styleRule(home, '.stream-entry-title'), /font-size:\s*27rpx/);
+	assert.match(styleRule(home, '.stream-time'), /flex:\s*0 0 82rpx/);
+	assert.match(styleRule(home, '.stream-entry-body'), /border-radius:\s*22rpx/);
+	assert.match(styleRule(home, '.diary-top-shell.has-story-scene'), /shroom-diary-hero-art-v5\.webp/);
+	assert.match(styleRule(home, '.diary-top-shell.has-story-scene'), /height:\s*calc\(228rpx \+ env\(safe-area-inset-top\)\)/);
+	assert.match(template, /class="selected-date-label" @tap="showFullCalendar"/);
+	assert.doesNotMatch(styleRule(home, '.diary-top-shell.has-story-scene .selected-date-label'), /opacity:\s*0/);
+	assert.match(template, /'entry-visual-' \+ \(entryIndex % 4\)/);
+	assert.match(template, /class="stream-entry-art"/);
+	assert.match(styleRule(home, '.home-search-entry::before'), /shroom-diary-search-sprout-v1\.webp/);
+	assert.match(home, /\.capture-dock\s*\{[^}]*bottom:\s*calc\(82px \+ env\(safe-area-inset-bottom\)\)[^}]*background:\s*transparent/);
+	assert.doesNotMatch(home, /shroom-diary-dock-art-v1\.webp/);
 	assert.match(styleRule(home, '.timeline-hour > text'), /font-size:\s*24rpx/);
 	assert.match(styleRule(home, '.timeline-event-main > text:last-child'), /font-size:\s*24rpx/);
 	assert.match(styleRule(home, '.timeline-event-meta'), /font-size:\s*19rpx/);
@@ -245,12 +269,19 @@ test('todo execution layer has current views, projects, recurrence and reversibl
   const compound = source('src/pages/shroom/compound.vue');
 
   for (const label of ['现在要做', '未来安排', '待安排']) assert.match(list, new RegExp(label));
-  assert.match(list, /timeViews:/);
-  assert.doesNotMatch(list, /timeViews:[^\n]+key: 'projects'/);
+  assert.match(list, /timeFilterOptions:/);
+  assert.match(list, /data-testid="todo-filters"/);
+  assert.match(list, /data-testid="todo-sort"/);
+  assert.match(list, /计划时间/);
+  assert.match(list, /创建时间/);
+  assert.match(list, /sort: this\.sortKey/);
+  assert.match(list, /全部项目/);
+  assert.match(list, /无项目/);
+  assert.doesNotMatch(list, /class="mobile-tabs"/);
   assert.match(list, /组织方式/);
   assert.match(list, /按项目查看/);
-  assert.match(list, /showQuickSheet/);
-  assert.match(list, /repeatLabels: \['不重复', '每天', '每周', '每月'\]/);
+  assert.doesNotMatch(list, /showQuickSheet|repeatLabels: \['不重复'/);
+  assert.match(edit, /repeatLabels: \['每天', '每周', '每月'\]/);
   assert.match(list, /undoComplete/);
   assert.match(list, /selectionMode/);
   assert.match(row, /已过截止日期/);
@@ -264,7 +295,12 @@ test('todo execution layer has current views, projects, recurrence and reversibl
   assert.match(project, /转移到其他项目/);
   assert.match(edit, /仅本次/);
   assert.match(edit, /本次及以后/);
+  assert.match(project, /todoPrefill[\s\S]*pages\/todo\/edit/);
+  assert.match(compound, /todoPrefill[\s\S]*pages\/todo\/edit/);
   assert.match(route, /generateActiveRules/);
+  assert.match(route, /projectId === '__none__'/);
+  assert.match(route, /sort === 'created' \? compareTasksByCreatedAt : compareTasksByTime/);
+  assert.match(route, /filtered\.sort\(compareTasks\)/);
   assert.match(route, /ON CONFLICT \(user_id, recurrence_rule_id, occurrence_date\)/);
   assert.match(route, /这条待办已在其他页面更新/);
   assert.match(route, /router\.patch\('\/result'/);
@@ -359,7 +395,7 @@ test('image saving exposes aggregate progress and homepage previews stay compact
 	assert.match(diaryHome, /getDiaryPreview\(diary\)/);
 	const streamTitle = styleRule(diaryHome, '.stream-entry-title');
 	assert.match(streamTitle, /overflow:\s*hidden/);
-	assert.match(streamTitle, /-webkit-line-clamp:\s*3/);
+	assert.match(streamTitle, /-webkit-line-clamp:\s*2/);
 });
 
 test('diary calendar marks diaries without crowding cells with connected-source counts', () => {
@@ -489,6 +525,38 @@ test('diary writing has no manual tags and archive themes open semantic cached r
   assert.doesNotMatch(archive, /normalizeTags\(diary\.tags\)|内容与标签都可以搜索/);
   assert.match(archive, /openTheme\(theme\)/);
   assert.match(archive, /memoryThemeOpen/);
+});
+
+test('diary mood is an optional primary feeling while AI preserves contextual mixed emotions', () => {
+  const edit = source('src/pages/diary/edit.vue');
+  const prompt = source('server/src/ai-prompts.js');
+  const architecture = source('server/REFLECTION_ARCHITECTURE.md');
+
+  assert.match(edit, /主要感受/);
+  assert.match(edit, /可跳过/);
+  assert.match(edit, /mood: null/);
+  assert.match(edit, /value: 'complex', label: '复杂'/);
+  assert.match(edit, /this\.diaryForm\.mood = this\.diaryForm\.mood === mood \? null : mood/);
+  assert.match(prompt, /用户主动选择的主要感受/);
+  assert.match(prompt, /不能代表整篇日记或整天/);
+  assert.match(prompt, /多种感受同时存在或前后变化/);
+  assert.match(architecture, /主要感受只能作为用户主动提供的辅助证据/);
+});
+
+test('diary editor encourages event-sized records without blocking long-form writing', () => {
+  const edit = source('src/pages/diary/edit.vue');
+  const api = source('src/api/diary.js');
+  const route = source('server/src/routes/diaries.js');
+
+  assert.match(edit, /记录此刻发生的一件事、一个想法/);
+  assert.match(edit, /还有另一件事、一个念头或一种感受吗/);
+  assert.match(edit, /confirmText: '再记一条'/);
+  assert.match(edit, /data-testid="confirm-diary-split"/);
+  assert.match(edit, /只按你的原文分段，不会改写/);
+  assert.match(edit, /suggestDiarySegments/);
+  assert.match(api, /diaryBatchCreate = '\/diaries\/v1\/batch-create'/);
+  assert.match(route, /router\.post\('\/batch-create'/);
+  assert.match(route, /normalizeRequestedSegments/);
 });
 
 test('observers are user-configurable and analysis renders dynamic seats with cost', () => {
@@ -741,23 +809,20 @@ test('wellbeing records and inquiries independently interpret the same diary', (
   assert.ok(JSON.parse(pages).pages.some(page => page.path === 'pages/shroom/wellbeing'));
 });
 
-test('public cards form a horizontal deck and open an ownership-aware detail', () => {
+test('discover follows the approved editorial layout and opens real notes and public cards', () => {
   const discover = source('src/pages/shroom/discover.vue');
-  const personalCards = source('src/pages/shroom/cards.vue');
-  const detail = source('src/pages/common/cards/detail.vue');
+	const detail = source('src/pages/common/cards/detail.vue');
 	const cardRoutes = source('server/src/routes/cards.js');
 
-  assert.match(discover, /<swiper[\s\S]*?class="cards-swiper"/);
-  assert.match(discover, /@change="onCardChange"/);
-  assert.match(discover, /@tap="openCard\(card\)"/);
-  assert.match(discover, /左右滑动看下一张/);
-	assert.doesNotMatch(discover, /deck-progress-track/);
-  assert.match(personalCards, /<swiper class="cards-swiper"/);
-  assert.match(personalCards, /点开查看、练习或引用到日记/);
-  assert.match(personalCards, /我的收藏/);
-  assert.match(personalCards, /shroomCardFavorites/);
-	assert.doesNotMatch(personalCards, /indicator-track/);
-
+	assert.match(discover, /class="discover-hero"/);
+	assert.match(discover, /shroom-discover-hero-art-v2\.webp/);
+	assert.match(discover, /今天适合继续聊的话题/);
+	assert.match(discover, /从你的笔记延伸/);
+	assert.match(discover, /值得继续看的内容/);
+	assert.match(discover, /diaryList/);
+	assert.match(discover, /mode=note/);
+	assert.doesNotMatch(discover, />9:41</);
+	assert.match(discover, /@tap="openCard\(card\)"/);
   assert.match(detail, /isOwner/);
   assert.match(detail, /公开的是觉察句、理解与使用提示/);
   assert.match(detail, /共鸣/);
@@ -765,7 +830,6 @@ test('public cards form a horizontal deck and open an ownership-aware detail', (
 	assert.match(detail, /引用到我的菇卡|保存为私密参考/);
 	assert.match(detail, /引用并开始练习/);
   assert.match(discover, /resolveAuthorName/);
-	assert.match(discover, /过去我有哪些做得不好的地方？/);
 	assert.doesNotMatch(discover, /创建菇卡|成为第一个分享者|createCard|publish-button|publish-plus/);
 	assert.doesNotMatch(discover, /人类留给自己的提醒|heritageCollection|FEATURED JOURNALERS/);
 	assert.doesNotMatch(discover, /SHROOM 策展|CURATED SHROOM CARDS|source-line|editorial-feature/);
@@ -775,4 +839,29 @@ test('public cards form a horizontal deck and open an ownership-aware detail', (
 	assert.match(detail, /基于人物真实记录建立的只读人物档案/);
 	assert.match(detail, /来自一张公开菇卡/);
 	assert.doesNotMatch(cardRoutes, /conditions\.push\('c\.collection_slug IS NULL'\)/);
+});
+
+test('record editor persists note as a real entry type and keeps the existing todo path', () => {
+	const edit = source('src/pages/diary/edit.vue');
+	const routes = source('server/src/routes/diaries.js');
+	for (const label of ['日记', '笔记', '待办']) assert.match(edit, new RegExp(label));
+	assert.match(edit, /options\.mode === 'note'/);
+	assert.match(edit, /this\.diaryForm\.type = 'note'/);
+	assert.match(edit, /type: this\.diaryForm\.type \|\| 'default'/);
+	assert.match(edit, /pages\/todo\/edit/);
+	assert.match(routes, /type: row\.entry_type/);
+	assert.match(routes, /text\(req\.body\.type, 48\) \|\| 'default'/);
+});
+
+test('PWA voice recording checkpoints locally and restores after lifecycle interruption', () => {
+	const edit = source('src/pages/diary/edit.vue');
+	const draft = source('src/utils/h5-voice-draft.js');
+	assert.match(edit, /this\.h5Recorder\.start\(500\)/);
+	assert.match(edit, /this\.queueH5RecordingCheckpoint\(\)/);
+	assert.match(edit, /visibilityState === 'hidden'[\s\S]*this\.stopRecording\(\)/);
+	assert.match(edit, /onShow\(\)[\s\S]*this\.restorePendingVoiceDraft\(\)/);
+	assert.match(edit, /directUploadVoice/);
+	assert.match(edit, /resumableUploadVoice/);
+	assert.match(draft, /const DATABASE_NAME = 'shroom-voice-drafts'/);
+	assert.match(draft, /anonymous recording after authentication|Authentication can finish/);
 });

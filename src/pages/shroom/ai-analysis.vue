@@ -24,10 +24,11 @@
 				<view class="orbit"><view></view></view><text class="state-title">正在听取 {{ taskObserverCount }} 个观察席</text><text class="state-copy">各席位独立观察，完成后会一起保存。你可以离开页面，稍后回来查看。</text><text class="running-label">{{ analysis.status === 'pending' ? '等待开始' : '分析进行中' }}</text>
 			</view>
 			<view class="unavailable" v-else-if="analysis.status === 'failed'">
-				<text class="state-index">NEEDS RETRY</text><text class="state-title">这次分析没有完整完成</text><text class="state-copy">{{ analysis.error || '模型服务暂时不可用，日记原文仍然安全保存。' }}</text><view class="primary-button" @tap="startAnalysis">重新分析</view><text class="charge-note retry-note">失败不扣费；重新分析成功后按新的实际 Token 用量计费。</text>
+				<text class="state-index">NEEDS RETRY</text><text class="state-title">这次分析没有完整完成</text><text class="state-copy">{{ analysis.error || '模型服务暂时不可用，日记原文仍然安全保存。' }}</text><view class="primary-button" @tap="retryAnalysis">重新分析</view><text class="charge-note retry-note">失败不扣费；重新分析成功后按新的实际 Token 用量计费。</text>
 			</view>
 
 			<view v-else-if="analysis.status === 'done'">
+				<view class="saved-result-warning" v-if="analysis.error"><text>上次重新思考没有完成</text><text>当前仍显示已保存的结果；你可以稍后再主动重试。</text></view>
 				<view class="source-context" v-if="analysis.sourceActivities && analysis.sourceActivities.length">
 					<view class="source-context-head"><view><text>CONNECTED CONTEXT</text><text>这份分析读取了 {{ analysis.sourceActivities.length }} 条 Codex 任务线索</text></view><text>CODEX</text></view>
 					<view class="source-context-item" v-for="item in analysis.sourceActivities" :key="item.id"><text>{{ item.title }}</text><text>{{ sourceActivityMeta(item) }}</text></view>
@@ -156,7 +157,12 @@
 						<button class="primary-button todo-create-button" data-testid="create-analysis-todos" :class="{ disabled: !selectedCount || creatingTodos }" :disabled="!selectedCount || creatingTodos" @tap="createTodos">{{ creatingTodos ? '创建中…' : `创建 ${selectedCount} 项待办` }}</button>
 						<view class="todo-created-notice" v-if="createdTodoNotice" @tap="openTodos"><text>{{ createdTodoNotice }}</text><text>查看待办　›</text></view>
 				</view>
-				<view class="rerun" @tap="confirmRerun">用当前观察席重新分析</view>
+				<view class="rerun" @tap="confirmRerun">用当前观察席重新思考</view>
+				<ai-result-continue
+					:result-id="analysis.taskId"
+					result-type="DIARY_ANALYSIS"
+					title="不只看结论，继续把它想清楚"
+				/>
 			</view>
 		</view>
 		<health-consent-sheet
@@ -172,10 +178,11 @@
 import { aiAnalysis, aiAnalyze, aiObservers, aiStatus, aiTask, lifeOsPlanLink } from '@/api/shroom-system';
 import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
+import AiResultContinue from '@/components/AiResultContinue.vue';
 import { wellbeingStatus } from '@/api/wellbeing';
 
 export default {
-	components: { HealthConsentSheet },
+	components: { AiResultContinue, HealthConsentSheet },
 		data() { return { statusBarHeight: 0, diaryId: '', invalidDiaryContext: false, autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
 		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
@@ -221,16 +228,17 @@ export default {
 				this.analysisEnabled = Boolean(status.data && status.data.enabled); this.capabilityKnown = true;
 				this.configuredObservers = Array.isArray(observers.data) ? observers.data : [];
 				if (existing.data) { this.acceptAnalysis(existing.data); if (['pending', 'running'].includes(existing.data.status)) this.startPolling(); }
-				if (this.autoStart && this.analysisEnabled && (!existing.data || !['pending', 'running'].includes(existing.data.status))) { this.autoStart = false; this.startAnalysis(); }
+					if (this.autoStart && this.analysisEnabled && !existing.data) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
 		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
-		async startAnalysis() {
-			if (!this.diaryId || !this.analysisEnabled) return;
-			this.stopPolling();
-			try { const res = await this.$http.post(aiAnalyze, { diaryId: this.diaryId, sync: false }); this.acceptAnalysis(res.data); this.pollCount = 0; this.startPolling(); }
-			catch (error) { console.error('启动观察席分析失败', error); }
-		},
+			async startAnalysis(options = {}) {
+				if (!this.diaryId || !this.analysisEnabled) return;
+				this.stopPolling();
+				try { const res = await this.$http.post(aiAnalyze, { diaryId: this.diaryId, sync: false, regenerate: options.regenerate === true }); this.acceptAnalysis(res.data); this.pollCount = 0; if (['pending', 'running'].includes(res.data.status)) this.startPolling(); }
+				catch (error) { console.error('启动观察席分析失败', error); }
+			},
+			retryAnalysis() { this.startAnalysis({ regenerate: true }); },
 		startPolling() { this.stopPolling(); this.pollTimer = setTimeout(() => this.poll(), 1600); },
 		stopPolling() { if (this.pollTimer) clearTimeout(this.pollTimer); this.pollTimer = null; },
 		async poll() {
@@ -368,7 +376,7 @@ export default {
 		openLifeOsItem(link) { if (link && link.itemKey) uni.navigateTo({ url: `/pages/shroom/life-os-item?key=${link.itemKey}` }); },
 		openCompound() { uni.navigateTo({ url: '/pages/shroom/compound' }); },
 		viewCreatedCard() { if (this.cardSuggestion && this.cardSuggestion.createdCardId) uni.navigateTo({ url: `/pages/common/cards/detail?id=${this.cardSuggestion.createdCardId}` }); },
-		confirmRerun() { uni.showModal({ title: '重新分析？', content: '将使用当前启用的观察席和最新日记覆盖本次分析结果。成功后按本次实际 Token 成本 × 2.5 扣菇点；失败不扣费。', confirmText: '重新分析', success: result => { if (result.confirm) this.startAnalysis(); } }); },
+			confirmRerun() { uni.showModal({ title: '重新思考？', content: '当前结果已保存。确认后才会使用当前观察席和最新日记再次调用 AI，并更新这份分析。成功后按本次实际 Token 成本 × 2.5 扣菇点；失败不扣费。', confirmText: '重新思考', success: result => { if (result.confirm) this.startAnalysis({ regenerate: true }); } }); },
 		openObservers() { uni.navigateTo({ url: '/pages/shroom/observers' }); },
 		openLifeOs() { uni.navigateTo({ url: '/pages/shroom/life-os' }); },
 		goBack() { const pages = getCurrentPages(); if (pages.length > 1) uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/diary/index' }) }); else uni.switchTab({ url: '/pages/diary/index' }); }
@@ -530,6 +538,9 @@ button::after { border: 0; }
 .new-card-draft { margin-top: 22rpx; padding: 26rpx; border-radius: 25rpx; background: #172019; color: #fff; }
 .draft-label { display: block; font-size: 15rpx; font-weight: 710; letter-spacing: 2rpx; color: #9eada0; }
 .source-context { display: flex; margin-bottom: 22rpx; padding: 25rpx; flex-direction: column; border: 1rpx solid rgba(23,32,25,.08); border-radius: 25rpx; background: #edf2e8; }
+.saved-result-warning { display: flex; margin-bottom: 22rpx; padding: 22rpx 24rpx; flex-direction: column; gap: 7rpx; border-radius: 22rpx; background: #f3e8de; color: #765e50; }
+.saved-result-warning text:first-child { font-size: 20rpx; font-weight: 700; }
+.saved-result-warning text:last-child { font-size: 17rpx; line-height: 1.55; }
 .source-context-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18rpx; }
 .source-context-head > view { display: flex; flex-direction: column; gap: 6rpx; }
 .source-context-head > view text:first-child, .source-context-head > text { color: #75816f; font-size: 14rpx; font-weight: 750; letter-spacing: 2rpx; }

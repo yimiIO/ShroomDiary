@@ -3,22 +3,13 @@
 const crypto = require('node:crypto');
 const config = require('./config');
 const db = require('./db');
+const { ROLE_PERMISSIONS, permissionsForRole } = require('./admin-permissions');
 const { hashToken } = require('./security');
 
 const ADMIN_COOKIE = 'shroom_admin_session';
 const ADMIN_CSRF_HEADER = 'x-shroom-admin-csrf';
 const ADMIN_SESSION_SECONDS = 8 * 60 * 60;
 const ADMIN_IDLE_SECONDS = 30 * 60;
-
-const ROLE_PERMISSIONS = Object.freeze({
-  OWNER: ['dashboard.read', 'users.read', 'users.write', 'users.sessions', 'features.read', 'features.write',
-    'agents.read', 'agents.write', 'audit.read', 'system.read', 'members.read', 'members.write'],
-  OPERATOR: ['dashboard.read', 'users.read', 'users.sessions', 'features.read', 'features.write',
-    'agents.read', 'agents.write', 'audit.read', 'system.read'],
-  SUPPORT: ['dashboard.read', 'users.read', 'users.sessions', 'features.read',
-    'agents.read', 'system.read'],
-  VIEWER: ['dashboard.read', 'users.read', 'features.read', 'agents.read', 'audit.read', 'system.read']
-});
 
 function adminFail(res, status, message, data = null) {
   return res.status(status).json({ code: status, message, data });
@@ -66,10 +57,6 @@ function clearAdminCookies(res) {
   res.append('Set-Cookie', cookieLine('shroom_admin_csrf', '', {
     path: '/admin', maxAge: 0, httpOnly: false
   }));
-}
-
-function permissionsForRole(role) {
-  return ROLE_PERMISSIONS[role] || [];
 }
 
 function createAdminSessionTokens() {

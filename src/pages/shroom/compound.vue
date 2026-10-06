@@ -351,7 +351,7 @@ export default {
 			changeFinancialBoundaryConsent(event) { this.planDraft.financialBoundaryAccepted = Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
 			changeFinancialSensitiveConsent(event) { this.planDraft.financialSensitiveConsent = Boolean(event.detail && event.detail.value && event.detail.value.includes('accepted')); },
 			financialStepLabel(step) { return ['目的', '投入', '方向', '确认'][step - 1] || ''; },
-		createTask(plan, action) { const title = action ? action.title : plan.currentStep; uni.setStorageSync('todoPrefill', { title, description: '服务于复利验证项：' + plan.title + '\n\n12 周结果：' + plan.desiredOutcome, compoundItemId: plan.itemId || undefined, sourceType: 'COMPOUND', sourceRefId: plan.id, sourceCompoundThreadId: plan.id }); uni.navigateTo({ url: '/pages/todo/list' }); },
+		createTask(plan, action) { const title = action ? action.title : plan.currentStep; uni.setStorageSync('todoPrefill', { title, description: '服务于复利验证项：' + plan.title + '\n\n12 周结果：' + plan.desiredOutcome, compoundItemId: plan.itemId || undefined, sourceType: 'COMPOUND', sourceRefId: plan.id, sourceCompoundThreadId: plan.id }); uni.navigateTo({ url: '/pages/todo/edit' }); },
 		closeCatalog() { this.showCatalog = false; this.selectedArchetype = null; this.selectedStarterKey = ''; this.showArchetypeDetails = false; this.scrollTo(0); },
 		closePlanEditor() { if (!this.editingPlanId) { this.showPlanEditor = false; this.showAdvancedPlan = false; this.showCatalog = true; this.scrollTo(0); return; } this.closeEditors(); this.scrollTo(0); },
 		closeFocusedPanel() { if (this.showPlanEditor) return this.closePlanEditor(); if (this.showCatalog) return this.closeCatalog(); this.closeEditors(); this.scrollTo(0); },

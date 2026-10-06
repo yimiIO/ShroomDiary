@@ -39,8 +39,27 @@ test('formal admin API uses cookie sessions, CSRF, RBAC and append-only audit', 
   assert.match(route, /account_status/);
   assert.match(route, /feature_rollouts/);
   assert.match(route, /agent_commands/);
+  assert.match(route, /router\.use\(contentHubRoutes\)/);
   assert.match(audit, /INSERT INTO admin_audit_events/);
   assert.doesNotMatch(route, /diar(?:y|ies).*content/i);
+});
+
+test('admin roles can read content while only owner and operator can write it', () => {
+  const { permissionsForRole } = require('../src/admin-permissions');
+  for (const role of ['OWNER', 'OPERATOR', 'SUPPORT', 'VIEWER']) {
+    assert.equal(permissionsForRole(role).includes('content.read'), true);
+  }
+  for (const role of ['OWNER', 'OPERATOR']) {
+    assert.equal(permissionsForRole(role).includes('content.write'), true);
+  }
+  for (const role of ['SUPPORT', 'VIEWER']) {
+    assert.equal(permissionsForRole(role).includes('content.write'), false);
+  }
+});
+
+test('content topics default to newest publication date first', () => {
+  const route = source('server/src/routes/admin-content-hub.js');
+  assert.match(route, /ORDER BY scheduled_for DESC NULLS LAST, updated_at DESC/);
 });
 
 test('agent runner credentials are agent-scoped and executions persist verifiable states', () => {
@@ -85,4 +104,6 @@ test('independent admin client covers users, features, agents and audit', () => 
   assert.match(api, /credentials: 'same-origin'/);
   assert.match(api, /x-shroom-admin-csrf/);
   assert.match(nginx, /location (?:\^~ )?\/admin\//);
+  assert.match(nginx, /alias \/www\/wwwroot\/shroom\/admin-static\//);
+  assert.match(nginx, /alias \/www\/wwwroot\/shroom\/admin-static\/index\.html/);
 });

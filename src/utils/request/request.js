@@ -1,3 +1,5 @@
+const { normalizeUploadResponse } = require('./upload-response');
+
 /**
  * Request 1.0.6
  * @Class Request
@@ -301,6 +303,7 @@ export default class Request {
 			formData = {},
 			custom = {},
 			params = {},
+			timeout,
 			getTask
 		}
 	) {
@@ -321,6 +324,7 @@ export default class Request {
 				header: header || globalHeader,
 				formData,
 				params,
+				timeout,
 				custom: { ...this.config.custom, ...custom },
 				getTask: getTask || this.config.getTask
 			};
@@ -348,11 +352,10 @@ export default class Request {
 				name: handleRe.name,
 				header: handleRe.header,
 				formData: handleRe.formData,
+				timeout: handleRe.timeout,
 				complete: response => {
+					response = normalizeUploadResponse(response);
 					response.config = handleRe;
-					if (typeof response.data === 'string') {
-						response.data = JSON.parse(response.data);
-					}
 					if (this.validateStatus(response.statusCode)) {
 						// 成功
 						response = this.requestComFun(response);

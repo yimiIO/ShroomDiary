@@ -149,7 +149,15 @@ async function run() {
     assert.equal(diary.date, '2026-09-04');
     assert.equal(diary.images.length, 1);
     assert.equal(diary.voice.mediaId, voiceMedia.id);
-    assert.match(diary.voice.url, /\/api\/media\/v1\//);
+    assert.equal(diary.voice.url, undefined);
+
+    expectCode(await api(`/api/media/v1/voice/${voiceMedia.id}/playback`, {
+      method: 'GET', token: sessionB.access_token
+    }), 404);
+    const voicePlayback = expectCode(await api(`/api/media/v1/voice/${voiceMedia.id}/playback`, {
+      method: 'GET', token: tokenA
+    }));
+    assert.match(voicePlayback.url, /\/api\/media\/v1\//);
 
     const audioOnlyDiary = expectCode(await api('/api/diaries/v1/create', {
       method: 'POST',

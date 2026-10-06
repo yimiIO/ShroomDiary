@@ -38,6 +38,7 @@ router.get('/all', asyncRoute(async (req, res) => {
     lifeOsItems, lifeOsWeekFocus, lifeOsItemLinks, lifeOsItemRefs, lifeOsItemHistory, lifeOsWeeklyReviews,
     compoundThreads, compoundEvents, compoundReviews, todoProjects, todoRecurrenceRules, todoEvents,
     dataSourceConnections, externalActivities, dailyReviews, dailyReviewPreferences,
+    reflectionConversations, reflectionMessages,
     walletAccount, walletLedger, featureEntitlements,
     campaignRewards, paymentOrders, refundRequests, refundItems, legalAcceptances,
     financialProfiles, financialRecords, financialSnapshots, financialHoldings,
@@ -111,6 +112,13 @@ router.get('/all', asyncRoute(async (req, res) => {
       FROM daily_reviews WHERE user_id = $1 ORDER BY review_date`, [req.user.id]),
     db.query(`SELECT email_address, email_verified_at, email_enabled, created_at, updated_at
       FROM daily_review_preferences WHERE user_id = $1`, [req.user.id]),
+    db.query(`SELECT id, seed_diary_id, title, mode, scope, initial_question, status, coverage,
+      origin_type, origin_id, origin_version, origin_snapshot, context_snapshot,
+      conversation_summary, invalidated_at, created_at, updated_at
+      FROM reflection_conversations WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
+    db.query(`SELECT id, conversation_id, role, content, structured_result, citations,
+      model_version, prompt_version, invalidated_at, created_at
+      FROM reflection_messages WHERE user_id = $1 ORDER BY created_at`, [req.user.id]),
     db.query(`SELECT paid_balance_cents, reward_balance_cents,
       lifetime_paid_cents, lifetime_reward_cents, lifetime_spent_cents, lifetime_refunded_cents,
       created_at, updated_at
@@ -196,6 +204,8 @@ router.get('/all', asyncRoute(async (req, res) => {
     externalActivities: externalActivities.rows,
     dailyReviews: dailyReviews.rows,
     dailyReviewPreferences: dailyReviewPreferences.rows[0] || null,
+    reflectionConversations: reflectionConversations.rows,
+    reflectionMessages: reflectionMessages.rows,
     walletAccount: walletAccount.rows[0] || null,
     walletLedger: walletLedger.rows,
     billingFeatureEntitlements: featureEntitlements.rows,

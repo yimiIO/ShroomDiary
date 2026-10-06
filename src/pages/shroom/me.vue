@@ -4,7 +4,7 @@
 		<view class="me-shell">
 			<view class="me-header">
 				<view class="header-copy">
-					<text class="header-kicker">PERSONAL SPACE</text>
+					<text class="header-kicker">个人空间</text>
 					<text class="header-title">我的</text>
 					<text class="header-subtitle">你的记录、理解与关系，都从这里回到自己。</text>
 				</view>
@@ -13,28 +13,23 @@
 
 			<view class="profile-grid">
 				<view class="identity-panel">
-					<view class="brand-mark">
-						<view class="mark-cap"></view>
-						<view class="mark-stem"></view>
-					</view>
+					<image class="identity-mascot" src="/static/images/shroom-card-mascot-v2.webp" mode="aspectFit" aria-hidden="true" />
 					<view class="identity-copy" v-if="hasLogin">
-						<text class="identity-kicker">MY SHROOM SPACE</text>
+						<text class="identity-kicker">我的菇</text>
 						<text class="identity-name">{{ displayName }}</text>
 						<text class="identity-note">每一次记录，都在让你更清楚地看见自己。</text>
 					</view>
 					<view class="identity-copy" v-else>
-						<text class="identity-kicker">YOUR PRIVATE SPACE</text>
+						<text class="identity-kicker">你的私人空间</text>
 						<text class="identity-name">把自己慢慢记回来</text>
 						<text class="identity-note">登录后，日记、菇卡与练习记录会安全地回到你的空间。</text>
 					</view>
 					<view class="login-button" v-if="!hasLogin" @tap="goLogin">登录 / 注册</view>
 				</view>
-
-				<view class="daily-note">
-					<text class="note-label">TODAY'S NOTE</text>
-					<text class="note-quote">“不必急着成为答案，先认真地成为问题。”</text>
-					<text class="note-caption">Shroom 提醒你：真实比完美更有生命力。</text>
-				</view>
+			</view>
+			<view v-if="hasLogin && journalStats && journalStats.yearDays" class="record-days-panel">
+				<view class="record-days-copy"><text>你的生活，正在留下痕迹</text><text><text class="record-days-number">{{ journalStats.yearDays }}</text> 天</text><text>今年有记录的日子</text></view>
+				<view class="record-days-flower" aria-hidden="true">✳</view>
 			</view>
 
 			<view v-if="hasLogin" class="compound-entry" :class="{ locked: !featureActive('compound') }" @tap="openCompoundSystem">
@@ -441,13 +436,43 @@ export default {
 	gap: 22rpx;
 }
 
+.identity-mascot {
+	position: absolute;
+	right: -12rpx;
+	bottom: -14rpx;
+	width: 190rpx;
+	height: 190rpx;
+	opacity: .96;
+	pointer-events: none;
+}
+
+.record-days-panel {
+	position: relative;
+	box-sizing: border-box;
+	min-height: 170rpx;
+	margin-top: 20rpx;
+	padding: 24rpx 32rpx;
+	border: 1rpx solid #dce9d2;
+	border-radius: 30rpx;
+	background: linear-gradient(110deg, #fbfbeb 0%, #e3efd6 100%);
+	overflow: hidden;
+}
+
+.record-days-copy { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 5rpx; color: #536850; font-size: 21rpx; }
+.record-days-copy text:first-child { color: #28372b; font-size: 23rpx; font-weight: 700; }
+.record-days-copy text:nth-child(2) { color: #25342a; font-size: 34rpx; font-weight: 700; }
+.record-days-number { font-size: 56rpx; font-weight: 800; line-height: 1; }
+.record-days-flower { position: absolute; right: 34rpx; bottom: -25rpx; color: #b7d3a6; font-size: 180rpx; line-height: 1; }
+
 .identity-panel {
 	display: block;
 	position: relative;
-	padding: 48rpx 38rpx 42rpx;
+	min-height: 242rpx;
+	padding: 36rpx 190rpx 36rpx 34rpx;
 	border-radius: 36rpx;
-	background: #172019;
-	color: #fff;
+	border: 1rpx solid #e1e9d7;
+	background: linear-gradient(135deg, #fffefa, #eaf2e1);
+	color: #172019;
 	overflow: hidden;
 }
 
@@ -458,9 +483,9 @@ export default {
 	top: -145rpx;
 	width: 360rpx;
 	height: 360rpx;
-	border: 1rpx solid rgba(255, 255, 255, .1);
+	border: 1rpx solid rgba(82, 111, 71, .08);
 	border-radius: 50%;
-	box-shadow: 0 0 0 55rpx rgba(255, 255, 255, .025), 0 0 0 110rpx rgba(255, 255, 255, .018);
+	box-shadow: 0 0 0 55rpx rgba(82, 111, 71, .025), 0 0 0 110rpx rgba(82, 111, 71, .018);
 }
 
 .brand-mark {
@@ -511,23 +536,23 @@ export default {
 }
 
 .identity-kicker {
-	color: #aebcac;
+	color: #5b725b;
 }
 
 .identity-name {
-	max-width: 520rpx;
+	max-width: 380rpx;
 	margin-top: 18rpx;
-	font-size: 46rpx;
+	font-size: 40rpx;
 	font-weight: 720;
 	line-height: 1.25;
 }
 
 .identity-note {
-	max-width: 500rpx;
-	margin-top: 21rpx;
-	font-size: 23rpx;
+	max-width: 370rpx;
+	margin-top: 12rpx;
+	font-size: 21rpx;
 	line-height: 1.7;
-	color: #becabd;
+	color: #5f705f;
 }
 
 .login-button {
@@ -707,25 +732,29 @@ export default {
 }
 
 .menu-card {
-	border: 1rpx solid rgba(23, 32, 25, .06);
-	border-radius: 28rpx;
-	background: #fff;
-	box-shadow: 0 18rpx 50rpx rgba(58, 80, 60, .065);
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
 }
 
 .menu-card {
-	padding: 4rpx 27rpx;
+	padding: 0;
 }
 
 .menu-item {
 	display: flex;
 	align-items: center;
-	padding: 27rpx 0;
-	border-bottom: 1rpx solid #eef1ed;
+	margin-bottom: 12rpx;
+	padding: 20rpx 22rpx;
+	border: 1rpx solid #e6eee2;
+	border-radius: 24rpx;
+	background: #fff;
+	box-shadow: 0 10rpx 30rpx rgba(58, 80, 60, .035);
 }
 
 .menu-item:last-child {
-	border-bottom: 0;
+	margin-bottom: 0;
 }
 
 .menu-icon {
@@ -846,8 +875,7 @@ export default {
 	}
 
 	.profile-grid {
-		grid-template-columns: minmax(0, 1.22fr) minmax(300px, .78fr);
-		gap: 24px;
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	.identity-panel {

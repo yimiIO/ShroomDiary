@@ -3,8 +3,8 @@
 		<shroom-page-top-spacer />
 		<view class="navbar">
 			<button class="nav-back" @tap="goBack" aria-label="返回">‹</button>
-			<text class="nav-title">{{ isOwner ? '我的菇卡' : '公开菇卡' }}</text>
-			<button class="nav-edit" v-if="isOwner" @tap="editCard">编辑</button>
+			<text class="nav-title">{{ isOwner ? '菇卡详情' : '公开菇卡' }}<text v-if="previewMode" class="preview-badge"> · 示例</text></text>
+			<button class="nav-edit" v-if="isOwner" @tap="openMore">···</button>
 			<view class="nav-space" v-else></view>
 		</view>
 
@@ -23,19 +23,17 @@
 
 			<view class="detail-shell" v-else-if="cardData.id">
 				<view class="card-hero">
-					<view class="hero-meta">
-						<view class="author-avatar">{{ authorInitial }}</view>
-						<view class="author-copy">
-							<text class="author-name">{{ authorName }}</text>
-							<text class="publish-time">{{ visibilityLabel }} · {{ formatRelativeTime(cardData.createdAt) }}</text>
-						</view>
-					<text class="card-mark">SHROOM</text>
-					</view>
-					<text class="hero-kicker">{{ heroKicker }}</text>
+					<text class="topic-pill">◈ {{ cardTags.length ? cardTags[0] : '给未来的提醒' }}</text>
 					<text class="seed-sentence">{{ cardData.seedSentence }}</text>
-					<view class="tag-row" v-if="cardTags.length">
-						<text v-for="tag in cardTags" :key="tag">#{{ tag }}</text>
-					</view>
+					<text class="hero-understanding" v-if="cardData.myUnderstanding">{{ cardData.myUnderstanding }}</text>
+				</view>
+				<view class="detail-actions" v-if="isOwner">
+					<button @tap="editCard">✎ 编辑</button><button @tap="togglePriority">☆ {{ priority ? '已设重点' : '设为重点' }}</button><button @tap="openShare">↗ 分享</button>
+				</view>
+				<view class="related-section" v-if="isOwner && (cardData.sourceDiaryId || practiceCases.length)">
+					<view class="related-head"><text>关联事件（{{ (cardData.sourceDiaryId ? 1 : 0) + practiceCases.length }}）</text><text @tap="showAllRelated = !showAllRelated">{{ showAllRelated ? '收起' : '查看全部' }} ›</text></view>
+					<view class="related-row" v-if="cardData.sourceDiaryId" @tap="openSourceDiary"><view class="related-thumb">✎</view><view><text>原始日记</text><text>形成这张菇卡的日记</text><text>打开原始经历，核对当时的自己</text></view></view>
+					<view class="related-row" v-for="item in (showAllRelated ? practiceCases : practiceCases.slice(0, cardData.sourceDiaryId ? 2 : 3))" :key="item.id"><view class="related-thumb">☀</view><view><text>{{ formatTime(item.createdAt) }}</text><text>{{ item.context }}</text><text>{{ item.result || '后续验证记录' }}</text></view></view>
 				</view>
 
 				<view class="source-note" v-if="isOwner && cardData.copiedFromId">
@@ -66,15 +64,9 @@
 					</view>
 				</view>
 
-				<view class="content-section" v-if="cardData.myUnderstanding">
-					<text class="section-index">01 / 理解</text>
-					<text class="section-title">{{ understandingTitle }}</text>
-					<text class="understanding-text">{{ cardData.myUnderstanding }}</text>
-				</view>
-
 				<view class="content-section" v-if="usageItems.length">
-					<text class="section-index">02 / 使用</text>
-					<text class="section-title">在相似时刻，可以怎样带着它</text>
+					<text class="section-index">♧ 识别信号（什么嗡嗡警报？）</text>
+					<text class="section-title">下次遇到时，我可以怎么做？</text>
 					<view class="usage-list">
 						<view class="usage-item" v-for="(item, index) in usageItems" :key="index">
 							<text class="usage-number">{{ index + 1 }}</text>
@@ -113,7 +105,7 @@
 				</view>
 
 				<view class="owner-actions" v-if="isOwner">
-					<button class="owner-primary" @tap="addPractice">记录一次练习</button>
+					<button class="owner-primary" @tap="addPractice">＋ 后续验证</button>
 					<button class="owner-secondary" @tap="writeDiaryWithCard">写日记并引用这张卡</button>
 				</view>
 
@@ -154,6 +146,7 @@
 
 <script>
 import moment from '@/common/moment.js';
+import { previewCard } from '@/utils/shroom-card-preview';
 import {
 	shroomCardCopy,
 	shroomCardDetail,
@@ -172,7 +165,10 @@ export default {
 			loading: true,
 			loadError: false,
 			actionBusy: false,
-			hasLoadedOnce: false
+			hasLoadedOnce: false,
+			priority: false,
+			previewMode: false,
+			showAllRelated: false
 		};
 	},
 	computed: {
@@ -225,9 +221,12 @@ export default {
 		}
 	},
 	onLoad(options) {
+		this.previewMode = Boolean(options && options.preview === '1');
+		if (this.previewMode) { this.cardId = 'preview'; this.cardData = previewCard; this.loading = false; return; }
 		const systemInfo = uni.getSystemInfoSync();
 		this.statusBarHeight = systemInfo.statusBarHeight || 0;
 		this.cardId = options && options.id ? String(options.id) : '';
+		this.priority = this.cardId ? Boolean(uni.getStorageSync(`shroom-card-priority:${this.cardId}`)) : false;
 		if (this.cardId) this.loadCardDetail(this.cardId);
 		else {
 			this.loading = false;
@@ -235,9 +234,15 @@ export default {
 		}
 	},
 	onShow() {
-		if (this.cardId && this.hasLoadedOnce) this.loadCardDetail(this.cardId, false);
+		uni.hideTabBar({ animation: false });
+		if (!this.previewMode && this.cardId && this.hasLoadedOnce) this.loadCardDetail(this.cardId, false);
 	},
+	onUnload() { uni.showTabBar({ animation: false }); },
 	methods: {
+		openMore() { uni.showActionSheet({ itemList: ['编辑菇卡', '分享这张菇卡'], success: result => result.tapIndex === 0 ? this.editCard() : this.openShare() }); },
+		openShare() { uni.navigateTo({ url: this.previewMode ? '/pages/common/cards/share?preview=1' : `/pages/common/cards/share?id=${this.cardId}` }); },
+		openSourceDiary() { if (this.cardData.sourceDiaryId) uni.navigateTo({ url: `/pages/diary/edit?id=${this.cardData.sourceDiaryId}` }); },
+		togglePriority() { this.priority = !this.priority; uni.setStorageSync(`shroom-card-priority:${this.cardId}`, this.priority ? 1 : 0); },
 		async loadCardDetail(id, showLoading = true) {
 			if (showLoading) this.loading = true;
 			this.loadError = false;
@@ -345,12 +350,14 @@ export default {
 			}
 		},
 		editCard() {
+			if (this.previewMode) return uni.showToast({ title: '示例仅供预览', icon: 'none' });
 			uni.navigateTo({ url: `/pages/common/cards/edit?id=${this.cardId}` });
 		},
 		addPractice() {
-			uni.navigateTo({ url: `/pages/common/cards/practice?cardId=${this.cardId}` });
+			uni.navigateTo({ url: this.previewMode ? '/pages/common/cards/practice?preview=1' : `/pages/common/cards/practice?cardId=${this.cardId}` });
 		},
 		writeDiaryWithCard() {
+			if (this.previewMode) return uni.showToast({ title: '示例仅供预览', icon: 'none' });
 			uni.navigateTo({ url: `/pages/diary/edit?cardId=${this.cardId}` });
 		},
 		openEditorialSource() {
@@ -648,4 +655,18 @@ export default {
 	.public-actions { padding: 30px 34px; border-radius: 26px; }
 }
 /* #endif */
+.card-detail-page { background: #fffefa; color: #15191f; }
+.preview-badge { font-size: 18rpx; font-weight: 450; color: #8d9691; }
+.navbar { padding: 12rpx 25rpx 17rpx; background: #fffefa; }.nav-title { font-size: 26rpx; font-weight: 750; }.nav-edit { font-size: 33rpx; }
+.detail-shell { max-width: 750rpx; padding: 10rpx 26rpx 120rpx; }
+.card-hero { min-height: 216rpx; padding: 18rpx 20rpx 24rpx; border-radius: 20rpx; background: linear-gradient(120deg, #fff, #f9faf4); color: #15191f; box-shadow: none; }
+.topic-pill { display: inline-block; padding: 6rpx 15rpx; border-radius: 999rpx; background: #eaf0de; color: #657a53; font-size: 19rpx; }
+.seed-sentence { margin-top: 16rpx; font-size: 38rpx; line-height: 1.46; font-weight: 800; }.hero-understanding { display: block; margin-top: 8rpx; font-size: 24rpx; line-height: 1.55; color: #6b747c; }
+.detail-actions { display: flex; gap: 11rpx; margin: 13rpx 0 25rpx; }.detail-actions button { display: flex; align-items: center; justify-content: center; min-width: 0; height: 64rpx; margin: 0; padding: 0 13rpx; flex: 1; border: 1rpx solid #e7e9e5; border-radius: 999rpx; background: #fff; color: #20262b; font-size: 21rpx; line-height: 1; box-shadow: 0 5rpx 12rpx rgba(30,36,30,.04); }.detail-actions button::after { border: 0; }
+.related-section { margin-top: 8rpx; }.related-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10rpx; font-size: 24rpx; font-weight: 760; }.related-head text:last-child { color: #91999b; font-size: 18rpx; font-weight: 500; }
+.related-row { display: flex; gap: 14rpx; align-items: center; padding: 8rpx 0; border-bottom: 1rpx solid #eff0ed; }.related-thumb { display: flex; width: 76rpx; height: 70rpx; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 12rpx; background: #e8edf0; font-size: 32rpx; color: #5f8a79; }.related-row:nth-child(3n) .related-thumb { background: #f0e8d6; color: #c29061; }.related-row > view:last-child { display: flex; flex-direction: column; min-width: 0; gap: 2rpx; }.related-row > view:last-child text:first-child { font-size: 17rpx; color: #858f98; }.related-row > view:last-child text:nth-child(2) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 21rpx; font-weight: 750; }.related-row > view:last-child text:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 17rpx; color: #91999d; }
+.content-section { margin-top: 27rpx; padding: 0; border-radius: 0; background: transparent; box-shadow: none; }.section-index { font-size: 23rpx; letter-spacing: 0; color: #15191f; }.section-title { margin-top: 15rpx; font-size: 23rpx; }.usage-list { gap: 8rpx; margin-top: 11rpx; }.usage-item { padding: 0 0 0 16rpx; border-radius: 0; background: transparent; }.usage-number { display: none; }.usage-text { font-size: 21rpx; line-height: 1.55; color: #596471; }.usage-text::before { content: '• '; }
+.owner-actions { margin-top: 28rpx; }.owner-primary, .owner-secondary { height: 70rpx; border-radius: 17rpx; font-size: 20rpx; }.owner-primary { background: #20262b; }.practice-section { padding: 22rpx; border: 1rpx solid #eceee8; border-radius: 20rpx; box-shadow: none; }
+.stats-strip { margin-top: 18rpx; }
+@media (max-width: 750px) { .navbar { height: 94rpx; box-sizing: border-box; }.nav-title { font-size: 31rpx; }.detail-shell { padding: 15rpx 39rpx 120rpx; }.card-hero { min-height: 295rpx; padding: 24rpx 24rpx 28rpx; }.topic-pill { font-size: 24rpx; }.seed-sentence { font-size: 46rpx; }.hero-understanding { font-size: 29rpx; }.detail-actions button { height: 78rpx; font-size: 25rpx; }.related-head { font-size: 31rpx; }.related-row { min-height: 115rpx; }.related-thumb { width: 90rpx; height: 86rpx; }.related-row > view:last-child text:nth-child(2) { font-size: 26rpx; }.related-row > view:last-child text:last-child { font-size: 21rpx; }.section-index { font-size: 29rpx; }.section-title { font-size: 29rpx; }.usage-text { font-size: 26rpx; } }
 </style>

@@ -1,211 +1,110 @@
 <template>
-	<view class="meal-page">
-		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-		<view class="page-header">
-			<view class="back-btn" @tap="goBack"><text class="back-text">‹</text></view>
-			<text class="page-title">记个吃喝</text>
-			<view class="template-btn" @tap="useTemplate">
-				<text class="template-text">📋 吃喝模板</text>
-			</view>
-		</view>
-
-		<view class="intro">
-			<text class="eyebrow">MEAL NOTE</text>
-			<text class="intro-date">{{ dateLabel }}</text>
-			<text class="intro-desc">记录这一餐，也可套用模板。</text>
-		</view>
-
-		<!-- 餐次选择 -->
-		<view class="section">
-			<view class="section-head">
-				<text class="section-title">这一餐属于</text>
-				<text class="section-note">各餐次按方案限额</text>
-			</view>
-			<view class="meal-types">
-				<view
-					v-for="t in mealTypes"
-					:key="t.name"
-					class="meal-type"
-					:class="{ active: currentType === t.name }"
-					@tap="currentType = t.name"
-				>
-					<image class="meal-type-icon" :src="t.icon" mode="aspectFit" />
-					<text class="meal-type-name">{{ t.name }}</text>
-				</view>
-			</view>
-		</view>
-
-		<!-- 菜名 -->
-		<view class="section card">
-			<view class="section-head">
-				<text class="section-title">这一餐吃了什么 <text class="required">必填</text></text>
-				<text class="section-note">已录 {{ dishes.length }}/20</text>
-			</view>
-			<view class="dish-input-row">
-				<input class="dish-input" v-model="dishInput" placeholder="输入菜名，例如红烧肉、青菜、米饭" @confirm="addDish" />
-				<view class="dish-add" @tap="addDish">+</view>
-			</view>
-			<view class="dish-tags" v-if="dishes.length">
-				<view class="dish-tag" v-for="(d,i) in dishes" :key="i" @tap="removeDish(i)">
-					<text>{{ d }}</text><text class="tag-x">×</text>
-				</view>
-			</view>
-			<text class="dish-hint">顿号、逗号、分号或换行都会自动分开</text>
-		</view>
-
-		<!-- 描述 -->
-		<view class="section card">
-			<textarea class="desc-input" v-model="description" placeholder="写下自己当下的感受或者介绍一下每个菜的…" maxlength="500" />
-		</view>
-
-		<!-- 图片 -->
-		<view class="photo-grid">
-			<view class="photo-add" @tap="addPhoto">
-				<text class="photo-plus">+</text>
-				<text class="photo-count">0/18</text>
-				<text class="photo-label">图片</text>
-			</view>
-		</view>
-
-		<!-- 用餐偏好 -->
-		<view class="section card pref-section">
-			<view class="section-head">
-				<text class="section-title">用餐偏好</text>
-				<text class="section-note">方式 · 时间 · 标签</text>
-			</view>
-			<view class="pref-row" @tap="pickWay">
-				<view class="pref-icon green">🍽</view>
-				<text class="pref-name">就餐方式</text>
-				<text class="pref-value">请选择 ›</text>
-			</view>
-			<view class="pref-row" @tap="pickTime">
-				<view class="pref-icon blue">🕐</view>
-				<text class="pref-name">就餐时间</text>
-				<text class="pref-value">请选择 ›</text>
-			</view>
-			<view class="pref-row" @tap="pickTags">
-				<view class="pref-icon pink">🏷</view>
-				<text class="pref-name">标签</text>
-				<text class="pref-value">请选择 ›</text>
-			</view>
-		</view>
-
-		<view class="save-btn" @tap="save">保存这一餐</view>
-	</view>
+ <view class="meal-page snapshot-subpage">
+  <view :style="{height:statusBarHeight+'px'}"></view>
+  <view class="top"><view @tap="goBack">‹</view><text>{{ editing ? '记下这一餐' : profileOpen ? '我的饮食资料' : '好好吃饭' }}</text><view class="small" @tap="openProfile">身体资料</view></view>
+  <view v-if="profileOpen" class="profile">
+   <text class="headline">让建议适合你。</text><text class="muted">首次建立，以后按身体变化更新。资料仅用于你的饮食参考，可删除，不发送给识图 AI。</text>
+   <view class="body-fields"><label>身高 · cm<input type="digit" v-model="profileDraft.height" placeholder="例如 170" /></label><label>体重 · kg<input type="digit" v-model="profileDraft.weight" placeholder="例如 65" /></label><label>年龄 · 岁<input type="number" v-model="profileDraft.age" placeholder="你的年龄" /></label></view>
+   <text class="field-title">生理性别 · 用于能量公式</text><view class="choices"><view v-for="item in sexOptions" :key="item.value" :class="{selected:profileDraft.sex===item.value}" @tap="profileDraft.sex=item.value">{{ item.label }}</view></view>
+   <text class="field-title">平时的活动量</text><view class="choices"><view v-for="item in activityOptions" :key="item.value" :class="{selected:profileDraft.activity===item.value}" @tap="profileDraft.activity=item.value">{{ item.label }}</view></view>
+   <text class="field-title">你希望</text><view class="choices"><view v-for="item in goalOptions" :key="item.value" :class="{selected:profileDraft.goal===item.value}" @tap="profileDraft.goal=item.value">{{ item.label }}</view></view>
+   <text class="field-title">是否需要特殊饮食安排？</text><text class="muted">多项适用时选其中一项即可；特殊情况停用普通成人自动目标。</text><view class="choices"><view v-for="item in careOptions" :key="item.value" :class="{selected:profileDraft.care===item.value}" @tap="profileDraft.care=item.value">{{ item.label }}</view></view>
+   <text class="field-title">过敏、忌口或饮食习惯 · 可选</text><input class="note-input" v-model="profileDraft.preferences" maxlength="300" placeholder="例如花生过敏、素食，仅作为自我提醒" />
+   <text class="muted">保存即同意将资料存入本人账户，用于计算饮食参考。照片无法判断过敏原或是否适合治疗饮食。</text>
+   <view class="primary" :class="{disabled:saving}" @tap="saveProfile">{{ saving ? '保存中…' : '保存我的资料' }}</view><view v-if="profile" class="secondary" @tap="removeProfile">删除身体资料</view><view class="secondary" @tap="toggleConsent">{{ visionConsent ? '关闭后续照片的自动识别' : '开启照片识别' }}</view>
+  </view>
+  <block v-else-if="editing">
+   <text class="headline">一张照片就能开始。</text><view class="capture" @tap="addPhoto"><text>＋</text><text>{{ uploading ? `上传中 ${uploadProgress}%` : media.length ? '再添一张照片' : '拍照 / 从相册选择' }}</text></view>
+   <text v-if="uploading" class="muted">{{ uploadLabel }} · 请保持页面打开</text>
+   <view class="photos"><view v-for="photo in media" :key="photo.id"><image :src="photo.url" mode="aspectFill" @tap="preview(photo)"/><text @tap="removePhoto(photo)">×</text></view></view>
+   <view v-if="pendingPhotos.length&&!uploading"><text class="muted">{{ uploadError }}</text><view class="secondary" @tap="retryPhotos">重试 {{ pendingPhotos.length }} 张未上传照片</view><view class="secondary" @tap="pendingPhotos=[];uploadError=''">取消这些待上传照片</view></view>
+   <view class="time-row"><picker mode="date" :disabled="Boolean(mealId)" :value="date" :end="todayDate" @change="date=$event.detail.value"><text>{{ date }} {{ mealId ? '' : '▾' }}</text></picker><picker mode="time" :value="mealTime" @change="mealTime=$event.detail.value"><text>{{ mealTime || '选择时间' }} ▾</text></picker></view><text class="muted">新记录默认带入当下时间。旧照片或补记时，改成实际吃饭时间；已有记录的日期保留。</text>
+   <textarea class="note-input" v-model="description" maxlength="500" placeholder="可不填。想补充时说一句：半碗饭、无糖饮料，或这是两人分享的菜。" />
+   <view class="disclosure" @tap="detailsOpen=!detailsOpen">{{ detailsOpen ? '收起' : '补充 / 修改菜名和餐次' }} ›</view><view v-if="detailsOpen"><input class="note-input" v-model="dishInput" placeholder="菜名用顿号分隔，不填也能保存照片"/><view class="choices"><view v-for="item in mealTypes" :key="item.value" :class="{selected:currentType===item.value}" @tap="currentType=item.value">{{ item.label }}</view></view></view>
+   <view class="primary" :class="{disabled:saving||uploading}" @tap="save">{{ saving ? '保存中…' : '保存这一餐' }}</view><text class="muted">先保存照片和记录，识别结果也会保存；以后打开直接查看。</text><view v-if="mealId" class="secondary" @tap="removeMeal">删除这餐记录</view>
+  </block>
+  <block v-else>
+   <view class="date-row"><view @tap="moveDay(-1)">‹</view><picker mode="date" :value="date" :end="todayDate" @change="selectDay($event.detail.value)"><text>{{ dateLabel }} ▾</text></picker><view :class="{disabled:date>=todayDate}" @tap="moveDay(1)">›</view></view>
+   <view v-if="loading&&!summary" class="state">正在找回你的餐食…</view><view v-if="loadError" class="state" @tap="loadRecords()">{{ loadError }} · 点击重试</view>
+   <view v-if="summary" class="overview">
+    <text class="eyebrow">{{ summary.usable ? '这一天 · 已记录完整' : '这一天 · 已记录摄入' }}</text><view class="energy"><text>{{ rangeText(summary.totals.kcal) }}</text><text>千卡 · 估算</text></view><text class="advice">{{ summary.advice }}</text>
+    <view v-if="summary.target.status==='missing'" class="profile-entry" @tap="openProfile">补齐身体资料，建立我的每日参考 ›</view><text v-if="profile&&profile.preferences" class="muted">我的饮食提醒：{{ profile.preferences }}</text>
+    <view v-if="summary.target.status==='ready'" class="target-line"><text>每日起始参考 {{ rangeText(summary.target.kcal) }} 千卡</text><text>{{ summary.target.message }}</text></view>
+    <view class="nutrients"><view><text>蛋白质</text><text>{{ rangeText(summary.totals.protein) }} g</text></view><view><text>膳食纤维</text><text>{{ rangeText(summary.totals.fiber) }} g</text></view><view><text>游离糖</text><text>{{ rangeText(summary.totals.freeSugar) }} g</text></view></view>
+    <view class="disclosure" @tap="summaryDetails=!summaryDetails">{{ summaryDetails ? '收起每日参考' : '查看每日营养参考' }} ›</view>
+    <text v-if="summaryDetails&&summary.target.status==='ready'" class="muted">蛋白质参考 {{ rangeText(summary.target.protein) }} g · 纤维参考至少 {{ summary.target.fiber }} g。游离糖限制在 {{ summary.target.freeSugarLimit }} g 以下，进一步减少至 {{ summary.target.freeSugarPreferred }} g 以下可能获益；不是要补到的目标。</text>
+    <text class="muted">未识别、未确认份量或未知数值不计入。已知部分不代表全天总量。</text>
+    <view v-if="summary.usable&&summary.remaining.protein&&summary.remaining.protein.low>0" class="gap">按已记录估算，距蛋白质参考约差 {{ rangeText(summary.remaining.protein) }} g。优先从正常餐食安排，不必为了凑数硬吃。</view>
+    <view v-if="records.length" class="complete" @tap="toggleComplete">{{ summary.complete ? '✓ 正餐、零食和饮料都记全了 · 点击撤回' : '今天吃喝都记全了？确认后再看全天对比' }}</view>
+   </view>
+   <view class="primary" @tap="captureMeal">＋ 拍照记一餐</view><view class="secondary" @tap="startMeal">也可以写一句记下来</view><view v-if="!loading&&!loadError&&!records.length" class="state">从这一餐开始，不必补齐过去。</view>
+   <view v-for="record in records" :key="record.id" class="meal-record">
+    <view class="record-top"><text>{{ clock(record.meal_time)||'时间未记' }} · {{ typeLabel(record.meal_type) }}</text><view @tap="editRecord(record)">修改</view></view><view class="record-photos"><image v-for="photo in record.media" :key="photo.id" :src="photo.url" mode="aspectFill" @tap="previewRecord(record,photo)"/></view><text class="record-name">{{ recordTitle(record) }}</text><text v-if="record.description" class="record-note">{{ record.description }}</text>
+    <text v-if="record.nutritionStatus==='running'" class="analyzing">照片已保存，正在辨认这一餐… 可以离开，回来继续看。</text><text v-if="record.nutritionError" class="muted">{{ record.nutritionError }}</text>
+    <view v-if="record.estimate&&record.estimate.isFood" class="estimate"><text class="estimate-energy">约 {{ rangeText((record.nutrition||record.estimate).nutrients.kcal) }} 千卡</text><text>蛋白质 {{ rangeText((record.nutrition||record.estimate).nutrients.protein) }} g · 碳水 {{ rangeText((record.nutrition||record.estimate).nutrients.carbs) }} g</text><text class="muted">{{ record.estimate.uncertainty }}</text><text v-if="record.estimate.question" class="question">{{ record.estimate.question }} 可点“修改”补一句，再重新估算。</text>
+     <text class="field-title">{{ record.confirmedFraction ? '已按实际份量计入，可修改' : '这张图里，你实际吃了多少？确认后计入统计' }}</text><view class="choices"><view v-for="part in portionOptions" :key="part.value" :class="{selected:record.confirmedFraction===part.value,disabled:record.nutritionStatus==='running'}" @tap="confirmPortion(record,part.value)">{{ part.label }}</view></view>
+     <view class="disclosure" @tap="expanded=expanded===record.id?'':record.id">{{ expanded===record.id ? '收起' : '查看全部营养与估算依据' }} ›</view><view v-if="expanded===record.id" class="estimate-detail"><text v-for="metric in metrics" :key="metric.key">{{ metric.label }}：{{ rangeText((record.nutrition||record.estimate).nutrients[metric.key]) }} {{ metric.unit }}</text><text v-for="food in record.estimate.foods" :key="food.name">{{ food.name }} · {{ food.portion }}</text><text>{{ record.estimate.basis }}</text></view>
+    </view>
+    <text v-if="record.estimate&&!record.estimate.isFood" class="muted">{{ record.estimate.uncertainty }}</text><view v-if="record.nutritionStatus!=='running'" class="analysis-action" @tap="analyze(record,Boolean(record.estimate))">{{ record.estimate ? '重新估算' : '识别这一餐的营养' }}</view>
+   </view>
+   <view v-if="days.length" class="week"><view class="record-top"><text>近七天</text><text>{{ completeDays }} 天可作全天对比</text></view><text v-if="week&&week.days>=3" class="muted">完整记录日的日均能量 {{ rangeText(week.averages.kcal) }} 千卡 · 蛋白质 {{ rangeText(week.averages.protein) }} g</text><view class="week-row" v-for="day in days" :key="day.date" @tap="selectDay(day.date)"><text>{{ day.date.slice(5) }}</text><text>{{ day.mealCount ? rangeText(day.totals.kcal)+' 千卡' : '未记录' }}</text><text>{{ day.usable ? '记全了' : day.mealCount ? '部分记录' : '—' }}</text></view><text class="muted">{{ week ? week.message : '空白不是零摄入。先看记录完整度，再看趋势。' }}</text></view>
+   <view class="sources" @tap="sourcesOpen=!sourcesOpen">建议依据与适用范围 {{ sourcesOpen ? '−' : '＋' }}</view><view v-if="sourcesOpen" class="source-list"><text>这是日常饮食估算参考，不提供诊断、药物调整或补剂处方。治疗饮食请与医生或注册营养师共同制定。</text><text v-if="summary&&summary.target.method">{{ summary.target.method }}</text><view v-for="source in sources" :key="source.url" @tap="copySource(source)">{{ source.title }} ↗</view></view>
+  </block>
+ </view>
 </template>
-
 <script>
-import { addMeal } from '@/api/snapshot';
-
+import { addMeal, deleteMeal, updateMeal } from '@/api/snapshot';
+import { uploadImage } from '@/api/upload';
+import wechatPrivacy from '@/utils/wechat-privacy.js';
+import mealImageUpload from '@/utils/meal-image-upload.js';
+const { PRIVACY_DENIED_MESSAGE, requireWechatPrivacyAuthorization, isWechatPrivacyDenied } = wechatPrivacy;
+const endpoint='/snapshot/v1/nutrition';
 export default {
-	data() {
-		return {
-			statusBarHeight: 20,
-			currentType: '早餐',
-			dishInput: '',
-			dishes: [],
-			description: '',
-			mealTypes: [
-				{ name: '早餐', icon: '/static/snapshot/icons/ic-book.png' },
-				{ name: '午餐', icon: '/static/snapshot/icons/ic-book.png' },
-				{ name: '晚餐', icon: '/static/snapshot/icons/ic-book.png' },
-				{ name: '下午茶', icon: '/static/snapshot/icons/ic-book.png' },
-				{ name: '夜宵', icon: '/static/snapshot/icons/ic-book.png' },
-			]
-		}
-	},
-	computed: {
-		dateLabel() {
-			const d = new Date()
-			return `${String(d.getMonth()+1).padStart(2,'0')}月${String(d.getDate()).padStart(2,'0')}日 · ${['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]}`
-		}
-	},
-	onLoad() { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 },
-	methods: {
-		goBack() { uni.navigateBack() },
-		addDish() {
-			const v = this.dishInput.trim()
-			if (!v) return
-			v.split(/[、，,；;\n]/).forEach(d => {
-				if (d.trim() && this.dishes.length < 20) this.dishes.push(d.trim())
-			})
-			this.dishInput = ''
-		},
-		removeDish(i) { this.dishes.splice(i,1) },
-		addPhoto() {},
-		pickWay() {}, pickTime() {}, pickTags() {},
-		useTemplate() {},
-		async save() {
-			if (!this.dishes.length) {
-				uni.showToast({ title: '先写下这一餐吃了什么', icon: 'none' })
-				return
-			}
-			const mealTypes = {
-				早餐: 'BREAKFAST', 午餐: 'LUNCH', 晚餐: 'DINNER', 下午茶: 'AFTERNOON_TEA', 夜宵: 'SUPPER'
-			}
-			try {
-				await addMeal({
-					meal_type: mealTypes[this.currentType] || 'BRUNCH',
-					name: this.dishes.join('、'),
-					description: this.description
-				})
-				uni.showToast({ title: '已保存', icon: 'success' })
-				setTimeout(() => uni.navigateBack(), 500)
-			} catch (error) {}
-		}
-	}
+ data(){return{pendingPhotos:[],uploadError:'',uploadLabel:'',statusBarHeight:20,date:'',todayDate:'',editing:false,mealId:'',records:[],summary:null,summaryDetails:false,days:[],week:null,profile:null,profileDraft:{},profileOpen:false,sources:[],sourcesOpen:false,visionConsent:false,processor:'AI 服务商',analysisEnabled:false,
+  visionConsentKnown:false,loading:false,loadError:'',saving:false,uploading:false,uploadProgress:0,requestNumber:0,pollTimer:null,pollCount:0,expanded:'',detailsOpen:false,initialDraft:'',currentType:'LUNCH',dishInput:'',dishes:[],description:'',diningWay:'',mealTime:'',tags:[],media:[],
+  mealTypes:[{label:'早餐',value:'BREAKFAST'},{label:'午餐',value:'LUNCH'},{label:'晚餐',value:'DINNER'},{label:'加餐',value:'BRUNCH'}],
+  sexOptions:[{label:'女',value:'female'},{label:'男',value:'male'},{label:'不提供',value:'unspecified'}],activityOptions:[{label:'多数时间坐着',value:'low'},{label:'经常走动 / 规律运动',value:'moderate'},{label:'体力工作 / 较多训练',value:'high'}],goalOptions:[{label:'均衡维持',value:'maintain'},{label:'温和减脂',value:'lose'},{label:'配合训练增肌',value:'muscle'}],
+  careOptions:[{label:'均无',value:'none'},{label:'孕期 / 哺乳',value:'pregnant'},{label:'肾脏疾病',value:'kidney'},{label:'糖尿病 / 降糖药',value:'diabetes'},{label:'进食障碍史',value:'eating'},{label:'其他治疗饮食',value:'clinical'},{label:'不确定',value:'unsure'}],portionOptions:[{label:'全部吃了',value:1},{label:'约 3/4',value:.75},{label:'约一半',value:.5},{label:'约 1/4',value:.25}],
+  metrics:[{key:'kcal',label:'能量',unit:'千卡'},{key:'protein',label:'蛋白质',unit:'g'},{key:'carbs',label:'碳水',unit:'g'},{key:'fat',label:'脂肪',unit:'g'},{key:'fiber',label:'膳食纤维',unit:'g'},{key:'totalSugar',label:'总糖',unit:'g'},{key:'freeSugar',label:'游离糖',unit:'g'}]
+ }},
+ computed:{dateLabel(){return this.date===this.todayDate?'今天':this.date.slice(5).replace('-','月')+'日'},completeDays(){return this.days.filter(x=>x.usable).length}},
+ onLoad(options){this.statusBarHeight=uni.getSystemInfoSync().statusBarHeight||20;this.todayDate=this.localDay(new Date());this.date=options.date||this.todayDate;this.loadRecords(options.id||'')},
+ onShow(){uni.hideTabBar({animation:false,fail:()=>{}});if(this.summary&&!this.editing&&!this.profileOpen)this.loadRecords()},onHide(){this.stopPolling()},onUnload(){this.stopPolling();this.requestNumber++},
+ methods:{
+  localDay(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`},nowClock(){const d=new Date();return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`},clock(v){return String(v||'').slice(0,5)},typeLabel(v){const item=this.mealTypes.find(x=>x.value===v);return item?item.label:'加餐'},rangeText(v){return v?`${Math.round(v.low)}–${Math.round(v.high)}`:'未知'},recordTitle(r){return r.name&&r.name!=='照片记录'?r.name:r.estimate&&r.estimate.foods.length?r.estimate.foods.map(x=>x.name).join('、'):'这一餐'},toast(message){uni.showToast({title:message,icon:'none'})},
+  modal(title,content,confirmText='确认'){return new Promise(resolve=>uni.showModal({title,content,confirmText,success:r=>resolve(r.confirm),fail:()=>resolve(false)}))},draftValue(){return JSON.stringify([this.currentType,this.dishInput,this.dishes,this.description,this.mealTime,this.media.map(x=>x.id),this.pendingPhotos])},
+  async goBack(){if(this.saving||this.uploading)return this.toast('请等待保存或上传完成');if(this.profileOpen){this.profileOpen=false;return}if(this.editing){if(this.draftValue()!==this.initialDraft&&!await this.modal('这一餐还没保存','离开编辑会放弃本次修改。','放弃修改'))return;this.editing=false;return}if(getCurrentPages().length>1)uni.navigateBack();else uni.switchTab({url:'/pages/snapshot/index'})},
+  selectDay(day){this.stopPolling();this.date=day;this.summary=null;this.records=[];this.loadRecords()},moveDay(offset){const d=new Date(`${this.date}T12:00:00`);d.setDate(d.getDate()+offset);const day=this.localDay(d);if(day<=this.todayDate)this.selectDay(day)},
+  async loadRecords(editId){const request=++this.requestNumber;this.loading=true;this.loadError='';try{const response=await this.$http.get(endpoint,{date:this.date});if(request!==this.requestNumber)return;const data=response.data||response;this.records=data.meals||[];this.summary=data.summary;this.days=data.days||[];this.week=data.week;this.profile=data.profile;this.sources=data.sources||[];this.visionConsent=data.visionConsent;this.visionConsentKnown=data.visionConsentKnown;this.processor=data.processor||'AI 服务商';this.analysisEnabled=data.analysisEnabled;if(typeof editId==='string'&&editId){const record=this.records.find(x=>x.id===editId);if(record)this.editRecord(record);else this.toast('未找到这餐记录，请检查日期')}if(this.records.some(x=>x.nutritionStatus==='running'))this.schedulePoll();else this.stopPolling()}catch(error){if(request===this.requestNumber)this.loadError='记录读取失败，已有内容仍保留'}finally{if(request===this.requestNumber)this.loading=false}},
+  schedulePoll(){this.stopPolling();if(this.pollCount++<40)this.pollTimer=setTimeout(()=>this.loadRecords(),4000)},stopPolling(){if(this.pollTimer)clearTimeout(this.pollTimer);this.pollTimer=null},
+  startMeal(){this.pendingPhotos=[];this.uploadError="";this.stopPolling();this.mealId='';this.currentType=new Date().getHours()<10?'BREAKFAST':new Date().getHours()<16?'LUNCH':'DINNER';this.dishInput='';this.dishes=[];this.description='';this.diningWay='';this.tags=[];this.media=[];this.mealTime=this.nowClock();this.detailsOpen=false;this.editing=true;this.initialDraft=this.draftValue()},captureMeal(){this.startMeal();this.addPhoto()},
+  editRecord(meal){this.pendingPhotos=[];this.uploadError="";this.stopPolling();this.mealId=meal.id;this.currentType=meal.meal_type;this.dishInput=meal.name==='照片记录'?'':meal.name;this.dishes=[];this.description=meal.description||'';this.diningWay=meal.dining_way||'';this.tags=[...(meal.tags||[])];this.media=(meal.media||[]).map(x=>({...x}));this.mealTime=this.clock(meal.meal_time);this.editing=true;this.detailsOpen=false;this.initialDraft=this.draftValue()},addDish(){this.dishes=this.dishInput.split(/[、，,；;\n]/).map(x=>x.trim()).filter(Boolean).slice(0,20)},
+  async addPhoto(){if(this.uploading||this.media.length+this.pendingPhotos.length>=9)return;try{await requireWechatPrivacyAuthorization();const selected=await new Promise((resolve,reject)=>uni.chooseImage({count:9-this.media.length-this.pendingPhotos.length,sourceType:['camera','album'],sizeType:['compressed'],success:resolve,fail:reject}));this.pendingPhotos.push(...(selected.tempFilePaths||[]).filter(Boolean));await this.retryPhotos()}catch(error){if(isWechatPrivacyDenied(error))this.toast(PRIVACY_DENIED_MESSAGE);else if(!String(error.errMsg||error).includes('cancel'))this.toast('未能选择照片，请重试')}},
+  async retryPhotos(){if(this.uploading||!this.pendingPhotos.length)return;this.uploading=true;this.uploadError='';const paths=[...this.pendingPhotos];let completed=0;try{for(const path of paths){let prepared={filePath:path,release(){}};try{
+   this.uploadLabel='正在准备照片';
+   // #ifdef H5
+   prepared=await mealImageUpload.prepareMealImage(path);
+   // #endif
+   this.uploadLabel='正在上传照片';
+   const response=await this.$http.upload(uploadImage,{filePath:prepared.filePath,name:'file',timeout:120000,getTask:task=>{if(task&&task.onProgressUpdate)task.onProgressUpdate(e=>{this.uploadProgress=Math.min(99,Math.round((completed+(Number(e.progress)||0)/100)/paths.length*100))})}});
+   if(!response.data||!response.data.id)throw new Error('照片未保存，请重试');
+   this.media.push({id:response.data.id,url:response.data.url});this.pendingPhotos=this.pendingPhotos.filter(item=>item!==path);
+  }catch(error){const message=String(error&&error.errMsg||error&&error.message||error||'');this.uploadError=/timeout|timed out|network|fail|408|499/i.test(message)?'网络较慢或连接中断，照片还在，可点击重试。':/照片|图片|格式/.test(message)?message:'照片暂未上传，已保留待重试。';}finally{prepared.release();completed++}}
+  }finally{this.uploading=false;this.uploadProgress=0;this.uploadLabel='';if(this.pendingPhotos.length)this.toast(`${this.pendingPhotos.length} 张未上传，点击重试即可`)}},
+  removePhoto(photo){this.media=this.media.filter(x=>x.id!==photo.id)},preview(photo){uni.previewImage({current:photo.url,urls:this.media.map(x=>x.url)})},previewRecord(r,p){uni.previewImage({current:p.url,urls:r.media.map(x=>x.url)})},
+  async save(){if(this.saving||this.uploading)return;if(this.pendingPhotos.length)return this.toast("还有照片未上传，请重试或取消后保存");this.addDish();if(!this.dishes.length&&!this.media.length&&!this.description.trim())return this.toast('拍张照片或写一句吃了什么');this.saving=true;let saved;try{const payload={meal_type:this.currentType,name:this.dishes.join('、')||(this.media.length?'照片记录':this.description.slice(0,80)),description:this.description,dining_way:this.diningWay,meal_time:this.mealTime,tags:this.tags,media_ids:this.media.map(x=>x.id)};const response=this.mealId?await updateMeal(this.mealId,payload):await addMeal(payload,this.date);saved=(response.data||response).meal;if(!saved||!saved.id)throw new Error('保存失败');this.mealId=saved.id;this.initialDraft=this.draftValue();this.editing=false;this.toast('这一餐已保存');await this.loadRecords()}catch(error){this.toast('保存失败，照片和输入已保留，请重试')}finally{this.saving=false}if(saved&&this.analysisEnabled&&(this.visionConsent||!this.visionConsentKnown))await this.analyze(saved,false)},
+  async ensureConsent(){if(this.visionConsent)return true;const yes=await this.modal('开启餐食照片识别',`将你主动选择的餐食照片和说明发送至 ${this.processor}，识别食物并估算营养。身体资料不发送。结果会保存，可随时关闭后续自动识别。`,'同意并识别');if(!yes){await this.$http.put(endpoint+'/consent',{enabled:false});this.visionConsentKnown=true;return false}await this.$http.put(endpoint+'/consent',{enabled:true});this.visionConsent=true;this.visionConsentKnown=true;return true},
+  async analyze(record,regenerate){if(!this.analysisEnabled)return this.toast('识图服务暂未配置，记录已保留');try{if(regenerate&&!await this.modal('重新估算这一餐','会再次调用 AI。当前结果已保存，普通查看不需要重新估算。','重新估算'))return;if(!await this.ensureConsent())return;await this.$http.post(endpoint+'/meals/'+record.id+'/analyze',{consent:true,regenerate});this.pollCount=0;await this.loadRecords()}catch(error){this.toast('识别暂未开始，记录已保存，可稍后重试')}},
+  async confirmPortion(record,fraction){if(record.nutritionStatus==='running')return;try{await this.$http.put(endpoint+'/meals/'+record.id+'/portion',{fraction,generation:record.generation});await this.loadRecords()}catch(error){this.toast('份量未保存，请刷新后重试')}},
+  async toggleComplete(){if(!this.summary)return;const complete=!this.summary.complete;if(complete&&!await this.modal('确认今天记全了？','包括正餐、零食、饮料和夜宵。未识别或未确认份量的餐食仍不会计入全天对比。','已记全'))return;try{await this.$http.put(endpoint+'/day',{date:this.date,complete});await this.loadRecords()}catch(error){this.toast('未保存，请重试')}},
+  openProfile(){if(this.editing)return this.toast('先保存这一餐，再修改身体资料');this.profileDraft=this.profile?{...this.profile}:{height:'',weight:'',age:'',sex:'',activity:'',goal:'maintain',care:'',preferences:''};this.profileOpen=true},
+  async saveProfile(){if(this.saving)return;const p=this.profileDraft;if(!p.height||!p.weight||!p.age||!p.sex||!p.activity||!p.care)return this.toast('请补齐身体资料与健康情况');this.saving=true;try{await this.$http.put(endpoint+'/profile',{...p,consent:true});this.profileOpen=false;await this.loadRecords();this.toast('身体资料已保存')}catch(error){this.toast('请检查资料后重试')}finally{this.saving=false}},
+  async removeProfile(){if(!await this.modal('删除身体资料？','将移除身高、体重等资料和个性化目标；餐食记录仍保留。','删除资料'))return;try{await this.$http.delete(endpoint+'/profile');this.profileOpen=false;await this.loadRecords()}catch(error){this.toast('删除未完成，请重试')}},
+  async toggleConsent(){try{if(this.visionConsent){await this.$http.put(endpoint+'/consent',{enabled:false});this.visionConsent=false;this.visionConsentKnown=true;this.toast('后续照片不再自动识别')}else await this.ensureConsent()}catch(error){this.toast('设置未保存，请重试')}},
+  async removeMeal(){if(this.saving||this.uploading||!await this.modal('删除这餐记录？','文字、照片关联和营养估算将从吃喝记录移除，无法撤销。','删除'))return;this.saving=true;try{await deleteMeal(this.mealId);this.editing=false;await this.loadRecords()}catch(error){this.toast('删除失败，请重试')}finally{this.saving=false}},copySource(source){uni.setClipboardData({data:source.url,success:()=>this.toast('来源链接已复制')})}
+ }
 }
 </script>
-
 <style lang="scss" scoped>
-.meal-page { min-height: 100vh; background: #F0F4F2; padding: 0 30rpx 60rpx; }
-.page-header { display: flex; justify-content: space-between; align-items: center; padding: 20rpx 0 20rpx; }
-.back-text { font-size: 56rpx; color: #666; }
-.page-title { font-size: 36rpx; font-weight: 700; color: #333; }
-.template-btn { background: #e8f5e9; padding: 12rpx 24rpx; border-radius: 30rpx; }
-.template-text { font-size: 24rpx; color: #7CAE5A; }
-
-.intro { padding: 20rpx 0 30rpx; }
-.eyebrow { font-size: 22rpx; color: #7CAE5A; letter-spacing: 2rpx; display: block; }
-.intro-date { font-size: 40rpx; font-weight: 700; color: #333; display: block; margin-top: 8rpx; }
-.intro-desc { font-size: 24rpx; color: #999; display: block; margin-top: 8rpx; }
-
-.section { margin-bottom: 24rpx; }
-.section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 20rpx; }
-.section-title { font-size: 30rpx; font-weight: 600; color: #333;
-	.required { font-size: 22rpx; color: #E06B6B; font-weight: 400; } }
-.section-note { font-size: 22rpx; color: #999; }
-
-.meal-types { display: flex; gap: 16rpx; overflow-x: auto; }
-.meal-type { flex-shrink: 0; width: 140rpx; background: #fff; border-radius: 20rpx; padding: 20rpx 10rpx; display: flex; flex-direction: column; align-items: center;
-	&.active { background: #e8f5e9; border: 2rpx solid #7CAE5A; } }
-.meal-type-icon { width: 60rpx; height: 60rpx; margin-bottom: 10rpx; }
-.meal-type-name { font-size: 24rpx; color: #333; }
-
-.card { background: #fff; border-radius: 24rpx; padding: 30rpx; }
-.dish-input-row { display: flex; gap: 16rpx; align-items: center; }
-.dish-input { flex: 1; background: #e8f0e3; border-radius: 16rpx; padding: 24rpx; font-size: 28rpx; }
-.dish-add { width: 72rpx; height: 72rpx; background: #e8f5e9; color: #7CAE5A; border-radius: 16rpx; text-align: center; line-height: 72rpx; font-size: 40rpx; }
-.dish-tags { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 20rpx; }
-.dish-tag { background: #f0ebdd; border-radius: 20rpx; padding: 10rpx 20rpx; font-size: 24rpx; color: #333; display: flex; align-items: center; gap: 8rpx;
-	.tag-x { color: #999; } }
-.dish-hint { font-size: 22rpx; color: #bbb; margin-top: 16rpx; display: block; }
-
-.desc-input { width: 100%; height: 160rpx; font-size: 28rpx; color: #999; }
-
-.photo-grid { margin-bottom: 24rpx; }
-.photo-add { width: 200rpx; height: 200rpx; border: 2rpx dashed #d0d0d0; border-radius: 20rpx; display: flex; flex-direction: column; align-items: center; justify-content: center;
-	.photo-plus { font-size: 60rpx; color: #bbb; }
-	.photo-count { font-size: 22rpx; color: #bbb; margin-top: 8rpx; }
-	.photo-label { font-size: 22rpx; color: #bbb; } }
-
-.pref-section .pref-row { display: flex; align-items: center; gap: 20rpx; padding: 24rpx 0; border-bottom: 1rpx solid #f0f0f0;
-	&:last-child { border-bottom: none; } }
-.pref-icon { width: 56rpx; height: 56rpx; border-radius: 16rpx; text-align: center; line-height: 56rpx; font-size: 28rpx;
-	&.green { background: #e8f5e9; } &.blue { background: #e3f0fa; } &.pink { background: #fce4ec; } }
-.pref-name { font-size: 28rpx; color: #333; flex: 1; }
-.pref-value { font-size: 26rpx; color: #bbb; }
-
-.save-btn { background: #7CAE5A; border-radius: 40rpx; padding: 28rpx; text-align: center; margin-top: 20rpx;
-	text { color: #fff; font-size: 30rpx; font-weight: 600; } }
+.meal-page{box-sizing:border-box;max-width:720px;margin:0 auto;min-height:100vh;padding:0 34rpx 80rpx;background:#f7f7ef;color:#25372b}.top{height:108rpx;display:flex;align-items:center;justify-content:space-between}.top>view:first-child{font-size:54rpx;width:80rpx}.top>text{font-size:31rpx;font-weight:650}.top .small{font-size:21rpx;color:#647a65}.headline{display:block;font-size:45rpx;font-weight:650;margin:34rpx 0 18rpx}.date-row{display:flex;align-items:center;justify-content:space-between;margin:12rpx 0 25rpx;font-size:28rpx}.date-row>view{font-size:38rpx;padding:10rpx 20rpx}.overview{padding:32rpx 0;border-top:1rpx solid #dbe2d4}.eyebrow{font-size:23rpx;color:#6c7d6e}.energy{display:flex;align-items:baseline;gap:18rpx;margin:12rpx 0 22rpx}.energy>text:first-child{font-size:66rpx;font-weight:650;letter-spacing:-2rpx}.energy>text:last-child{font-size:22rpx;color:#7b8778}.advice{display:block;font-size:29rpx;line-height:1.65}.muted{display:block;font-size:22rpx;line-height:1.65;color:#7d8678;margin:14rpx 0}.profile-entry{padding:20rpx 0;color:#638446;font-size:25rpx}.target-line{display:flex;flex-direction:column;gap:8rpx;margin-top:20rpx;font-size:23rpx;color:#718069}.target-line>text:last-child{font-size:21rpx}.nutrients{display:grid;grid-template-columns:repeat(3,1fr);border-top:1rpx solid #e1e4d8;border-bottom:1rpx solid #e1e4d8;margin-top:25rpx;padding:24rpx 0;gap:15rpx}.nutrients>view{display:flex;flex-direction:column;gap:10rpx;font-size:21rpx;color:#7a8577}.nutrients>view>text:last-child{font-size:29rpx;font-weight:600;color:#334730}.gap{font-size:24rpx;line-height:1.6;padding:20rpx;background:#e9eedb;border-radius:14rpx}.complete{margin-top:24rpx;font-size:23rpx;line-height:1.6;color:#638446;text-decoration:underline}.primary{padding:25rpx 20rpx;border-radius:32rpx;background:#345839;color:#fff;text-align:center;font-size:29rpx;font-weight:650;margin-top:24rpx}.secondary{padding:20rpx;text-align:center;font-size:23rpx;color:#71806b}.disabled{opacity:.45}.state{padding:35rpx 10rpx;font-size:25rpx;line-height:1.6;color:#7a8576}.meal-record{padding:28rpx 0;border-top:1rpx solid #dce2d4;margin-top:18rpx}.record-top{display:flex;justify-content:space-between;align-items:center;font-size:23rpx;color:#74826c}.record-top>view{color:#547044}.record-photos{display:flex;gap:12rpx;overflow-x:auto;margin:22rpx 0}.record-photos image{flex:0 0 280rpx;width:280rpx;height:240rpx;border-radius:19rpx}.record-name{display:block;font-size:32rpx;font-weight:650;line-height:1.6}.record-note{display:block;margin-top:12rpx;font-size:25rpx;line-height:1.6;color:#687863;white-space:pre-wrap}.estimate{margin-top:20rpx;display:flex;flex-direction:column;gap:10rpx;font-size:23rpx}.estimate-energy{font-size:32rpx;font-weight:600}.question{font-size:24rpx;line-height:1.6;color:#806b42}.choices{display:flex;flex-wrap:wrap;gap:12rpx;margin:12rpx 0 22rpx}.choices>view{border:1rpx solid #d5ddce;border-radius:20rpx;padding:15rpx 20rpx;font-size:23rpx;color:#66785d;background:#fffef9}.choices .selected{border-color:#6e8e55;background:#e5ecd9;color:#34502f}.field-title{display:block;font-size:25rpx;font-weight:600;margin-top:23rpx}.disclosure,.analysis-action{font-size:23rpx;color:#6b7e5e;padding:15rpx 0}.analysis-action{text-decoration:underline}.estimate-detail{display:flex;flex-direction:column;gap:13rpx;padding:20rpx;background:#f0f2e7;border-radius:15rpx;line-height:1.6}.analyzing{display:block;margin-top:20rpx;font-size:24rpx;color:#718346;line-height:1.7}.week{margin-top:40rpx;padding-top:25rpx;border-top:1rpx solid #dbe2d4}.week-row{display:grid;grid-template-columns:1fr 2fr 1fr;font-size:23rpx;padding:20rpx 0;border-bottom:1rpx solid #e5e7dc}.week-row>text:last-child{color:#7f8979;text-align:right}.sources{padding:32rpx 0;font-size:23rpx;color:#7b8673}.source-list{display:flex;flex-direction:column;gap:20rpx;font-size:22rpx;line-height:1.7;color:#77826e}.source-list>view{color:#527644;text-decoration:underline}.capture{border:2rpx dashed #c6d3b8;border-radius:24rpx;padding:32rpx;display:flex;align-items:center;gap:20rpx;background:#eef1e3;color:#547241;font-size:27rpx;margin:26rpx 0}.capture>text:first-child{font-size:45rpx}.photos{display:flex;flex-wrap:wrap;gap:12rpx}.photos>view{position:relative}.photos image{width:185rpx;height:185rpx;border-radius:18rpx}.photos>view>text{position:absolute;right:8rpx;top:8rpx;background:#304632;color:#fff;border-radius:50%;width:36rpx;height:36rpx;text-align:center}.time-row{display:flex;gap:35rpx;padding:22rpx 0;font-size:25rpx}.note-input{box-sizing:border-box;width:100%;background:#fffef9;border-radius:15rpx;padding:22rpx;font-size:25rpx;margin:20rpx 0;line-height:1.6;min-height:75rpx}textarea.note-input{height:175rpx}.body-fields{display:grid;grid-template-columns:repeat(3,1fr);gap:15rpx;margin:30rpx 0}.body-fields label{font-size:23rpx;color:#76836e}.body-fields input{margin-top:12rpx;background:#fffef9;border:1rpx solid #dbe1d3;border-radius:15rpx;height:80rpx;padding:0 15rpx;font-size:27rpx;box-sizing:border-box;width:100%}
 </style>

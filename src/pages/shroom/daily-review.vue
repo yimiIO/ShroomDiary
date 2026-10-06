@@ -28,6 +28,12 @@
 					<text class="critical-issue">{{ primaryCorrection.issue }}</text>
 					<view class="critical-advice"><text>明天只做这一件</text><text>{{ primaryCorrection.recommendation }}</text></view>
 				</view>
+				<ai-result-continue
+					:result-id="review.id"
+					result-type="DAILY_REVIEW"
+					title="对这份总结有疑问？"
+					description="追问为什么这样判断，补充当天没有记录的事实。"
+				/>
 			</template>
 
 			<button v-if="!archiveMode && review && review.result && !showEmailSettings" class="settings-toggle" @tap="showEmailSettings = true">总结设置</button>
@@ -50,6 +56,7 @@
 </template>
 
 <script>
+import AiResultContinue from '@/components/AiResultContinue.vue';
 import {
 	dailyReviewEmailRequest,
 	dailyReviewEmailVerify,
@@ -67,6 +74,7 @@ function today() {
 }
 
 export default {
+	components: { AiResultContinue },
 	data() {
 		return {
 			statusBarHeight: 0, date: '', loading: false, error: '', review: null, items: [],

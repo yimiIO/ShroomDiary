@@ -1,15 +1,16 @@
 <template>
-	<view class="edit-diary-page">
+	<view class="edit-diary-page" :class="{ 'note-mode': recordMode === 'note' }">
 		<shroom-page-top-spacer />
 
 		<view class="navbar">
+			<image class="editor-hero-art" src="/static/images/shroom-diary-hero-art-v5.webp" mode="aspectFill" aria-hidden="true" />
 			<view class="nav-inner">
 				<button class="nav-back" @click="goBack" aria-label="返回">
 					<text class="nav-back-icon">‹</text>
 				</button>
 				<view class="nav-heading">
-					<text class="nav-kicker">SHROOM JOURNAL</text>
-					<text class="nav-title">{{ isReadOnly ? '查看日记' : (diaryId ? '编辑日记' : '写日记') }}</text>
+					<text class="nav-kicker">{{ recordMode === 'note' ? '收集与整理' : '留给自己的记录' }}</text>
+					<text class="nav-title">{{ editorTitle }}</text>
 				</view>
 				<button class="nav-save" v-if="!isReadOnly" :class="{ disabled: !canSave }" :disabled="!canSave" @click="saveDiary">
 					{{ saving ? '保存中' : '完成' }}
@@ -18,18 +19,53 @@
 			</view>
 		</view>
 
+		<view class="record-kind-shell" v-if="!isReadOnly">
+			<view class="record-kind-tabs" role="tablist" aria-label="创建记录类型">
+				<button class="record-kind-tab" :class="{ active: recordMode === 'diary' }" @click="setRecordMode('diary')">
+					<text class="record-kind-icon diary-icon"></text>
+					<view><text>日记</text><text>记录生活瞬间</text></view>
+				</button>
+				<button class="record-kind-tab" :class="{ active: recordMode === 'note' }" @click="setRecordMode('note')">
+					<text class="record-kind-icon note-icon"></text>
+					<view><text>笔记</text><text>收集与整理</text></view>
+				</button>
+			</view>
+			<button class="record-todo-entry" data-testid="record-create-todo" @click="openTodoCreator">
+				<view><text>想安排一件事？</text><text>待办可以设置时间、项目和截止日期</text></view>
+				<text>新建待办　›</text>
+			</button>
+		</view>
+
 		<scroll-view class="content-scroll" scroll-y>
 			<view class="journal-canvas">
 				<view class="date-intro">
 					<text class="date-eyebrow">{{ displayDateEyebrow }}</text>
 					<text class="date-title">{{ displayDateTitle }}</text>
-					<text class="date-prompt">{{ isReadOnly ? '过去的日记只能查看，不能修改。' : '不必完整，也不必正确。先把此刻留下。' }}</text>
+					<text class="date-prompt">{{ editorPrompt }}</text>
 				</view>
 
-				<view class="mood-block">
+				<view class="capture-source-panel" v-if="!isReadOnly">
+					<view class="capture-source-heading"><text>添加来源</text><text>选填 · {{ recordMode === 'note' ? '把有价值的内容收集在这里' : '让这一天更完整' }}</text></view>
+					<view class="capture-source-actions" :class="{ 'note-source-actions': recordMode === 'note' }">
+						<template v-if="recordMode === 'note'">
+							<button @click="addNoteLink"><text>⌕</text><text>链接</text><text>粘贴网址</text></button>
+							<button @click="chooseImage"><text>▧</text><text>截图</text><text>{{ diaryForm.images.length ? diaryForm.images.length + ' 张' : '从相册选择' }}</text></button>
+							<button @click="openNoteConversation"><text>…</text><text>AI对话</text><text>保存对话线索</text></button>
+						</template>
+						<template v-else>
+							<button @click="chooseImage"><text>▧</text><text>照片</text><text>{{ diaryForm.images.length ? diaryForm.images.length + ' 张' : '从相册选择' }}</text></button>
+							<button @click="openVoicePanel"><text>◉</text><text>录音</text><text>{{ diaryForm.voice ? '已保存' : (pendingVoiceDraft ? '待上传' : '说给自己听') }}</text></button>
+						</template>
+					</view>
+				</view>
+
+				<view class="mood-block" v-if="recordMode === 'diary' && (!isReadOnly || diaryForm.mood)">
 					<view class="section-heading-row">
-						<text class="section-heading">此刻的感受</text>
-						<text class="section-value">{{ selectedMood.label }}</text>
+						<view class="mood-heading-copy">
+							<text class="section-heading">主要感受</text>
+							<text class="mood-optional">选填 · 一种最明显的就够了</text>
+						</view>
+						<text class="section-value">{{ selectedMood ? selectedMood.label : '可跳过' }}</text>
 					</view>
 					<scroll-view class="mood-scroll" scroll-x :show-scrollbar="false">
 						<view class="mood-row">
@@ -46,18 +82,19 @@
 							</button>
 						</view>
 					</scroll-view>
+					<text class="mood-clear-hint" v-if="diaryForm.mood && !isReadOnly">再点一次已选感受可取消</text>
 				</view>
 
 				<view class="capture-editor-stack">
 				<view class="writing-sheet">
 					<view class="writing-topline">
-						<text class="writing-label">{{ isReadOnly ? '那天发生了什么' : '今天发生了什么？' }}</text>
+						<text class="writing-label">{{ writingLabel }}</text>
 						<text class="writing-count">{{ diaryForm.content.length }} / 5000</text>
 					</view>
 					<textarea
 						class="content-input"
 						v-model="diaryForm.content"
-						placeholder="从一个画面、一句话，或一种说不清的感受开始……"
+						:placeholder="writingPlaceholder"
 						placeholder-class="content-placeholder"
 						:maxlength="5000"
 						:show-confirm-bar="false"
@@ -65,14 +102,6 @@
 					/>
 
 					<view class="writing-tools" v-if="!isReadOnly">
-						<button class="writing-tool" :class="{ active: voicePanelOpen || diaryForm.voice }" @click="openVoicePanel">
-							<view class="tool-icon mic-mini"><view class="mic-mini-stem"></view></view>
-							<text>{{ diaryForm.voice ? '语音已保存' : '语音写日记' }}</text>
-						</button>
-						<button class="writing-tool" :class="{ active: imageUploading }" :disabled="imageUploading" @click="chooseImage">
-							<view class="tool-icon photo-mini"><view class="photo-mini-dot"></view></view>
-							<text>{{ imageUploading ? imageUploadProgress + '%' : '照片' }}</text>
-						</button>
 						<button class="writing-tool" @click="selectCard">
 							<text class="tool-symbol">✦</text>
 							<text>关联菇卡</text>
@@ -102,7 +131,7 @@
 					<text class="image-upload-meta">已处理 {{ imageUploadFinishedCount }} / {{ imageUploadTotal }} 张 · 已用时 {{ imageUploadElapsed }} 秒</text>
 				</view>
 
-				<button class="post-save-choice" :class="{ selected: lookBackAfterSave }" v-if="!diaryId && !isReadOnly" @click="lookBackAfterSave = !lookBackAfterSave">
+				<button class="post-save-choice" :class="{ selected: lookBackAfterSave }" v-if="!diaryId && !isReadOnly && recordMode === 'diary'" @click="lookBackAfterSave = !lookBackAfterSave">
 					<view class="choice-check"><text v-if="lookBackAfterSave">✓</text></view>
 					<view class="choice-copy">
 						<text>保存后，看看与过去的关联</text>
@@ -110,32 +139,53 @@
 					</view>
 				</button>
 
-				<view class="voice-studio" v-if="voicePanelOpen || diaryForm.voice">
+				<view class="voice-studio" v-if="voicePanelOpen || diaryForm.voice || pendingVoiceDraft">
 					<view class="voice-header">
 						<view>
 							<text class="voice-kicker">VOICE NOTE</text>
 							<text class="voice-title">说给未来的自己听</text>
 						</view>
-						<button class="quiet-button" v-if="!isRecording" @click="voicePanelOpen = false">收起</button>
+						<button class="quiet-button" v-if="!isRecording && !voiceFinalizing" @click="voicePanelOpen = false">收起</button>
 					</view>
 
-					<view class="recording-state" v-if="isRecording || voiceUploading">
-						<view class="record-orbit" :class="{ recording: isRecording }">
-							<button v-if="isRecording" class="record-button stop" @click="stopRecording">
+					<view class="recording-state" v-if="isRecording">
+						<view class="record-orbit recording">
+							<button class="record-button stop" @click="stopRecording">
 								<view class="stop-square"></view>
 							</button>
+						</view>
+						<text class="record-time">{{ formatDuration(recordSeconds) }}</text>
+						<text class="record-caption">正在录音 · 点击停止</text>
+						<view class="live-wave" aria-hidden="true">
+							<view v-for="(height, index) in waveformBars" :key="index" class="live-wave-bar" :style="{ height: height + 'rpx' }"></view>
+						</view>
+					</view>
+
+					<view class="recording-state saving-state" v-else-if="voiceFinalizing || voiceUploading">
+						<view class="record-orbit saved-orbit">
+							<view v-if="voiceFinalizing" class="recording-stopped-mark">✓</view>
 							<view v-else class="upload-progress-ring">
 								<text class="upload-progress-number">{{ voiceUploadProgress }}%</text>
 							</view>
 						</view>
-						<text class="record-time">{{ formatDuration(recordSeconds) }}</text>
-						<text class="record-caption">{{ voiceUploading ? '正在安全保存录音 · ' + voiceUploadProgress + '%' : '正在录音 · 点击停止' }}</text>
+						<text class="record-stopped-title">录音已停止</text>
+						<text class="record-stopped-duration">已录 {{ formatDuration(recordSeconds) }}</text>
+						<text class="record-caption">{{ voiceFinalizing ? '正在保存到本机，请稍候' : '正在安全上传 · ' + voiceUploadProgress + '%' }}</text>
 						<view class="progress-track upload-track" v-if="voiceUploading">
 							<view class="progress-fill" :style="{ width: voiceUploadProgress + '%' }"></view>
 						</view>
-						<text class="progress-meta" v-if="voiceUploading">已用时 {{ voiceUploadElapsed }} 秒 · 上传完成后录音会立即保留</text>
-						<view class="live-wave" aria-hidden="true">
-							<view v-for="(height, index) in waveformBars" :key="index" class="live-wave-bar" :style="{ height: height + 'rpx' }"></view>
+						<text class="progress-meta" v-if="voiceUploading">已用时 {{ voiceUploadElapsed }} 秒 · 录音已经先保存在本机</text>
+					</view>
+
+					<view class="pending-voice-state" v-else-if="pendingVoiceDraft && !diaryForm.voice && !isReadOnly">
+						<view class="pending-voice-copy">
+							<text class="pending-voice-title">{{ pendingVoiceDraft.durable === false ? '录音还在当前页面' : '录音已保存在本机' }}</text>
+							<text class="pending-voice-meta">{{ formatDuration(pendingVoiceDraft.duration) }} · {{ pendingVoiceDraft.durable === false ? '请不要退出，先重试上传' : '可安全退出，下次继续上传' }}</text>
+							<text class="pending-voice-error" v-if="voiceUploadError">{{ voiceUploadError }}</text>
+						</view>
+						<view class="pending-voice-actions">
+							<button class="pending-upload-button" @click="retryPendingVoiceUpload">重新上传</button>
+							<button class="voice-link danger" @click="removeVoice">删除本机录音</button>
 						</view>
 					</view>
 
@@ -148,14 +198,14 @@
 						</button>
 						<view class="record-ready-copy">
 							<text class="record-instruction">点击开始录音</text>
-							<text class="record-helper">最长 10 分钟，录音会和文字一起保存。</text>
+							<text class="record-helper">最长 10 分钟，停止后会先保存到本机，再上传。</text>
 						</view>
 					</view>
 
 					<view class="voice-result" v-else>
 						<view class="voice-player">
-							<button class="play-button" @click="toggleVoicePlayback">
-								<text>{{ isVoicePlaying ? 'Ⅱ' : '▶' }}</text>
+							<button class="play-button" :class="{ loading: voicePlaybackLoading }" :disabled="voicePlaybackLoading" @click="toggleVoicePlayback">
+								<text>{{ voicePlaybackLoading ? '…' : (isVoicePlaying ? 'Ⅱ' : '▶') }}</text>
 							</button>
 							<view class="waveform" @click="restartVoice">
 								<view
@@ -322,23 +372,59 @@
 				<view class="bottom-space"></view>
 			</view>
 		</scroll-view>
+
+		<view class="segment-preview-overlay" v-if="segmentPreviewOpen" @touchmove.stop.prevent>
+			<view class="segment-preview-card" role="dialog" aria-label="分开保存记录">
+				<view class="segment-preview-heading">
+					<view>
+						<text class="segment-preview-kicker">记录建议</text>
+						<text class="segment-preview-title">要分开记吗？</text>
+					</view>
+					<button class="segment-preview-close" @click="closeSegmentPreview" aria-label="继续编辑">×</button>
+				</view>
+				<text class="segment-preview-intro">这段文字有 {{ segmentDrafts.length }} 个较完整的部分。分开后，以后按时间、事件和感受查找会更准。</text>
+				<scroll-view class="segment-preview-list" scroll-y>
+					<view class="segment-preview-item" v-for="(segment, index) in segmentDrafts" :key="index">
+						<text class="segment-preview-index">第 {{ index + 1 }} 条</text>
+						<text class="segment-preview-text">{{ segment }}</text>
+					</view>
+				</scroll-view>
+				<text class="segment-preview-note">只按你的原文分段，不会改写。主要感受只保留在第一条。</text>
+				<view class="segment-preview-actions">
+					<button class="segment-keep-button" @click="saveDiary({ skipSegmentPreview: true })">保留一篇</button>
+					<button class="segment-split-button" data-testid="confirm-diary-split" @click="saveSegmentedDiary">分成 {{ segmentDrafts.length }} 条</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script>
 import moment from '@/common/moment.js';
-import { diaryAiAccess, diaryDetail, diaryCreate, diaryUpdate } from '@/api/diary';
+import { diaryAiAccess, diaryBatchCreate, diaryDetail, diaryCreate, diaryUpdate } from '@/api/diary';
 import { shroomCardDetail } from '@/api/shroomCard';
 import { inquiryDiaryLinks } from '@/api/inquiry';
-import { uploadImage, uploadVoice, transcribeVoiceBase } from '@/api/upload';
+import { uploadImage, uploadVoice, transcribeVoiceBase, voicePlaybackBase } from '@/api/upload';
 import wechatPrivacy from '@/utils/wechat-privacy.js';
 // #ifdef H5
 import indexConfig from '@/config/index.config';
+import h5VoiceDraft from '@/utils/h5-voice-draft.js';
+import resumableVoiceUpload from '@/utils/resumable-voice-upload.js';
 // #endif
 import voiceProgress from '@/utils/voice-progress.js';
+import voiceDraft from '@/utils/voice-draft.js';
+import voiceRecordingState from '@/utils/voice-recording-state.js';
+import { suggestDiarySegments } from '@/utils/diary-segmentation.js';
 
 const MAX_RECORD_SECONDS = 600;
+const VOICE_UPLOAD_TIMEOUT_MS = 180000;
 const { clampPercent, estimatedTranscriptionPercent } = voiceProgress;
+const { loadVoiceDraft, storeVoiceDraft, persistVoiceRecording, uploadPreservingVoiceDraft, discardVoiceDraft } = voiceDraft;
+const { stopRecordingState } = voiceRecordingState;
+// #ifdef H5
+const { persistH5VoiceRecording, loadH5VoiceDraft, markH5VoiceDraftUploaded, rememberH5VoiceUploadSession, discardH5VoiceDraft } = h5VoiceDraft;
+const { directUploadVoice, resumableUploadVoice } = resumableVoiceUpload;
+// #endif
 const { PRIVACY_DENIED_MESSAGE, requireWechatPrivacyAuthorization, isWechatPrivacyDenied } = wechatPrivacy;
 
 export default {
@@ -366,7 +452,7 @@ export default {
 			timeOptions,
 			diaryForm: {
 				content: '',
-				mood: 'calm',
+				mood: null,
 				images: [],
 				voice: null,
 				linkedCards: [],
@@ -384,7 +470,8 @@ export default {
 				{ value: 'anxious', label: '焦虑', emoji: '😰' },
 				{ value: 'sad', label: '难过', emoji: '😢' },
 				{ value: 'angry', label: '生气', emoji: '😠' },
-				{ value: 'confused', label: '困惑', emoji: '😕' }
+				{ value: 'confused', label: '困惑', emoji: '😕' },
+				{ value: 'complex', label: '复杂', emoji: '🫧' }
 			],
 			privacyOptions: [
 				{ value: 'PRIVATE', label: '仅自己可见', desc: '这是默认选项，只有你能看到' },
@@ -395,11 +482,14 @@ export default {
 			voicePanelOpen: false,
 			detailsOpen: false,
 			isRecording: false,
+			voiceFinalizing: false,
 			voiceUploading: false,
 			voiceUploadProgress: 0,
 			voiceUploadElapsed: 0,
 			voiceUploadStartedAt: 0,
 			voiceUploadTimer: null,
+			pendingVoiceDraft: null,
+			voiceUploadError: '',
 			imageUploading: false,
 			imageUploadProgress: 0,
 			imageUploadFinishedCount: 0,
@@ -418,8 +508,10 @@ export default {
 				transcriptionError: '',
 				transcriptionAvailable: false,
 				transcriptionStatusKnown: false,
-				analysisAvailable: false,
+			analysisAvailable: false,
 			lookBackAfterSave: false,
+			segmentPreviewOpen: false,
+			segmentDrafts: [],
 			linkedInquiries: [],
 			aiAccessChanging: false,
 			saving: false,
@@ -430,7 +522,13 @@ export default {
 			h5Recorder: null,
 			h5Stream: null,
 			h5Chunks: [],
+			h5CheckpointPromise: null,
+			h5CheckpointVersion: 0,
+			h5LastCheckpointAt: 0,
+			h5VisibilityHandler: null,
 			voicePlayer: null,
+			voicePlaybackLoading: false,
+			voicePlaybackPromise: null,
 			isVoicePlaying: false,
 			voicePlaybackTime: 0,
 			transcriptDraft: '',
@@ -438,15 +536,38 @@ export default {
 		};
 	},
 	computed: {
+		recordMode() {
+			return this.diaryForm.type === 'note' ? 'note' : 'diary';
+		},
+		editorTitle() {
+			const kind = this.recordMode === 'note' ? '笔记' : '日记';
+			if (this.isReadOnly) return `查看${kind}`;
+			return this.diaryId ? `编辑${kind}` : `新建${kind}`;
+		},
+		editorPrompt() {
+			if (this.isReadOnly) return `过去的${this.recordMode === 'note' ? '笔记' : '日记'}只能查看，不能修改。`;
+			return this.recordMode === 'note'
+				? '好的想法值得被收集。先留下来，再慢慢整理。'
+				: '一次经历、一个念头，都可以单独留下。';
+		},
+		writingLabel() {
+			if (this.recordMode === 'note') return '今天想留住什么？';
+			return this.isReadOnly ? '那天发生了什么' : '今天发生了什么？';
+		},
+		writingPlaceholder() {
+			return this.recordMode === 'note'
+				? '写下你的想法、灵感、看到的内容……'
+				: '记录此刻发生的一件事、一个想法，或者一种感受……';
+		},
 		isReadOnly() {
 			return this.entryDate !== moment().format('YYYY-MM-DD');
 		},
 		canSave() {
-			return !this.isReadOnly && !this.saving && !this.isRecording && !this.voiceUploading && !this.imageUploading &&
-				(this.diaryForm.content.trim().length > 0 || Boolean(this.diaryForm.voice));
+			return !this.isReadOnly && !this.saving && !this.isRecording && !this.voiceFinalizing && !this.voiceUploading && !this.imageUploading &&
+				(this.diaryForm.content.trim().length > 0 || Boolean(this.diaryForm.voice) || this.diaryForm.images.length > 0);
 		},
 		selectedMood() {
-			return this.moods.find(item => item.value === this.diaryForm.mood) || this.moods[2];
+			return this.moods.find(item => item.value === this.diaryForm.mood) || null;
 		},
 		displayDateEyebrow() {
 			if (this.entryDate === moment().format('YYYY-MM-DD')) return '今天';
@@ -471,24 +592,36 @@ export default {
 		this.statusBarHeight = systemInfo.statusBarHeight || 0;
 		if (options && /^\d{4}-\d{2}-\d{2}$/.test(String(options.date || ''))) this.entryDate = options.date;
 		if (options && options.time) this.setTimeFromString(options.time);
+		if (options && options.mode === 'note' && !options.id) this.diaryForm.type = 'note';
+		uni.setNavigationBarTitle({ title: this.recordMode === 'note' ? '新建笔记' : '创建记录' });
 		if ((!options || !options.id) && this.isReadOnly) {
 			uni.showToast({ title: '只能记录今天，过去的日记不能补写', icon: 'none' });
 			setTimeout(() => this.leaveEditor(), 300);
 			return;
 		}
-		this.initVoicePlayer();
 		this.initPlatformRecorder();
+		// #ifdef H5
+		this.setupH5VoiceSafety();
+		// #endif
 		this.loadCapabilities();
-		if (!options || !options.id) this.voicePanelOpen = true;
+		if ((!options || !options.id) && this.recordMode === 'diary') this.voicePanelOpen = true;
+		if (!options || !options.id) this.restorePendingVoiceDraft();
 		if (options && options.cardId && !options.id) this.loadInitialCard(String(options.cardId));
 		if (options && options.id) {
 			this.diaryId = options.id;
 			this.loadDiary(options.id);
 		}
 	},
+	onShow() {
+		if (!this.diaryId && !this.pendingVoiceDraft && !this.diaryForm.voice && !this.isRecording) {
+			this.restorePendingVoiceDraft();
+		}
+	},
 	onUnload() {
+		if (this.isRecording) this.stopRecording();
 		// #ifdef H5
 		document.documentElement.classList.remove('shroom-focus-active');
+		this.teardownH5VoiceSafety();
 		// #endif
 		this.clearRecordTimer();
 		this.clearVoiceUploadTimer();
@@ -502,6 +635,57 @@ export default {
 		}
 	},
 	methods: {
+		setRecordMode(mode) {
+			const nextType = mode === 'note' ? 'note' : 'default';
+			if (this.diaryForm.type === nextType) return;
+			this.diaryForm.type = nextType;
+			if (mode === 'note') {
+				this.voicePanelOpen = false;
+				this.lookBackAfterSave = false;
+			}
+		},
+		openTodoCreator() {
+			const goTodo = () => uni.redirectTo({ url: '/pages/todo/edit' });
+			if (!this.hasDraft()) return goTodo();
+			uni.showModal({
+				title: '改为创建待办？',
+				content: '当前还没有保存，进入待办后这些内容不会保留。',
+				confirmText: '继续',
+				success: result => { if (result.confirm) goTodo(); }
+			});
+		},
+		addNoteLink() {
+			if (!this.ensureWritable()) return;
+			uni.showModal({
+				title: '添加链接',
+				content: '',
+				editable: true,
+				placeholderText: '粘贴网址',
+				confirmText: '加入笔记',
+				success: result => {
+					if (!result.confirm) return;
+					const value = String(result.content || '').trim();
+					if (!/^https?:\/\//i.test(value)) {
+						uni.showToast({ title: '请输入完整的 http(s) 网址', icon: 'none' });
+						return;
+					}
+					const prefix = this.diaryForm.content.trim() ? '\n\n' : '';
+					const addition = `来源：${value}`;
+					if (this.diaryForm.content.length + prefix.length + addition.length > 5000) {
+						uni.showToast({ title: '笔记内容已接近上限', icon: 'none' });
+						return;
+					}
+					this.diaryForm.content += prefix + addition;
+				}
+			});
+		},
+		openNoteConversation() {
+			if (this.hasDraft()) {
+				uni.showToast({ title: '先完成这篇笔记，再去和菇聊聊', icon: 'none' });
+				return;
+			}
+			uni.navigateTo({ url: '/pages/shroom/memory?from=note' });
+		},
 		async loadInitialCard(cardId) {
 			try {
 				const res = await this.$http.get(shroomCardDetail, { id: cardId });
@@ -540,9 +724,9 @@ export default {
 				this.diaryForm = {
 					id: diary.id,
 					content: diary.content || '',
-					mood: diary.mood || 'calm',
+					mood: diary.mood || null,
 					images: Array.isArray(diary.images) ? diary.images : [],
-					voice: diary.voice || null,
+					voice: diary.voice ? { ...diary.voice, url: null } : null,
 					hour: diary.hour === null || diary.hour === undefined ? null : Number(diary.hour),
 					minute: diary.minute === null || diary.minute === undefined ? null : Number(diary.minute),
 					type: diary.type || 'default',
@@ -550,6 +734,7 @@ export default {
 					visibility: diary.visibility || 'PRIVATE',
 					aiAllowed: diary.aiAllowed !== false
 				};
+				uni.setNavigationBarTitle({ title: this.diaryForm.type === 'note' ? '笔记' : '日记' });
 				this.transcriptDraft = diary.voice && diary.voice.transcript ? diary.voice.transcript : '';
 				this.syncSelectedTime();
 				this.voicePanelOpen = Boolean(diary.voice);
@@ -564,7 +749,7 @@ export default {
 
 		selectMood(mood) {
 			if (!this.ensureWritable()) return;
-			this.diaryForm.mood = mood;
+			this.diaryForm.mood = this.diaryForm.mood === mood ? null : mood;
 		},
 		async chooseImage() {
 			if (!this.ensureWritable()) return;
@@ -727,9 +912,16 @@ export default {
 				const candidates = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'];
 				const mimeType = candidates.find(type => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type));
 				this.h5Chunks = [];
-				this.h5Recorder = mimeType ? new MediaRecorder(this.h5Stream, { mimeType }) : new MediaRecorder(this.h5Stream);
+				this.h5CheckpointPromise = Promise.resolve();
+				this.h5CheckpointVersion += 1;
+				this.h5LastCheckpointAt = 0;
+				const recorderOptions = { audioBitsPerSecond: 32000 };
+				if (mimeType) recorderOptions.mimeType = mimeType;
+				this.h5Recorder = new MediaRecorder(this.h5Stream, recorderOptions);
 				this.h5Recorder.ondataavailable = event => {
-					if (event.data && event.data.size) this.h5Chunks.push(event.data);
+					if (!event.data || !event.data.size) return;
+					this.h5Chunks.push(event.data);
+					this.queueH5RecordingCheckpoint();
 				};
 				this.h5Recorder.onerror = error => this.handleRecordingError(error);
 				this.h5Recorder.onstop = () => {
@@ -743,10 +935,49 @@ export default {
 				this.handleRecordingError(error);
 			}
 		},
+		setupH5VoiceSafety() {
+			if (this.h5VisibilityHandler || typeof document === 'undefined') return;
+			this.h5VisibilityHandler = () => {
+				if (document.visibilityState === 'hidden' && this.isRecording) this.stopRecording();
+			};
+			document.addEventListener('visibilitychange', this.h5VisibilityHandler);
+			window.addEventListener('pagehide', this.h5VisibilityHandler);
+		},
+		teardownH5VoiceSafety() {
+			if (!this.h5VisibilityHandler || typeof document === 'undefined') return;
+			document.removeEventListener('visibilitychange', this.h5VisibilityHandler);
+			window.removeEventListener('pagehide', this.h5VisibilityHandler);
+			this.h5VisibilityHandler = null;
+		},
+		queueH5RecordingCheckpoint(force = false) {
+			if (!this.h5Chunks.length) return this.h5CheckpointPromise || Promise.resolve();
+			const now = Date.now();
+			if (!force && now - this.h5LastCheckpointAt < 3000) return this.h5CheckpointPromise || Promise.resolve();
+			this.h5LastCheckpointAt = now;
+			const version = this.h5CheckpointVersion;
+			const chunks = this.h5Chunks.slice();
+			const blobType = this.h5Recorder && this.h5Recorder.mimeType ? this.h5Recorder.mimeType : 'audio/webm';
+			const blob = new Blob(chunks, { type: blobType });
+			const duration = Math.max(1, this.recordStartedAt ? Math.floor((now - this.recordStartedAt) / 1000) : this.recordSeconds);
+			const ownerId = this.currentVoiceOwnerId();
+			this.h5CheckpointPromise = (this.h5CheckpointPromise || Promise.resolve())
+				.catch(() => {})
+				.then(() => persistH5VoiceRecording({ blob, duration, ownerId }))
+				.then(draft => {
+					if (version === this.h5CheckpointVersion && !this.diaryForm.voice) this.pendingVoiceDraft = draft;
+					return draft;
+				})
+				.catch(error => {
+					console.error('网页录音过程检查点保存失败', error);
+					return null;
+				});
+			return this.h5CheckpointPromise;
+		},
 		// #endif
 		beginRecordingTimer() {
 			this.recordStartedAt = Date.now();
 			this.recordSeconds = 0;
+			this.voiceFinalizing = false;
 			this.isRecording = true;
 			this.clearRecordTimer();
 			this.recordTimer = setInterval(() => {
@@ -755,8 +986,17 @@ export default {
 			}, 500);
 		},
 		stopRecording() {
-			if (!this.isRecording || this.voiceUploading) return;
-			this.isRecording = false;
+			const transition = stopRecordingState({
+				isRecording: this.isRecording,
+				voiceFinalizing: this.voiceFinalizing,
+				recordSeconds: this.recordSeconds,
+				recordStartedAt: this.recordStartedAt,
+				maxRecordSeconds: MAX_RECORD_SECONDS
+			});
+			if (!transition.shouldStopRecorder) return;
+			this.recordSeconds = transition.recordSeconds;
+			this.isRecording = transition.isRecording;
+			this.voiceFinalizing = transition.voiceFinalizing;
 			this.clearRecordTimer();
 			// #ifdef H5
 			if (this.h5Recorder && this.h5Recorder.state !== 'inactive') this.h5Recorder.stop();
@@ -778,6 +1018,7 @@ export default {
 		handleRecordingError(error) {
 			console.error('录音失败', error);
 			this.isRecording = false;
+			this.voiceFinalizing = false;
 			this.voiceUploading = false;
 			this.clearRecordTimer();
 			this.clearVoiceUploadTimer();
@@ -812,6 +1053,135 @@ export default {
 			this.voiceUploading = false;
 			this.clearVoiceUploadTimer();
 		},
+		currentVoiceOwnerId() {
+			return this.$store && this.$store.state && this.$store.state.userInfo
+				? String(this.$store.state.userInfo.id || '')
+				: '';
+		},
+		async restorePendingVoiceDraft() {
+			// #ifdef H5
+			try {
+				const draft = await loadH5VoiceDraft({ ownerId: this.currentVoiceOwnerId() });
+				if (!draft) return;
+				this.pendingVoiceDraft = draft;
+				this.recordSeconds = draft.duration;
+				this.voicePanelOpen = true;
+				if (draft.serverVoice) {
+					this.diaryForm.voice = draft.serverVoice;
+					this.voiceUploadError = '录音已上传但日记尚未完成，请点击完成。';
+				} else {
+					this.voiceUploadError = '上次上传未完成，录音仍保存在本机。';
+				}
+			} catch (error) {
+				console.error('恢复网页录音草稿失败', error);
+			}
+			return;
+			// #endif
+			// #ifndef H5
+			const draft = loadVoiceDraft(uni, this.currentVoiceOwnerId());
+			if (!draft) return;
+			this.pendingVoiceDraft = draft;
+			this.recordSeconds = draft.duration;
+			this.voicePanelOpen = true;
+			if (draft.serverVoice) {
+				this.diaryForm.voice = draft.serverVoice;
+				uni.showToast({ title: '已恢复未完成的语音日记', icon: 'none' });
+			} else {
+				this.voiceUploadError = '上次上传未完成，录音仍在本机。';
+			}
+			// #endif
+		},
+		async persistPlatformVoiceDraft(tempFilePath) {
+			const duration = Math.max(1, this.recordSeconds);
+			try {
+				this.pendingVoiceDraft = await persistVoiceRecording({
+					api: uni,
+					storage: uni,
+					tempFilePath,
+					duration,
+					ownerId: this.currentVoiceOwnerId()
+				});
+				this.voiceUploadError = '';
+			} catch (error) {
+				console.error('录音本机持久化失败', error);
+				const temporaryDraft = {
+					version: 1,
+					filePath: tempFilePath,
+					duration,
+					createdAt: Date.now(),
+					mimeType: 'audio/mpeg',
+					ownerId: this.currentVoiceOwnerId(),
+					durable: false,
+					serverVoice: null
+				};
+				try {
+					this.pendingVoiceDraft = storeVoiceDraft(uni, temporaryDraft);
+				} catch (storageError) {
+					console.error('录音草稿元数据保存失败', storageError);
+					this.pendingVoiceDraft = temporaryDraft;
+				}
+				this.voiceUploadError = '本机持久保存失败，请不要退出，先重试上传。';
+			}
+			return this.pendingVoiceDraft;
+		},
+		async retryPendingVoiceUpload() {
+			if (!this.pendingVoiceDraft || this.voiceUploading) return;
+			this.voiceUploadError = '';
+			try {
+				this.recordSeconds = this.pendingVoiceDraft.duration;
+				this.beginVoiceUpload();
+				// #ifdef H5
+				const cleanType = String(this.pendingVoiceDraft.mimeType || 'audio/webm').split(';')[0];
+				const extension = cleanType === 'audio/mp4' ? 'm4a' : (cleanType.split('/')[1] || 'webm');
+				const response = await this.uploadH5Voice(this.pendingVoiceDraft.blob, extension);
+				this.acceptVoiceUpload(response, cleanType);
+				this.pendingVoiceDraft = await markH5VoiceDraftUploaded({
+					draft: this.pendingVoiceDraft,
+					serverVoice: this.diaryForm.voice
+				});
+				// #endif
+				// #ifndef H5
+				const result = await uploadPreservingVoiceDraft({
+					storage: uni,
+					draft: this.pendingVoiceDraft,
+					upload: async draft => {
+						const response = await this.$http.upload(uploadVoice, {
+							filePath: draft.filePath,
+							name: 'file',
+							timeout: VOICE_UPLOAD_TIMEOUT_MS,
+							getTask: task => this.trackVoiceUploadTask(task)
+						});
+						this.acceptVoiceUpload(response, draft.mimeType || 'audio/mpeg');
+						return this.diaryForm.voice;
+					}
+				});
+				if (result.error) throw result.error;
+				this.pendingVoiceDraft = result.draft;
+				// #endif
+				this.finishVoiceUpload(true);
+				uni.showToast({ title: '语音已上传，请点击完成', icon: 'success' });
+			} catch (error) {
+				console.error('语音上传失败', error);
+				this.voiceUploadError = this.pendingVoiceDraft && this.pendingVoiceDraft.durable === false
+					? '上传失败。请不要退出，检查网络后重试。'
+					: '上传失败，录音已保存在本机，可稍后重试。';
+				uni.showToast({ title: this.pendingVoiceDraft && this.pendingVoiceDraft.durable === false ? '请不要退出，先重试上传' : '录音已保存在本机', icon: 'none' });
+			} finally {
+				this.finishVoiceUpload(Boolean(this.diaryForm.voice));
+			}
+		},
+		async clearPendingVoiceDraft() {
+			if (!this.pendingVoiceDraft) return;
+			const draft = this.pendingVoiceDraft;
+			this.pendingVoiceDraft = null;
+			this.voiceUploadError = '';
+			// #ifdef H5
+			await discardH5VoiceDraft({ draft });
+			// #endif
+			// #ifndef H5
+			await discardVoiceDraft({ api: uni, storage: uni, draft });
+			// #endif
+		},
 		async finishPlatformRecording(result) {
 			this.isRecording = false;
 			this.clearRecordTimer();
@@ -819,21 +1189,9 @@ export default {
 				this.handleRecordingError(new Error('Missing recording file'));
 				return;
 			}
-			try {
-				this.beginVoiceUpload();
-				const response = await this.$http.upload(uploadVoice, {
-					filePath: result.tempFilePath,
-					name: 'file',
-					getTask: task => this.trackVoiceUploadTask(task)
-				});
-				this.acceptVoiceUpload(response, 'audio/mpeg');
-				this.finishVoiceUpload(true);
-			} catch (error) {
-				console.error('语音上传失败', error);
-				uni.showToast({ title: '录音未能保存，请重新录制', icon: 'none' });
-			} finally {
-				this.finishVoiceUpload(Boolean(this.diaryForm.voice));
-			}
+			await this.persistPlatformVoiceDraft(result.tempFilePath);
+			this.voiceFinalizing = false;
+			await this.retryPendingVoiceUpload();
 		},
 		// #ifdef H5
 		async finishH5Recording(blob) {
@@ -842,36 +1200,87 @@ export default {
 				this.handleRecordingError(new Error('Empty recording'));
 				return;
 			}
-			if (blob.size > 10 * 1024 * 1024) {
-				uni.showToast({ title: '录音文件超过 10MB，请缩短后重试', icon: 'none' });
-				return;
-			}
 			try {
-				this.beginVoiceUpload();
-				const cleanType = String(blob.type || 'audio/webm').split(';')[0];
-				const extension = cleanType === 'audio/mp4' ? 'm4a' : (cleanType.split('/')[1] || 'webm');
-				const payload = await this.uploadH5Voice(blob, extension);
-				this.acceptVoiceUpload(payload, cleanType);
-				this.finishVoiceUpload(true);
+				await (this.h5CheckpointPromise || Promise.resolve());
+				this.pendingVoiceDraft = await persistH5VoiceRecording({
+					blob,
+					duration: Math.max(1, this.recordSeconds),
+					ownerId: this.currentVoiceOwnerId()
+				});
+				this.voiceUploadError = '';
 			} catch (error) {
-				console.error('语音上传失败', error);
-				uni.showToast({ title: '录音未能保存，请重新录制', icon: 'none' });
-			} finally {
-				this.finishVoiceUpload(Boolean(this.diaryForm.voice));
+				console.error('网页录音本机持久化失败', error);
+				this.pendingVoiceDraft = {
+					version: 1,
+					ownerId: this.currentVoiceOwnerId(),
+					blob,
+					duration: Math.max(1, this.recordSeconds),
+					createdAt: Date.now(),
+					mimeType: String(blob.type || 'audio/webm').split(';')[0],
+					durable: false,
+					serverVoice: null
+				};
+				this.voiceUploadError = '本机持久保存失败，请不要退出，先重试上传。';
+			}
+			this.voiceFinalizing = false;
+			await this.retryPendingVoiceUpload();
+		},
+		async uploadH5Voice(blob, extension) {
+			const fileName = `shroom-${Date.now()}.${extension}`;
+			const common = {
+				blob,
+				fileName,
+				mimeType: String(blob.type || 'audio/webm').split(';')[0],
+				uploadId: this.pendingVoiceDraft && this.pendingVoiceDraft.uploadId,
+				request: options => this.h5VoiceUploadRequest(options),
+				onSession: async uploadId => {
+					if (this.pendingVoiceDraft && this.pendingVoiceDraft.uploadId === uploadId) return;
+					this.pendingVoiceDraft = await rememberH5VoiceUploadSession({
+						draft: this.pendingVoiceDraft,
+						uploadId
+					});
+				},
+				onProgress: value => this.setVoiceUploadProgress(value)
+			};
+			try {
+				return await directUploadVoice({
+					...common,
+					directRequest: options => this.h5DirectVoiceUploadRequest(options)
+				});
+			} catch (error) {
+				console.warn('录音私有直传失败，改用服务端断点续传', error);
+				this.setVoiceUploadProgress(0);
+				return resumableUploadVoice({ ...common, maxChunkSize: 128 * 1024 });
 			}
 		},
-		uploadH5Voice(blob, extension) {
+		h5DirectVoiceUploadRequest({ method, url, body, headers = {}, onProgress }) {
 			return new Promise((resolve, reject) => {
-				const formData = new FormData();
-				formData.append('file', blob, `shroom-${Date.now()}.${extension}`);
 				const request = new XMLHttpRequest();
-				request.open('POST', `${indexConfig.baseUrl}${uploadVoice}`, true);
-				request.timeout = 120000;
-				request.setRequestHeader('x-api-key', uni.getStorageSync('accessToken'));
+				request.open(method, url, true);
+				request.timeout = 90000;
+				Object.keys(headers).forEach(key => request.setRequestHeader(key, headers[key]));
 				request.upload.onprogress = event => {
-					if (event.lengthComputable && event.total > 0) {
-						this.setVoiceUploadProgress((event.loaded / event.total) * 100);
-					}
+					if (typeof onProgress === 'function') onProgress(event.loaded || 0);
+				};
+				request.onerror = () => reject(new Error('Direct voice upload network error'));
+				request.ontimeout = () => reject(new Error('Direct voice upload timeout'));
+				request.onload = () => {
+					if (request.status >= 200 && request.status < 300) resolve({ status: request.status });
+					else reject(new Error(`Direct voice upload failed (${request.status})`));
+				};
+				request.send(body);
+			});
+		},
+		h5VoiceUploadRequest({ method, path, json, body, headers = {}, onProgress }) {
+			return new Promise((resolve, reject) => {
+				const request = new XMLHttpRequest();
+				request.open(method, `${indexConfig.baseUrl}/media/v1${path}`, true);
+				request.timeout = VOICE_UPLOAD_TIMEOUT_MS;
+				request.setRequestHeader('x-api-key', uni.getStorageSync('accessToken'));
+				Object.keys(headers).forEach(key => request.setRequestHeader(key, headers[key]));
+				if (json !== undefined) request.setRequestHeader('Content-Type', 'application/json');
+				request.upload.onprogress = event => {
+					if (typeof onProgress === 'function') onProgress(event.loaded || 0);
 				};
 				request.onerror = () => reject(new Error('Voice upload network error'));
 				request.ontimeout = () => reject(new Error('Voice upload timeout'));
@@ -889,7 +1298,7 @@ export default {
 					}
 					resolve(payload);
 				};
-				request.send(formData);
+				request.send(json !== undefined ? JSON.stringify(json) : body);
 			});
 		},
 		// #endif
@@ -908,11 +1317,11 @@ export default {
 			this.transcriptMeta = null;
 			this.transcriptionError = '';
 			this.voicePlaybackTime = 0;
-			uni.showToast({ title: '语音已保存', icon: 'success' });
 		},
 
 		initVoicePlayer() {
-			if (typeof uni.createInnerAudioContext !== 'function') return;
+			if (this.voicePlayer) return this.voicePlayer;
+			if (typeof uni.createInnerAudioContext !== 'function') return null;
 			const player = uni.createInnerAudioContext();
 			player.autoplay = false;
 			player.onPlay(() => { this.isVoicePlaying = true; });
@@ -923,29 +1332,69 @@ export default {
 			player.onError(error => {
 				console.error('语音播放失败', error);
 				this.isVoicePlaying = false;
+				if (this.diaryForm.voice && this.diaryForm.voice.url === player.src) {
+					this.$set(this.diaryForm.voice, 'url', null);
+				}
 				uni.showToast({ title: '语音暂时无法播放', icon: 'none' });
 			});
 			this.voicePlayer = player;
+			return player;
 		},
-		toggleVoicePlayback() {
-			if (!this.diaryForm.voice || !this.diaryForm.voice.url || !this.voicePlayer) return;
+		async ensureVoicePlaybackUrl() {
+			const voice = this.diaryForm.voice;
+			if (!voice) return '';
+			if (voice.url) return voice.url;
+			if (!voice.mediaId) throw new Error('Voice media id is missing');
+			if (this.voicePlaybackPromise) return this.voicePlaybackPromise;
+			this.voicePlaybackLoading = true;
+			this.voicePlaybackPromise = this.$http.get(`${voicePlaybackBase}/${voice.mediaId}/playback`)
+				.then(res => {
+					if (!res || res.code !== 200 || !res.data || !res.data.url) throw new Error('Voice playback url is unavailable');
+					if (this.diaryForm.voice === voice) this.$set(voice, 'url', res.data.url);
+					return res.data.url;
+				});
+			try {
+				return await this.voicePlaybackPromise;
+			} finally {
+				this.voicePlaybackPromise = null;
+				this.voicePlaybackLoading = false;
+			}
+		},
+		async toggleVoicePlayback() {
+			if (!this.diaryForm.voice) return;
 			if (this.isVoicePlaying) {
 				this.voicePlayer.pause();
 				return;
 			}
-			if (this.voicePlayer.src !== this.diaryForm.voice.url) this.voicePlayer.src = this.diaryForm.voice.url;
-			this.voicePlayer.play();
+			try {
+				const url = await this.ensureVoicePlaybackUrl();
+				const player = this.initVoicePlayer();
+				if (!url || !player) throw new Error('Voice player is unavailable');
+				if (player.src !== url) player.src = url;
+				player.play();
+			} catch (error) {
+				console.error('加载语音失败', error);
+				uni.showToast({ title: '录音加载失败，请重试', icon: 'none' });
+			}
 		},
 		stopVoicePlayback() {
 			if (this.voicePlayer && this.isVoicePlaying) this.voicePlayer.stop();
 			this.isVoicePlaying = false;
 		},
-		restartVoice() {
-			if (!this.voicePlayer || !this.diaryForm.voice) return;
-			if (this.voicePlayer.src !== this.diaryForm.voice.url) this.voicePlayer.src = this.diaryForm.voice.url;
-			this.voicePlayer.seek(0);
-			this.voicePlaybackTime = 0;
-			this.voicePlayer.play();
+		async restartVoice() {
+			if (!this.diaryForm.voice) return;
+			try {
+				const url = await this.ensureVoicePlaybackUrl();
+				const player = this.initVoicePlayer();
+				if (!url || !player) throw new Error('Voice player is unavailable');
+				if (player.src !== url) player.src = url;
+				player.seek(0);
+				this.voicePlaybackTime = 0;
+				player.play();
+			} catch (error) {
+				console.error('加载语音失败', error);
+				uni.showToast({ title: '录音加载失败，请重试', icon: 'none' });
+			}
 		},
 		isWavePlayed(index) {
 			if (!this.voiceDuration) return false;
@@ -959,19 +1408,22 @@ export default {
 			uni.showModal({
 				title: '重新录制？',
 				content: '新录音会替换当前语音，已经加入正文的文字不会删除。',
-				success: result => {
+				success: async result => {
 					if (!result.confirm) return;
-					this.removeVoice(false);
+					await this.removeVoice(false);
 					this.startRecording();
 				}
 			});
 		},
-		removeVoice(showMessage = true) {
+		async removeVoice(showMessage = true) {
 			this.stopVoicePlayback();
+			await this.clearPendingVoiceDraft();
 			this.diaryForm.voice = null;
 			this.transcriptDraft = '';
 			this.transcriptMeta = null;
 			this.transcriptionError = '';
+			this.voicePlaybackPromise = null;
+			this.voicePlaybackLoading = false;
 			this.voicePlaybackTime = 0;
 			if (showMessage) uni.showToast({ title: '已从这篇日记移除', icon: 'none' });
 		},
@@ -1138,37 +1590,58 @@ export default {
 			}
 			return `${this.entryDate} ${time}`;
 		},
-		async saveDiary() {
+		buildDiaryData() {
+			const voice = this.diaryForm.voice ? {
+				...this.diaryForm.voice,
+				transcript: this.transcriptDraft.trim() || null,
+				transcribedAt: this.transcriptDraft.trim() ? (this.diaryForm.voice.transcribedAt || moment().toISOString()) : null,
+				model: this.transcriptDraft.trim() ? ((this.transcriptMeta && this.transcriptMeta.model) || this.diaryForm.voice.model || null) : null
+			} : null;
+			return {
+				content: this.diaryForm.content,
+				mood: this.diaryForm.mood,
+				images: this.diaryForm.images,
+				voice,
+				hour: this.diaryForm.hour,
+				minute: this.diaryForm.minute,
+				type: this.diaryForm.type || 'default',
+				linkedCards: this.diaryForm.linkedCards.map(card => card.id || card),
+				visibility: this.diaryForm.visibility || 'PRIVATE',
+				createdAt: this.buildOccurredAt()
+			};
+		},
+		openSegmentPreviewIfNeeded() {
+			const canSuggest = !this.diaryId && this.recordMode === 'diary' && !this.lookBackAfterSave &&
+				!this.diaryForm.voice && !this.diaryForm.images.length && !this.diaryForm.linkedCards.length && !this.linkedInquiries.length;
+			if (!canSuggest) return false;
+			const segments = suggestDiarySegments(this.diaryForm.content);
+			if (segments.length < 2) return false;
+			this.segmentDrafts = segments;
+			this.segmentPreviewOpen = true;
+			return true;
+		},
+		closeSegmentPreview() {
+			this.segmentPreviewOpen = false;
+			this.segmentDrafts = [];
+		},
+		async saveDiary(options = {}) {
 			if (!this.ensureWritable()) return;
 			if (!this.canSave) {
-				uni.showToast({ title: '写点文字或留下一段语音吧', icon: 'none' });
+				uni.showToast({ title: this.recordMode === 'note' ? '写点想留住的内容吧' : '写点文字或留下一段语音吧', icon: 'none' });
 				return;
 			}
+			if (!options.skipSegmentPreview && this.openSegmentPreviewIfNeeded()) return;
+			this.closeSegmentPreview();
+			const updatingExisting = Boolean(this.diaryId);
 			this.saving = true;
 			try {
-				const voice = this.diaryForm.voice ? {
-					...this.diaryForm.voice,
-					transcript: this.transcriptDraft.trim() || null,
-					transcribedAt: this.transcriptDraft.trim() ? (this.diaryForm.voice.transcribedAt || moment().toISOString()) : null,
-					model: this.transcriptDraft.trim() ? ((this.transcriptMeta && this.transcriptMeta.model) || this.diaryForm.voice.model || null) : null
-				} : null;
-				const diaryData = {
-					content: this.diaryForm.content,
-					mood: this.diaryForm.mood,
-					images: this.diaryForm.images,
-					voice,
-					hour: this.diaryForm.hour,
-					minute: this.diaryForm.minute,
-					type: this.diaryForm.type || 'default',
-					linkedCards: this.diaryForm.linkedCards.map(card => card.id || card),
-					visibility: this.diaryForm.visibility || 'PRIVATE',
-					createdAt: this.buildOccurredAt()
-				};
+				const diaryData = this.buildDiaryData();
 					const res = this.diaryId
 						? await this.$http.put(`${diaryUpdate}?id=${this.diaryId}`, diaryData)
 						: await this.$http.post(diaryCreate, diaryData);
 					if (res.code !== 200) throw new Error(res.message || 'Save failed');
 					this.diaryId = res.data && res.data.id ? res.data.id : this.diaryId;
+					await this.clearPendingVoiceDraft();
 					let linkSyncFailed = false;
 					try {
 						await this.syncInquiryLinks(this.diaryId);
@@ -1183,17 +1656,83 @@ export default {
 						});
 						return;
 					}
-					uni.showToast({ title: linkSyncFailed ? '日记已保存，问题关联请重试' : '这一刻已经保存', icon: linkSyncFailed ? 'none' : 'success' });
-					setTimeout(() => this.leaveEditor(), 700);
+					const kindLabel = this.recordMode === 'note' ? '笔记' : '日记';
+					if (!updatingExisting && this.recordMode === 'diary' && !linkSyncFailed) {
+						this.promptNextRecord(1);
+					} else {
+						uni.showToast({ title: linkSyncFailed ? `${kindLabel}已保存，问题关联请重试` : `${kindLabel}已保存`, icon: linkSyncFailed ? 'none' : 'success' });
+						setTimeout(() => this.leaveEditor(), 700);
+					}
 			} catch (error) {
 				console.error('保存日记失败', error);
-				uni.showToast({ title: '日记没有保存成功', icon: 'none' });
+				uni.showToast({ title: `${this.recordMode === 'note' ? '笔记' : '日记'}没有保存成功`, icon: 'none' });
 			} finally {
 					this.saving = false;
 				}
 			},
+		async saveSegmentedDiary() {
+			if (this.saving || this.segmentDrafts.length < 2) return;
+			const segments = [...this.segmentDrafts];
+			this.segmentPreviewOpen = false;
+			this.saving = true;
+			try {
+				const diaryData = this.buildDiaryData();
+				const res = await this.$http.post(diaryBatchCreate, {
+					originalContent: this.diaryForm.content,
+					segments,
+					mood: diaryData.mood,
+					hour: diaryData.hour,
+					minute: diaryData.minute,
+					linkedCards: diaryData.linkedCards,
+					visibility: diaryData.visibility,
+					createdAt: diaryData.createdAt
+				});
+				if (res.code !== 200 || !res.data || !Array.isArray(res.data.list)) throw new Error(res.message || 'Split save failed');
+				this.segmentDrafts = [];
+				this.promptNextRecord(res.data.list.length);
+			} catch (error) {
+				console.error('分段保存失败', error);
+				this.segmentPreviewOpen = true;
+				uni.showToast({ title: '还没有分开保存，请再试一次', icon: 'none' });
+			} finally {
+				this.saving = false;
+			}
+		},
+		promptNextRecord(savedCount) {
+			const count = Math.max(1, Number(savedCount) || 1);
+			uni.showModal({
+				title: count > 1 ? `${count} 条记录已保存` : '这一条已保存',
+				content: '还有另一件事、一个念头或一种感受吗？',
+				confirmText: '再记一条',
+				cancelText: '完成',
+				success: result => {
+					if (result.confirm) this.resetForNextRecord();
+					else this.leaveEditor();
+				},
+				fail: () => this.leaveEditor()
+			});
+		},
+		resetForNextRecord() {
+			const visibility = this.diaryForm.visibility || 'PRIVATE';
+			this.diaryId = null;
+			this.originalCreatedAt = null;
+			this.diaryForm = {
+				content: '', mood: null, images: [], voice: null, linkedCards: [], visibility,
+				hour: null, minute: null, type: 'default', aiAllowed: true
+			};
+			this.selectedTimeIndex = 0;
+			this.linkedInquiries = [];
+			this.lookBackAfterSave = false;
+			this.detailsOpen = false;
+			this.voicePanelOpen = false;
+			this.transcriptDraft = '';
+			this.transcriptMeta = null;
+			this.closeSegmentPreview();
+			uni.setNavigationBarTitle({ title: '创建记录' });
+			uni.showToast({ title: '可以继续记下一件事', icon: 'none' });
+		},
 		hasDraft() {
-			return Boolean(this.diaryForm.content.trim() || this.diaryForm.voice || this.diaryForm.images.length);
+			return Boolean(this.diaryForm.content.trim() || this.diaryForm.voice || this.pendingVoiceDraft || this.diaryForm.images.length);
 		},
 		leaveEditor() {
 			const pages = getCurrentPages();
@@ -1217,8 +1756,10 @@ export default {
 				return;
 			}
 			uni.showModal({
-				title: '要离开这篇日记吗？',
-				content: '还没有点击完成，刚才的修改不会保留。',
+				title: `要离开这篇${this.recordMode === 'note' ? '笔记' : '日记'}吗？`,
+				content: this.pendingVoiceDraft && this.pendingVoiceDraft.durable !== false
+					? '还没有点击完成。本机录音会保留，下次可继续上传；其他修改不会保留。'
+					: '还没有点击完成，刚才的修改不会保留。',
 				confirmText: '离开',
 				cancelText: '继续写',
 				success: result => { if (result.confirm) this.leaveEditor(); }
@@ -1255,17 +1796,24 @@ button::after { border: 0; }
 .status-bar { flex-shrink: 0; background: rgba(241, 248, 233, 0.96); }
 
 .navbar {
+	position: relative;
+	height: 238rpx;
 	flex-shrink: 0;
-	background: rgba(241, 248, 233, 0.96);
+	overflow: hidden;
+	background: #f4f3e8;
 	border-bottom: 1rpx solid rgba(23, 32, 25, 0.08);
 	z-index: 20;
 }
+.navbar::after { position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(248,248,238,.97) 0%, rgba(248,248,238,.76) 42%, rgba(248,248,238,.08) 72%); content: ''; pointer-events: none; }
+.editor-hero-art { position: absolute; inset: 0; width: 100%; height: 100%; object-position: 52% 54%; }
 
 .nav-inner {
-	height: 112rpx;
+	position: relative;
+	z-index: 2;
+	height: 132rpx;
 	max-width: 920rpx;
 	margin: 0 auto;
-	padding: 0 34rpx;
+	padding: 18rpx 34rpx 0;
 	display: flex;
 	align-items: center;
 	box-sizing: border-box;
@@ -1283,7 +1831,7 @@ button::after { border: 0; }
 }
 
 .nav-back-icon { font-size: 56rpx; font-weight: 300; transform: translateY(-3rpx); }
-.nav-heading { flex: 1; padding-left: 24rpx; display: flex; flex-direction: column; }
+.nav-heading { flex: 1; min-width: 0; padding-left: 24rpx; display: flex; flex-direction: column; }
 .nav-kicker, .voice-kicker, .transcript-kicker, .bridge-kicker {
 	font-size: 18rpx;
 	line-height: 1.2;
@@ -1291,7 +1839,7 @@ button::after { border: 0; }
 	font-weight: 700;
 	color: #718075;
 }
-.nav-title { margin-top: 7rpx; font-size: 28rpx; line-height: 1; font-weight: 650; }
+.nav-title { margin-top: 7rpx; font-size: 34rpx; line-height: 1; font-weight: 760; }
 
 .nav-save {
 	min-width: 108rpx;
@@ -1305,6 +1853,7 @@ button::after { border: 0; }
 	color: #fffdf8;
 	font-size: 25rpx;
 	font-weight: 650;
+	box-shadow: 0 9rpx 22rpx rgba(48, 67, 38, .16);
 }
 .nav-save.disabled { opacity: 0.34; }
 .nav-readonly {
@@ -1318,18 +1867,86 @@ button::after { border: 0; }
 	text-align: center;
 }
 
-.content-scroll { flex: 1; height: 0; }
-.journal-canvas { width: 100%; max-width: 920rpx; margin: 0 auto; padding: 50rpx 34rpx 0; box-sizing: border-box; }
+.record-kind-shell {
+	padding: 12rpx 28rpx 18rpx;
+	flex: 0 0 auto;
+	background: rgba(241, 248, 233, .96);
+}
+.record-kind-tabs {
+	width: 100%;
+	max-width: 920rpx;
+	min-height: 104rpx;
+	margin: 0 auto;
+	padding: 7rpx;
+	box-sizing: border-box;
+	display: flex;
+	gap: 7rpx;
+	border: 1rpx solid rgba(65, 78, 55, .13);
+	border-radius: 25rpx;
+	background: rgba(255, 254, 249, .9);
+	box-shadow: 0 10rpx 28rpx rgba(67, 87, 49, .06);
+}
+.record-kind-tab {
+	min-width: 0;
+	min-height: 90rpx;
+	padding: 0 13rpx;
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12rpx;
+	border-radius: 20rpx;
+	color: #59615c;
+	background: transparent;
+	transition: background .2s ease, color .2s ease;
+}
+.record-kind-tab.active { color: #fff; background: #536d40; }
+.record-kind-tab > view { min-width: 0; display: flex; flex-direction: column; gap: 5rpx; text-align: left; }
+.record-kind-tab > view text:first-child { font-size: 23rpx; font-weight: 720; line-height: 1.1; }
+.record-kind-tab > view text:last-child { color: #8b938e; font-size: 16rpx; line-height: 1.1; white-space: nowrap; }
+.record-kind-tab.active > view text:last-child { color: rgba(255,255,255,.76); }
+.record-kind-icon { position: relative; width: 34rpx; height: 38rpx; flex: 0 0 34rpx; box-sizing: border-box; color: currentColor; }
+.diary-icon { border: 3rpx solid currentColor; border-radius: 5rpx 13rpx 13rpx 5rpx; }
+.diary-icon::after { position: absolute; top: 3rpx; bottom: 3rpx; left: 7rpx; border-left: 2rpx solid currentColor; content: ''; opacity: .6; }
+.note-icon { border: 3rpx solid currentColor; border-radius: 7rpx; }
+.note-icon::before,.note-icon::after { position: absolute; right: 6rpx; left: 6rpx; border-top: 2rpx solid currentColor; content: ''; }
+.note-icon::before { top: 10rpx; }
+.note-icon::after { top: 20rpx; }
+.record-todo-entry { display: flex; width: 100%; max-width: 920rpx; min-height: 76rpx; margin: 11rpx auto 0; padding: 0 17rpx; box-sizing: border-box; align-items: center; gap: 18rpx; color: #4e5d52; text-align: left; }
+.record-todo-entry > view { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 7rpx; }
+.record-todo-entry > view text:first-child { color: #344139; font-size: 21rpx; font-weight: 700; }
+.record-todo-entry > view text:last-child { overflow: hidden; color: #879087; font-size: 16rpx; text-overflow: ellipsis; white-space: nowrap; }
+.record-todo-entry > text { flex: 0 0 auto; color: #526742; font-size: 20rpx; font-weight: 700; }
 
-.date-intro { padding: 14rpx 10rpx 46rpx; display: flex; flex-direction: column; }
+.content-scroll { flex: 1; height: 0; }
+.journal-canvas { width: 100%; max-width: 920rpx; margin: 0 auto; padding: 28rpx 34rpx 0; box-sizing: border-box; }
+
+.date-intro { padding: 8rpx 10rpx 28rpx; display: flex; flex-direction: column; border-bottom: 1rpx solid #dde8d7; margin-bottom: 26rpx; }
 .date-eyebrow { font-size: 23rpx; letter-spacing: 4rpx; color: #6d7850; font-weight: 700; }
 .date-title { margin-top: 14rpx; font-family: Georgia, 'Songti SC', serif; font-size: 53rpx; line-height: 1.22; font-weight: 500; letter-spacing: -1rpx; }
 .date-prompt { margin-top: 18rpx; color: #728075; font-size: 25rpx; line-height: 1.7; }
+
+.capture-source-panel { margin-bottom: 24rpx; padding: 24rpx; border: 1rpx solid #e3eadb; border-radius: 28rpx; background: #fffefa; }
+.capture-source-heading { display: flex; align-items: baseline; gap: 14rpx; }
+.capture-source-heading text:first-child { color: #253128; font-size: 25rpx; font-weight: 700; }
+.capture-source-heading text:last-child { color: #879182; font-size: 19rpx; }
+.capture-source-actions { display: flex; gap: 14rpx; margin-top: 20rpx; }
+.capture-source-actions button { display: flex; min-width: 0; flex: 1; height: 88rpx; align-items: center; gap: 11rpx; padding: 0 16rpx; border: 1rpx solid #e3eadb; border-radius: 20rpx; background: #f9fbf6; text-align: left; }
+.capture-source-actions button text:first-child { display: flex; width: 38rpx; height: 38rpx; align-items: center; justify-content: center; border-radius: 50%; background: #e7f0df; color: #436741; font-size: 25rpx; }
+.capture-source-actions button text:nth-child(2) { color: #26322a; font-size: 22rpx; font-weight: 700; }
+.capture-source-actions button text:last-child { overflow: hidden; color: #879182; font-size: 17rpx; text-overflow: ellipsis; white-space: nowrap; }
+.capture-source-actions.note-source-actions { gap: 10rpx; }
+.capture-source-actions.note-source-actions button { min-height: 102rpx; height: auto; padding: 13rpx 8rpx; flex-direction: column; justify-content: center; gap: 5rpx; text-align: center; }
+.capture-source-actions.note-source-actions button text:first-child { width: 40rpx; height: 40rpx; }
+.capture-source-actions.note-source-actions button text:nth-child(2) { font-size: 21rpx; }
+.capture-source-actions.note-source-actions button text:last-child { width: 100%; font-size: 16rpx; }
 
 .section-heading-row { display: flex; align-items: center; justify-content: space-between; }
 .section-heading { font-size: 25rpx; font-weight: 650; color: #332723; }
 .section-value { font-size: 22rpx; color: #81776f; }
 .mood-block { margin-bottom: 28rpx; }
+.mood-heading-copy { display: flex; min-width: 0; align-items: baseline; gap: 14rpx; }
+.mood-optional { color: #969087; font-size: 18rpx; }
 .mood-scroll { width: 100%; margin-top: 20rpx; white-space: nowrap; }
 .mood-row { display: inline-flex; padding: 0 6rpx 8rpx 0; }
 .mood-chip {
@@ -1346,6 +1963,7 @@ button::after { border: 0; }
 .mood-chip.active { background: #26351f; border-color: #26351f; color: #fff; box-shadow: 0 10rpx 24rpx rgba(38, 53, 31, 0.14); }
 .mood-emoji { font-size: 31rpx; }
 .mood-label { margin-left: 10rpx; font-size: 23rpx; font-weight: 600; }
+.mood-clear-hint { display: block; margin-top: 6rpx; color: #9a938a; font-size: 18rpx; }
 
 .capture-editor-stack { display: flex; flex-direction: column; }
 .writing-sheet {
@@ -1383,6 +2001,11 @@ button::after { border: 0; }
 	overflow-wrap: anywhere;
 }
 .content-placeholder { color: #b0a69d; }
+.note-mode .journal-canvas { padding-top: 20rpx; }
+.note-mode .date-intro { border-bottom-color: rgba(106, 128, 80, .16); }
+.note-mode .writing-sheet { border-color: rgba(105, 128, 79, .12); background: #fffefa; box-shadow: 0 18rpx 52rpx rgba(65, 87, 48, .07); }
+.note-mode .content-input { min-height: 430rpx; height: 430rpx; }
+.note-mode .writing-label { color: #253128; font-size: 27rpx; }
 .writing-tools { min-height: 104rpx; padding: 12rpx 18rpx calc(12rpx + env(safe-area-inset-bottom)); border-top: 1rpx solid #eee8e1; display: flex; align-items: center; justify-content: space-around; }
 .writing-tool { min-width: 120rpx; padding: 14rpx 10rpx; border-radius: 20rpx; display: flex; flex-direction: column; align-items: center; color: #786e67; }
 .writing-tool.active { background: #edf0e5; color: #445329; }
@@ -1436,11 +2059,20 @@ button::after { border: 0; }
 .details-title { margin-top: 10rpx; font-family: Georgia, 'Songti SC', serif; font-size: 33rpx; }
 .quiet-button { padding: 14rpx 18rpx; color: #c6cdb7; font-size: 21rpx; }
 .ready-to-record { display: flex; padding: 17rpx 2rpx 4rpx; align-items: center; gap: 22rpx; }
+.pending-voice-state { margin-top: 20rpx; padding: 24rpx; border-radius: 20rpx; background: rgba(255, 255, 255, .08); }
+.pending-voice-copy { display: flex; flex-direction: column; }
+.pending-voice-title { color: #fffaf3; font-size: 25rpx; font-weight: 680; }
+.pending-voice-meta { margin-top: 9rpx; color: #bdc5b0; font-size: 20rpx; line-height: 1.5; }
+.pending-voice-error { margin-top: 12rpx; color: #f0aa97; font-size: 20rpx; line-height: 1.5; }
+.pending-voice-actions { margin-top: 20rpx; display: flex; align-items: center; justify-content: space-between; }
+.pending-upload-button { height: 66rpx; padding: 0 24rpx; border-radius: 34rpx; background: #f4efe6; color: #26321f; font-size: 22rpx; font-weight: 680; line-height: 66rpx; }
 .recording-state { padding: 24rpx 0 12rpx; display: flex; flex-direction: column; align-items: center; }
 .record-button { display: flex; width: 88rpx; height: 88rpx; margin: 0; flex: 0 0 88rpx; align-items: center; justify-content: center; border-radius: 50%; background: #d86246; box-shadow: 0 0 0 10rpx rgba(216, 98, 70, 0.13); }
 .record-button.stop { width: 82rpx; height: 82rpx; flex-basis: 82rpx; }
 .record-orbit { display: flex; width: 112rpx; height: 112rpx; align-items: center; justify-content: center; border: 2rpx solid rgba(224, 117, 91, 0.28); border-radius: 50%; }
 .record-orbit.recording { animation: recordPulse 1.8s ease-in-out infinite; }
+.saved-orbit { border-color: rgba(190, 205, 170, .32); background: rgba(255, 255, 255, .04); }
+.recording-stopped-mark { display: flex; width: 82rpx; height: 82rpx; align-items: center; justify-content: center; border-radius: 50%; background: #e8efe0; color: #34422f; font-size: 38rpx; font-weight: 750; }
 .upload-progress-ring { width: 82rpx; height: 82rpx; border-radius: 50%; background: rgba(244, 239, 230, .1); border: 5rpx solid #d86246; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
 .upload-progress-number { color: #fffaf3; font-size: 27rpx; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
 @keyframes recordPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(216, 98, 70, 0.2); } 50% { box-shadow: 0 0 0 22rpx rgba(216, 98, 70, 0); } }
@@ -1453,6 +2085,8 @@ button::after { border: 0; }
 .record-instruction { font-size: 25rpx; font-weight: 680; }
 .record-helper { color: #aeb6a2; font-size: 20rpx; line-height: 1.45; }
 .record-time { margin-top: 16rpx; font-size: 36rpx; font-weight: 650; letter-spacing: 3rpx; font-variant-numeric: tabular-nums; }
+.record-stopped-title { margin-top: 16rpx; color: #fffaf3; font-size: 28rpx; font-weight: 700; }
+.record-stopped-duration { margin-top: 7rpx; color: #c9d1bd; font-size: 21rpx; font-variant-numeric: tabular-nums; }
 .record-caption { margin-top: 10rpx; color: #bdc5b0; font-size: 21rpx; }
 .progress-track { width: 100%; height: 10rpx; overflow: hidden; border-radius: 999rpx; background: rgba(82, 98, 47, .14); }
 .progress-fill { height: 100%; border-radius: inherit; background: #647441; transition: width .28s ease; }
@@ -1555,6 +2189,47 @@ button::after { border: 0; }
 .analysis-copy text:last-child { font-size: 18rpx; line-height: 1.5; color: #b8c5b8; }
 .analysis-button { height: 61rpx; padding: 0 20rpx; flex: 0 0 auto; border-radius: 999rpx; background: #e5efd9; font-size: 19rpx; font-weight: 690; line-height: 61rpx; color: #172019; }
 .bottom-space { height: calc(64rpx + env(safe-area-inset-bottom)); }
+
+.segment-preview-overlay {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 1200;
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	padding: 32rpx 24rpx calc(32rpx + env(safe-area-inset-bottom));
+	box-sizing: border-box;
+	background: rgba(19, 25, 18, 0.48);
+	backdrop-filter: blur(10rpx);
+}
+.segment-preview-card {
+	width: 100%;
+	max-width: 720rpx;
+	padding: 34rpx 30rpx 30rpx;
+	box-sizing: border-box;
+	border: 1rpx solid rgba(52, 66, 47, 0.12);
+	border-radius: 34rpx;
+	background: #fffdf8;
+	box-shadow: 0 30rpx 90rpx rgba(20, 28, 18, 0.22);
+}
+.segment-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24rpx; }
+.segment-preview-heading > view { display: flex; min-width: 0; flex-direction: column; gap: 8rpx; }
+.segment-preview-kicker { color: #7c876f; font-size: 18rpx; font-weight: 720; letter-spacing: 2rpx; }
+.segment-preview-title { color: #1d281c; font-size: 36rpx; font-weight: 760; line-height: 1.2; }
+.segment-preview-close { width: 56rpx; height: 56rpx; flex: 0 0 56rpx; border-radius: 50%; background: #eef2e8; color: #586250; font-size: 36rpx; line-height: 54rpx; }
+.segment-preview-intro { display: block; margin-top: 18rpx; color: #687064; font-size: 23rpx; line-height: 1.65; }
+.segment-preview-list { max-height: 460rpx; margin-top: 24rpx; }
+.segment-preview-item { margin-bottom: 14rpx; padding: 22rpx 24rpx; border: 1rpx solid rgba(65, 80, 57, 0.1); border-radius: 22rpx; background: #f5f7f0; }
+.segment-preview-index { display: block; color: #667255; font-size: 19rpx; font-weight: 720; }
+.segment-preview-text { display: -webkit-box; margin-top: 10rpx; overflow: hidden; color: #2a3028; font-family: Georgia, 'Songti SC', serif; font-size: 23rpx; line-height: 1.65; word-break: break-word; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.segment-preview-note { display: block; margin-top: 12rpx; color: #8a8f85; font-size: 19rpx; line-height: 1.5; }
+.segment-preview-actions { display: flex; margin-top: 26rpx; gap: 16rpx; }
+.segment-preview-actions button { height: 82rpx; flex: 1; border-radius: 22rpx; font-size: 23rpx; font-weight: 700; line-height: 82rpx; }
+.segment-keep-button { border: 1rpx solid #dce1d6; background: #fff; color: #586052; }
+.segment-split-button { background: #26351f; color: #fff; box-shadow: 0 12rpx 26rpx rgba(38, 53, 31, 0.15); }
 
 @media screen and (min-width: 900px) {
 	.journal-canvas { padding-top: 70rpx; }

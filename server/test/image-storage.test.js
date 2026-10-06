@@ -10,7 +10,7 @@ const path = require('node:path');
 const test = require('node:test');
 const sharp = require('sharp');
 const { optimizeImageForStorage } = require('../src/image-processor');
-const { buildPrivateImageKey, isCosConfigured } = require('../src/media-storage');
+const { buildPrivateImageKey, buildPrivateVoiceKey, isCosConfigured } = require('../src/media-storage');
 
 test('image processing preserves decoded pixels while converting to WebP', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shroom-image-'));
@@ -71,6 +71,10 @@ test('private COS keys isolate users and use Shanghai calendar folders', () => {
   assert.equal(
     buildPrivateImageKey(userId, mediaId, instant),
     `private/users/${userId}/diary/2026/02/${mediaId}.webp`
+  );
+  assert.equal(
+    buildPrivateVoiceKey(userId, mediaId, instant, 'webm'),
+    `private/users/${userId}/diary/2026/02/${mediaId}.webm`
   );
   assert.equal(isCosConfigured(), false);
 });

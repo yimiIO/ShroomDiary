@@ -15,8 +15,12 @@ const uploadVoice = '/media/v1/voice/upload';
 // 语音转写：POST /media/v1/voice/:mediaId/transcribe
 const transcribeVoiceBase = '/media/v1/voice';
 
+// 语音播放：首次点击后才获取短期播放地址
+const voicePlaybackBase = '/media/v1/voice';
+
 export {
 	uploadImage,
 	uploadVoice,
-	transcribeVoiceBase
+	transcribeVoiceBase,
+	voicePlaybackBase
 };

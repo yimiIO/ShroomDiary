@@ -1,7 +1,7 @@
 <template>
-	<view class="edit-page">
+	<view class="edit-page todo-edit-page">
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
-		<view class="navbar" :style="{ paddingTop: navPadding + 'rpx' }"><button @tap="goBack">取消</button><text>{{ todoId ? '调整待办' : '新建待办' }}</text><button data-testid="save-todo" :disabled="saving" @tap="save">{{ saving ? '保存中…' : '保存' }}</button></view>
+		<view class="navbar" :style="{ paddingTop: navPadding + 'rpx' }"><button @tap="goBack">取消</button><text>{{ todoId ? '调整待办' : '新建待办' }}</text><button class="all-todos" data-testid="open-all-todos" @tap="openTodoList">全部待办</button></view>
 		<scroll-view class="form" scroll-y>
 			<view class="title-block"><text>要做什么？</text><textarea v-model="form.title" maxlength="500" auto-height placeholder="只写标题也可以保存" /></view>
 			<view class="description-block"><text>任务说明</text><textarea v-model="form.description" maxlength="5000" auto-height placeholder="具体动作、完成标准或这次不做什么（可选）" /></view>
@@ -24,16 +24,19 @@
 					</view>
 				</view>
 			</view>
-			<view v-if="task && task.sourceType !== 'MANUAL'" class="source"><text>来源</text><text>{{ sourceLabel }}</text><text>来源只用于返回上下文，不会创建另一条待办。</text></view>
+			<view v-if="form.sourceType !== 'MANUAL'" class="source"><text>来源</text><text>{{ sourceLabel }}</text><text>来源只用于返回上下文，不会创建另一条待办。</text></view>
 			<view class="bottom-space"></view>
 		</scroll-view>
+		<view class="submit-dock">
+			<button data-testid="save-todo" :disabled="saving" @tap="save">{{ saving ? '保存中…' : (todoId ? '保存修改' : '创建待办') }}</button>
+		</view>
 	</view>
 </template>
 
 <script>
 import { todoCreate, todoDetail, todoOptions, todoUpdate } from '@/api/todo';
 export default {
-	data() { return { statusBarHeight: 0, customBarHeight: 0, todoId: '', task: null, saving: false, createRequestId: `todo-${Date.now()}-${Math.random().toString(16).slice(2)}`, today: this.localToday(), timeZone: this.localTimeZone(), projects: [], directions: [], repeatEnabled: false, repeatScope: 'INSTANCE', repeatIndex: 0, repeatLabels: ['每天', '每周', '每月'], weekDayOptions: [{ value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' }, { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' }], recurrence: { frequency: 'DAILY', startsOn: this.localToday(), endsOn: '', weekDays: [], monthDay: Number(this.localToday().slice(8, 10)) }, form: { title: '', description: '', projectId: '', scheduledDate: '', scheduledStartTime: '', scheduledEndTime: '', deadline: '', compoundItemId: '' } }; },
+	data() { return { statusBarHeight: 0, customBarHeight: 0, todoId: '', task: null, saving: false, createRequestId: `todo-${Date.now()}-${Math.random().toString(16).slice(2)}`, today: this.localToday(), timeZone: this.localTimeZone(), projects: [], directions: [], repeatEnabled: false, repeatScope: 'INSTANCE', repeatIndex: 0, repeatLabels: ['每天', '每周', '每月'], weekDayOptions: [{ value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' }, { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' }], recurrence: { frequency: 'DAILY', startsOn: this.localToday(), endsOn: '', weekDays: [], monthDay: Number(this.localToday().slice(8, 10)) }, form: { title: '', description: '', projectId: '', scheduledDate: '', scheduledStartTime: '', scheduledEndTime: '', deadline: '', compoundItemId: '', sourceType: 'MANUAL', sourceRefId: '', sourceDiaryId: '', sourceCompoundThreadId: '' } }; },
 	computed: {
 		navPadding() { return Math.max(20, (this.customBarHeight - this.statusBarHeight) * 2 + 10); },
 		projectOptions() { return [{ id: '', name: '不属于项目' }, ...this.projects]; },
@@ -42,14 +45,17 @@ export default {
 		directionIndex() { return Math.max(0, this.directionOptions.findIndex(item => item.id === this.form.compoundItemId)); },
 		selectedProject() { const item = this.projectOptions[this.projectIndex]; return item ? item.name : '不属于项目'; },
 		selectedDirection() { const item = this.directionOptions[this.directionIndex]; return item ? item.name : '不关联'; },
-		sourceLabel() { return { DIARY_AI: '日记 AI 建议', COMPOUND: '复利系统', PROJECT: '项目' }[this.task && this.task.sourceType] || '其他'; }
+		sourceLabel() { return { DIARY_AI: '日记 AI 建议', COMPOUND: '复利系统', PROJECT: '项目' }[this.form.sourceType] || '其他'; }
 	},
-	onLoad(options) { const info = uni.getSystemInfoSync(); this.statusBarHeight = info.statusBarHeight || 0; this.customBarHeight = this.statusBarHeight + 44; this.todoId = options.id || ''; this.form.projectId = options.projectId || ''; this.form.scheduledDate = options.scheduledDate || ''; this.form.scheduledStartTime = options.startTime || ''; this.form.scheduledEndTime = options.endTime || ''; if (this.form.scheduledDate) this.recurrence.startsOn = this.form.scheduledDate; this.initialize(); },
+	onLoad(options) { const info = uni.getSystemInfoSync(); this.statusBarHeight = info.statusBarHeight || 0; this.customBarHeight = this.statusBarHeight + 44; this.todoId = options.id || ''; if (!this.todoId) this.consumePrefill(); this.form.projectId = options.projectId || this.form.projectId; this.form.scheduledDate = options.scheduledDate || this.form.scheduledDate; this.form.scheduledStartTime = options.startTime || this.form.scheduledStartTime; this.form.scheduledEndTime = options.endTime || this.form.scheduledEndTime; if (this.form.scheduledDate) this.recurrence.startsOn = this.form.scheduledDate; this.initialize(); },
+	onShow() { uni.hideTabBar({ animation: false, fail: () => {} }); },
+	onUnload() { uni.showTabBar({ animation: false, fail: () => {} }); },
 	methods: {
 		localToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; },
 		localTimeZone() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'; } catch (_) { return 'Asia/Shanghai'; } },
+		consumePrefill() { const prefill = uni.getStorageSync('todoPrefill'); if (!prefill || typeof prefill !== 'object') return; uni.removeStorageSync('todoPrefill'); const keys = ['title', 'description', 'projectId', 'scheduledDate', 'scheduledStartTime', 'scheduledEndTime', 'deadline', 'compoundItemId', 'sourceType', 'sourceRefId', 'sourceDiaryId', 'sourceCompoundThreadId']; keys.forEach(key => { if (prefill[key] !== undefined && prefill[key] !== null) this.form[key] = prefill[key]; }); if (prefill.recurrence && prefill.recurrence.frequency) { this.repeatEnabled = true; this.repeatIndex = Math.max(0, ['DAILY', 'WEEKLY', 'MONTHLY'].indexOf(prefill.recurrence.frequency)); this.recurrence = { ...this.recurrence, ...prefill.recurrence }; } },
 		async initialize() { try { const options = await this.$http.get(todoOptions); const data = options.data || {}; this.projects = data.projects || []; this.directions = data.directions || []; if (this.todoId) await this.load(); } catch (e) { uni.showToast({ title: '设置加载失败', icon: 'none' }); } },
-		async load() { const res = await this.$http.get(todoDetail, { id: this.todoId, timeZone: this.timeZone }); if (res.code !== 200) throw new Error(res.message); this.task = res.data; this.form = { title: res.data.title, description: res.data.description || '', projectId: res.data.projectId || '', scheduledDate: res.data.scheduledDate || '', scheduledStartTime: res.data.scheduledStartTime || '', scheduledEndTime: res.data.scheduledEndTime || '', deadline: res.data.deadline || '', compoundItemId: res.data.compoundItemId || '' }; if (res.data.recurrence) { this.repeatEnabled = true; this.repeatIndex = Math.max(0, ['DAILY', 'WEEKLY', 'MONTHLY'].indexOf(res.data.recurrence.frequency)); this.recurrence = { frequency: res.data.recurrence.frequency, startsOn: res.data.occurrenceDate || res.data.scheduledDate || this.today, endsOn: res.data.recurrence.endsOn || '', weekDays: res.data.recurrence.weekDays || [], monthDay: res.data.recurrence.monthDay || Number((res.data.occurrenceDate || this.today).slice(8, 10)) }; } },
+		async load() { const res = await this.$http.get(todoDetail, { id: this.todoId, timeZone: this.timeZone }); if (res.code !== 200) throw new Error(res.message); this.task = res.data; this.form = { title: res.data.title, description: res.data.description || '', projectId: res.data.projectId || '', scheduledDate: res.data.scheduledDate || '', scheduledStartTime: res.data.scheduledStartTime || '', scheduledEndTime: res.data.scheduledEndTime || '', deadline: res.data.deadline || '', compoundItemId: res.data.compoundItemId || '', sourceType: res.data.sourceType || 'MANUAL', sourceRefId: res.data.sourceRefId || '', sourceDiaryId: res.data.sourceDiaryId || '', sourceCompoundThreadId: res.data.sourceCompoundThreadId || '' }; if (res.data.recurrence) { this.repeatEnabled = true; this.repeatIndex = Math.max(0, ['DAILY', 'WEEKLY', 'MONTHLY'].indexOf(res.data.recurrence.frequency)); this.recurrence = { frequency: res.data.recurrence.frequency, startsOn: res.data.occurrenceDate || res.data.scheduledDate || this.today, endsOn: res.data.recurrence.endsOn || '', weekDays: res.data.recurrence.weekDays || [], monthDay: res.data.recurrence.monthDay || Number((res.data.occurrenceDate || this.today).slice(8, 10)) }; } },
 		toggleRepeatEnabled(event) { this.repeatEnabled = Boolean(event.detail.value); if (this.repeatEnabled) { const start = this.form.scheduledDate || this.today; this.form.scheduledDate = start; this.recurrence.startsOn = start; this.chooseRepeat({ detail: { value: this.repeatIndex } }); } },
 		changeScheduledDate(event) { this.form.scheduledDate = event.detail.value; if (this.repeatEnabled && (!this.task || !this.task.recurrence)) this.recurrence.startsOn = event.detail.value; },
 		changeRepeatStartDate(event) { this.recurrence.startsOn = event.detail.value; if (!this.task || !this.task.recurrence) this.form.scheduledDate = event.detail.value; },
@@ -57,6 +63,7 @@ export default {
 		chooseRepeat(e) { this.repeatIndex = Number(e.detail.value); this.recurrence.frequency = ['DAILY', 'WEEKLY', 'MONTHLY'][this.repeatIndex]; if (this.recurrence.frequency === 'WEEKLY' && !this.recurrence.weekDays.length) this.recurrence.weekDays = [((new Date(`${this.recurrence.startsOn}T00:00:00`).getDay() + 6) % 7) + 1]; },
 		toggleWeekday(value) { const days = this.recurrence.weekDays; this.recurrence.weekDays = days.includes(value) ? days.filter(day => day !== value) : [...days, value].sort(); },
 		async save() { if (this.saving || !this.form.title.trim()) return uni.showToast({ title: '写下要做什么', icon: 'none' }); if (this.form.scheduledEndTime && (!this.form.scheduledStartTime || this.form.scheduledEndTime <= this.form.scheduledStartTime)) return uni.showToast({ title: '结束时间要晚于开始时间', icon: 'none' }); this.saving = true; try { const payload = { ...this.form, title: this.form.title.trim(), timeZone: this.timeZone, version: this.task ? this.task.version : null, clientRequestId: this.createRequestId }; const recurrence = { ...this.recurrence, startsOn: this.recurrence.startsOn || this.form.scheduledDate || this.today, scheduledStartTime: this.form.scheduledStartTime || null, scheduledEndTime: this.form.scheduledEndTime || null, timeZone: this.timeZone }; let res; if (this.todoId && this.task.recurrence && this.repeatScope === 'FUTURE') { res = await this.$http.put(`/todos/v1/recurrences/${this.task.recurrenceRuleId}`, { ...payload, currentTaskId: this.task.id, effectiveOn: this.task.occurrenceDate || this.task.scheduledDate || this.today, recurrence, version: this.task.recurrence.version, operationId: `repeat-${this.createRequestId}` }); } else { if (!this.todoId && this.repeatEnabled) payload.recurrence = recurrence; res = this.todoId ? await this.$http.put(`${todoUpdate}?id=${this.todoId}`, payload) : await this.$http.post(todoCreate, payload); } if (res.code !== 200) throw new Error(res.message); uni.showToast({ title: '已保存', icon: 'success' }); setTimeout(() => uni.navigateBack(), 450); } catch (e) { uni.showToast({ title: e.message || '保存失败', icon: 'none' }); } finally { this.saving = false; } },
+		openTodoList() { uni.redirectTo({ url: '/pages/todo/list' }); },
 		goBack() { uni.navigateBack(); }
 	}
 };
@@ -67,8 +74,9 @@ button { margin: 0; padding: 0; border: 0; background: transparent; line-height:
 .edit-page { min-height: 100vh; background: #f3f1e9; color: #28342c; }
 .navbar { display: flex; align-items: center; padding: 0 30rpx 20rpx; }
 .navbar text { flex: 1; text-align: center; font: 700 31rpx/1.2 Georgia, 'Songti SC', serif; }
-.navbar button { min-width: 72rpx; color: #627066; font-size: 22rpx; } .navbar button:last-child { color: #3e543f; font-weight: 700; text-align: right; }
-.form { height: calc(100vh - 150rpx - env(safe-area-inset-top)); }
+.navbar button { min-width: 72rpx; color: #627066; font-size: 22rpx; }
+.navbar .all-todos { min-width: 118rpx; color: #3e543f; font-weight: 700; text-align: right; }
+.form { height: calc(100vh - 250rpx - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
 .title-block, .description-block, .settings, .source { margin: 16rpx 30rpx; padding: 25rpx; border: 1rpx solid rgba(40,53,43,.08); border-radius: 24rpx; background: rgba(255,253,247,.76); }
 .title-block > text, .description-block > text, .source > text:first-child { color: #768078; font-size: 19rpx; font-weight: 700; letter-spacing: 1rpx; }
 textarea { width: 100%; max-width: 100%; min-height: 90rpx; margin-top: 17rpx; box-sizing: border-box; color: #28342c; font-size: 28rpx; line-height: 1.55; overflow-wrap: anywhere; }
@@ -79,6 +87,9 @@ textarea { width: 100%; max-width: 100%; min-height: 90rpx; margin-top: 17rpx; b
 .repeat-toggle > view { display: flex; flex: 1; flex-direction: column; gap: 7rpx; } .repeat-toggle > view text:first-child { color: #39463d; } .repeat-toggle > view text:last-child { color: #8a928c; font-size: 17rpx; } .repeat-toggle switch { transform: scale(.78); transform-origin: right center; }
 .repeat-editor { padding: 20rpx 0; border-bottom: 1rpx solid rgba(40,53,43,.08); } .repeat-editor > text:first-child { color: #39463d; font-size: 22rpx; } .scope-buttons { display: flex; gap: 10rpx; margin-top: 16rpx; } .scope-buttons button { flex: 1; padding: 15rpx; border-radius: 16rpx; background: #eeeee7; color: #677269; font-size: 20rpx; } .scope-buttons button.active { background: #dfe8bd; color: #34442e; font-weight: 700; } .scope-note { display: block; margin-top: 12rpx; color: #848d86; font-size: 18rpx; line-height: 1.5; } .repeat-fields { margin-top: 14rpx; padding: 0 16rpx; border-radius: 18rpx; background: #f3f3ed; } .repeat-fields input { width: 90rpx; text-align: right; } .week-days { display: flex; justify-content: space-between; padding: 15rpx 0; } .week-days button { display: flex; width: 48rpx; height: 48rpx; align-items: center; justify-content: center; border-radius: 50%; background: #fff; color: #69736b; font-size: 18rpx; } .week-days button.active { background: #52643d; color: #fff; }
 .source { display: flex; flex-direction: column; gap: 10rpx; } .source > text:nth-child(2) { font-size: 23rpx; } .source > text:last-child { color: #7d867f; font-size: 19rpx; line-height: 1.45; }
-.bottom-space { height: 80rpx; }
-@media (min-width: 900px) { .edit-page { width: 720px; min-height: 760px; margin: 40px auto; border-radius: 28px; } }
+.bottom-space { height: 130rpx; }
+.submit-dock { position: fixed; right: 30rpx; bottom: calc(22rpx + env(safe-area-inset-bottom)); left: 30rpx; z-index: 80; padding: 10rpx; border: 1rpx solid rgba(40,53,43,.08); border-radius: 26rpx; background: rgba(248,247,239,.94); box-shadow: 0 16rpx 42rpx rgba(31,43,35,.16); backdrop-filter: blur(16rpx); }
+.submit-dock button { display: flex; width: 100%; height: 82rpx; align-items: center; justify-content: center; border-radius: 21rpx; background: #26372b; color: #fff; font-size: 24rpx; font-weight: 720; }
+.submit-dock button[disabled] { opacity: .45; }
+@media (min-width: 900px) { .edit-page { width: 720px; min-height: 760px; margin: 40px auto; border-radius: 28px; } .submit-dock { right: auto; left: 50%; width: 640px; transform: translateX(-50%); } }
 </style>

@@ -83,6 +83,7 @@ html,
 body {
 	margin: 0;
 	background: #f1f8e9;
+	overflow-x: hidden;
 }
 
 #app,
@@ -100,7 +101,7 @@ uni-tabbar.uni-tabbar-bottom {
 	left: 0 !important;
 	z-index: 998 !important;
 	width: 100% !important;
-	height: calc(64px + env(safe-area-inset-bottom)) !important;
+	height: calc(72px + env(safe-area-inset-bottom)) !important;
 }
 
 uni-tabbar .uni-tabbar {
@@ -108,12 +109,27 @@ uni-tabbar .uni-tabbar {
 	display: flex !important;
 	position: relative !important;
 	width: 100% !important;
-	height: calc(64px + env(safe-area-inset-bottom)) !important;
-	padding: 6px 8px env(safe-area-inset-bottom) !important;
+	height: calc(72px + env(safe-area-inset-bottom)) !important;
+	padding: 7px 10px calc(7px + env(safe-area-inset-bottom)) !important;
 	align-items: center !important;
-	background: rgba(255, 255, 255, .95) !important;
-	box-shadow: 0 -8px 28px rgba(44, 65, 48, .055) !important;
+	border-radius: 24px 24px 0 0 !important;
+	background: rgba(255, 254, 250, .97) !important;
+	box-shadow: 0 -8px 28px rgba(44, 65, 48, .08) !important;
 	backdrop-filter: blur(18px);
+}
+
+html:has(.diary-page),
+html:has(.diary-page) body,
+html:has(.diary-page) #app,
+html:has(.diary-page) uni-app,
+html:has(.diary-page) uni-page-body {
+	background: #f9fbf2;
+}
+
+html:has(.diary-page) uni-tabbar .uni-tabbar {
+	border-top: 0 !important;
+	background: rgba(255, 254, 249, .98) !important;
+	box-shadow: 0 -5px 18px rgba(73, 92, 67, .055) !important;
 }
 
 uni-tabbar .uni-tabbar-border,
@@ -130,15 +146,23 @@ uni-tabbar .uni-tabbar__bd {
 
 uni-tabbar .uni-tabbar__item {
 	min-width: 0 !important;
-	height: 52px !important;
+	height: 58px !important;
 	flex: 1 !important;
 }
 
 uni-tabbar .uni-tabbar__bd {
 	box-sizing: border-box !important;
-	width: 100% !important;
-	height: 52px !important;
+	width: 64px !important;
+	height: 58px !important;
 	flex-direction: column !important;
+	border-radius: 19px !important;
+	background: transparent !important;
+	box-shadow: none !important;
+}
+
+uni-tabbar .uni-tabbar__item:has(.uni-tabbar__icon img[src*="-selected"]) .uni-tabbar__bd {
+	background: transparent !important;
+	box-shadow: none !important;
 }
 
 uni-tabbar .uni-tabbar__icon,
@@ -150,6 +174,33 @@ uni-tabbar .uni-tabbar__icon img {
 uni-tabbar .uni-tabbar__icon img {
 	width: 100% !important;
 	height: 100% !important;
+	filter: grayscale(1) !important;
+	opacity: .68 !important;
+	transition: opacity .16s ease, transform .16s ease !important;
+}
+
+uni-tabbar .uni-tabbar__item:has(.uni-tabbar__icon img[src*="-selected"]) .uni-tabbar__icon img {
+	opacity: 1 !important;
+	transform: scale(1.025) !important;
+}
+
+uni-tabbar .uni-tabbar__icon {
+	width: 28px !important;
+	height: 28px !important;
+	margin-top: 0 !important;
+}
+
+uni-tabbar .uni-tabbar__label {
+	margin-top: 2px !important;
+	color: #737373 !important;
+	font-size: 13px !important;
+	font-weight: 500 !important;
+	line-height: 16px !important;
+}
+
+uni-tabbar .uni-tabbar__item:has(.uni-tabbar__icon img[src*="-selected"]) .uni-tabbar__label {
+	color: #171717 !important;
+	font-weight: 600 !important;
 }
 
 uni-page-refresh {
@@ -158,6 +209,21 @@ uni-page-refresh {
 
 html.shroom-auth-active uni-tabbar,
 html.shroom-focus-active uni-tabbar {
+	display: none !important;
+}
+
+html:has(.review-page) uni-tabbar.uni-tabbar-bottom,
+html:has(.card-detail-page) uni-tabbar.uni-tabbar-bottom,
+html:has(.shroom-practice-page) uni-tabbar.uni-tabbar-bottom,
+html:has(.share-page) uni-tabbar.uni-tabbar-bottom {
+	display: none !important;
+}
+
+html:has(.todo-edit-page) uni-tabbar.uni-tabbar-bottom {
+	display: none !important;
+}
+
+html:has(.snapshot-subpage) uni-tabbar.uni-tabbar-bottom {
 	display: none !important;
 }
 
@@ -197,7 +263,7 @@ html.shroom-focus-active uni-tabbar {
 	}
 
 	uni-tabbar .uni-tabbar__item:hover {
-		background: #eef5e8 !important;
+		background: transparent !important;
 	}
 
 	uni-tabbar .uni-tabbar__icon {

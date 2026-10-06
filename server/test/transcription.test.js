@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { JOURNAL_PROMPT, transcribeVoice } = require('../src/transcription');
+const { JOURNAL_PROMPT, formatJournalTranscript, transcribeVoice } = require('../src/transcription');
 
 test('transcription uploads only the selected audio with journal-specific recognition hints', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shroom-asr-'));
@@ -49,4 +49,20 @@ test('transcription uploads only the selected audio with journal-specific recogn
     model: 'test-high-accuracy-model',
     language: 'zh'
   });
+});
+
+test('journal transcript formatting keeps short speech intact and groups long speech without rewriting it', () => {
+  const short = '今天有一点累，但总体还好。';
+  assert.equal(formatJournalTranscript(short), short);
+
+  const long = [
+    '今天我处理了几个一直拖着的问题，也终于把最重要的事情写了下来。',
+    '做完以后我没有想象中那么兴奋，反而有一点空。',
+    '不过这可能不是坏事，因为我终于不用一直惦记着它。',
+    '后来我出去走了走，发现自己更想要的是稳定地前进，而不是每天都证明自己。',
+    '所以接下来我准备少安排一点，把真正重要的两件事做好。'
+  ].join('');
+  const formatted = formatJournalTranscript(long);
+  assert.match(formatted, /\n\n/);
+  assert.equal(formatted.replace(/\n/g, ''), long);
 });

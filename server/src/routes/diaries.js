@@ -16,6 +16,8 @@ const { listDiarySourceActivities } = require('../data-sources');
 const { asyncRoute, fail, ok, pageParams, requireUser, text, visibility } = require('../http');
 const { maybeAwardSevenDayReward } = require('../billing-store');
 const { diaryDateFromOccurredAt, isTodayDiaryDate, shanghaiDate } = require('../diary-write-policy');
+const { normalizeDiaryMood } = require('../diary-mood');
+const { normalizeRequestedSegments } = require('../diary-segmentation');
 
 const router = express.Router();
 router.use(requireUser);
@@ -121,8 +123,10 @@ async function ownedVoice(value, userId) {
 function diaryVoice(value) {
   if (!value || typeof value !== 'object') return null;
   const id = mediaId(value.mediaId || value.id || value.url);
-  if (!id) return value.url ? value : null;
-  return { ...value, mediaId: id, url: signedMediaUrl(id) };
+  if (!id) return null;
+  const voice = { ...value, mediaId: id };
+  delete voice.url;
+  return voice;
 }
 
 function mapDiary(row) {
@@ -452,7 +456,7 @@ router.post('/create', asyncRoute(async (req, res) => {
        COALESCE($12::timestamp AT TIME ZONE 'Asia/Shanghai', now()))
      RETURNING user_id, index_epoch, ${selectFields}`,
       [
-      crypto.randomUUID(), req.user.id, content, text(req.body.mood, 32) || null, JSON.stringify(images),
+      crypto.randomUUID(), req.user.id, content, normalizeDiaryMood(req.body.mood), JSON.stringify(images),
       voice ? JSON.stringify(voice) : null,
       Number.isInteger(req.body.hour) ? req.body.hour : null,
       Number.isInteger(req.body.minute) ? req.body.minute : null,
@@ -467,6 +471,41 @@ router.post('/create', asyncRoute(async (req, res) => {
     return inserted;
   });
   return ok(res, mapDiary(result.rows[0]), '日记已保存');
+}));
+
+router.post('/batch-create', asyncRoute(async (req, res) => {
+  const segments = normalizeRequestedSegments(req.body.originalContent, req.body.segments);
+  if (!segments.length) return fail(res, 400, '请确认分段内容没有被改写');
+  const occurredAt = occurredAtInput(req.body);
+  assertTodayDiaryWrite(occurredAt);
+  const linkedCards = await ownedCardIds(req.body.linkedCards, req.user.id);
+  const result = await db.transaction(async client => {
+    const insertedRows = [];
+    for (let index = 0; index < segments.length; index += 1) {
+      const inserted = await client.query(
+        `INSERT INTO diaries
+        (id, user_id, content, mood, images, voice, hour, minute, entry_type, linked_cards, visibility, occurred_at)
+       VALUES
+        ($1, $2, $3, $4, '[]'::jsonb, NULL, $5, $6, 'default', $7::jsonb, $8,
+         COALESCE($9::timestamp AT TIME ZONE 'Asia/Shanghai', now()))
+       RETURNING user_id, index_epoch, ${selectFields}`,
+        [
+          crypto.randomUUID(), req.user.id, segments[index],
+          index === 0 ? normalizeDiaryMood(req.body.mood) : null,
+          Number.isInteger(req.body.hour) ? req.body.hour : null,
+          Number.isInteger(req.body.minute) ? req.body.minute : null,
+          JSON.stringify(index === 0 ? linkedCards : []), visibility(req.body.visibility), occurredAt
+        ]
+      );
+      insertedRows.push(inserted.rows[0]);
+      await enqueueDiaryIndex(client, inserted.rows[0]);
+      await enqueueFriendSync(client, inserted.rows[0]);
+    }
+    await bumpCorpusRevision(client, req.user.id);
+    await maybeAwardSevenDayReward(client, req.user.id);
+    return insertedRows;
+  });
+  return ok(res, { list: result.map(mapDiary) }, `已分开保存 ${result.length} 条记录`);
 }));
 
 router.put('/update', asyncRoute(async (req, res) => {
@@ -507,7 +546,7 @@ router.put('/update', asyncRoute(async (req, res) => {
      WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
      RETURNING user_id, index_epoch, ${selectFields}`,
       [
-      req.query.id, req.user.id, content, text(req.body.mood, 32) || null, JSON.stringify(images),
+      req.query.id, req.user.id, content, normalizeDiaryMood(req.body.mood), JSON.stringify(images),
       voice ? JSON.stringify(voice) : null,
       Number.isInteger(req.body.hour) ? req.body.hour : null,
       Number.isInteger(req.body.minute) ? req.body.minute : null,

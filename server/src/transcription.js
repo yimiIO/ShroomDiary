@@ -11,13 +11,88 @@ const config = require('./config');
 const execFileAsync = promisify(execFile);
 
 const JOURNAL_PROMPT = [
-  '这是一篇中文个人日记。请忠实转写说话内容，补充自然标点，但不要总结、润色、回答或虚构。',
+  '这是一篇中文个人日记。请忠实转写说话内容，补充自然标点，并按话题和自然停顿分成适合阅读的段落，以空行分隔。不要总结、润色、回答或虚构。',
   '说话中可能出现中英文混合和这些专有名词：Shroom、菇卡、EvoX、进化哲学、ExtremeNomad、极限游民、SURFPLUS、冲浪家。'
 ].join('');
 
 const JOURNAL_HOTWORDS = [
   'Shroom', '菇卡', 'EvoX', '进化哲学', 'ExtremeNomad', '极限游民', 'SURFPLUS', '冲浪家'
 ];
+
+const PARAGRAPH_TARGET = 110;
+const PARAGRAPH_MINIMUM = 42;
+const LONG_PAUSE_MS = 1300;
+const TOPIC_TRANSITION = /^(后来|然后|但是|不过|其实|另外|接下来|最后|所以|总之|至于|关于|另一方面|与此同时|回到|再说)/u;
+
+function cleanTranscriptText(value) {
+  return String(value || '').replace(/\r\n?/g, '\n').trim();
+}
+
+function comparableTranscript(value) {
+  return cleanTranscriptText(value).replace(/\s+/gu, '');
+}
+
+function sentenceUnits(value) {
+  const text = cleanTranscriptText(value).replace(/\n+/g, ' ');
+  if (!text) return [];
+  const parts = text.match(/[^。！？!?；;\n]+[。！？!?；;]+|[^。！？!?；;\n]+$/gu) || [text];
+  return parts.map(item => item.trim()).filter(Boolean);
+}
+
+function utteranceUnits(value, completeText) {
+  const utterances = (Array.isArray(value) ? value : []).map(item => ({
+    text: cleanTranscriptText(item && item.text),
+    startTime: Number(item && item.start_time),
+    endTime: Number(item && item.end_time)
+  })).filter(item => item.text);
+  if (!utterances.length) return [];
+  if (comparableTranscript(utterances.map(item => item.text).join('')) !== comparableTranscript(completeText)) return [];
+  const units = [];
+  utterances.forEach((utterance, utteranceIndex) => {
+    sentenceUnits(utterance.text).forEach((text, sentenceIndex) => units.push({
+      text,
+      pauseBefore: utteranceIndex > 0 && sentenceIndex === 0 &&
+        Number.isFinite(utterance.startTime) && Number.isFinite(utterances[utteranceIndex - 1].endTime)
+        ? Math.max(0, utterance.startTime - utterances[utteranceIndex - 1].endTime)
+        : 0
+    }));
+  });
+  return units;
+}
+
+function joinTranscriptUnits(left, right) {
+  if (!left) return right;
+  if (!right) return left;
+  return /[A-Za-z0-9]$/u.test(left) && /^[A-Za-z0-9]/u.test(right) ? `${left} ${right}` : `${left}${right}`;
+}
+
+function formatJournalTranscript(value, utterances = []) {
+  const source = cleanTranscriptText(value);
+  if (!source) return '';
+  if (/\n\s*\n/u.test(source)) {
+    return source.split(/\n\s*\n/gu).map(item => item.trim()).filter(Boolean).join('\n\n').slice(0, 5000);
+  }
+  const timedUnits = utteranceUnits(utterances, source);
+  const units = timedUnits.length ? timedUnits : sentenceUnits(source).map(text => ({ text, pauseBefore: 0 }));
+  if (units.length < 2 || source.length < PARAGRAPH_TARGET) return source.slice(0, 5000);
+
+  const paragraphs = [];
+  let current = '';
+  units.forEach(unit => {
+    const nextLength = current.length + unit.text.length;
+    const naturalPause = unit.pauseBefore >= LONG_PAUSE_MS && current.length >= PARAGRAPH_MINIMUM;
+    const topicChange = TOPIC_TRANSITION.test(unit.text) && current.length >= PARAGRAPH_MINIMUM;
+    const reachedReadingLength = nextLength > PARAGRAPH_TARGET && current.length >= PARAGRAPH_MINIMUM;
+    if (current && (naturalPause || topicChange || reachedReadingLength)) {
+      paragraphs.push(current.trim());
+      current = unit.text;
+    } else {
+      current = joinTranscriptUnits(current, unit.text);
+    }
+  });
+  if (current.trim()) paragraphs.push(current.trim());
+  return paragraphs.join('\n\n').slice(0, 5000);
+}
 
 function serviceError(code, message) {
   return Object.assign(new Error(message), { code });
@@ -138,6 +213,7 @@ async function transcribeVolcengine({ filePath, mimeType }) {
           enable_itn: true,
           enable_punc: true,
           enable_ddc: true,
+          show_utterances: true,
           context
         }
       })
@@ -147,8 +223,9 @@ async function transcribeVolcengine({ filePath, mimeType }) {
       throw volcengineResponseError(response);
     }
     const result = await response.json();
+    const recognition = result && result.result || {};
     return {
-      text: String(result && result.result && result.result.text || '').trim(),
+      text: formatJournalTranscript(recognition.text, recognition.utterances),
       model: config.volcAsrResourceId,
       language: config.asrLanguage || 'zh'
     };
@@ -165,7 +242,7 @@ async function transcribeVoice({ filePath, mimeType, originalName }) {
   const result = config.asrProvider === 'volcengine'
     ? await transcribeVolcengine({ filePath, mimeType })
     : await transcribeOpenAiCompatible({ filePath, mimeType, originalName });
-  const transcript = result.text;
+  const transcript = formatJournalTranscript(result.text);
   if (!transcript) {
     throw serviceError('SHROOM_ASR_EMPTY', '没有识别到清晰语音，可以重新录制后再试');
   }
@@ -179,6 +256,7 @@ async function transcribeVoice({ filePath, mimeType, originalName }) {
 module.exports = {
   JOURNAL_PROMPT,
   JOURNAL_HOTWORDS,
+  formatJournalTranscript,
   isTranscriptionConfigured,
   transcribeVoice,
   volcengineResponseError

@@ -27,6 +27,7 @@ const { isTranscriptionConfigured } = require('../transcription');
 const { isCosConfigured } = require('../media-storage');
 const { isMailConfigured } = require('../mail');
 const { shanghaiDate } = require('../compound-system');
+const contentHubRoutes = require('./admin-content-hub');
 
 const router = express.Router();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -160,6 +161,7 @@ router.post('/session/login', asyncRoute(async (req, res) => {
 
 router.use(requireAdminSession);
 router.use(requireAdminCsrf);
+router.use(contentHubRoutes);
 
 router.get('/session', (req, res) => ok(res, { admin: req.admin, expiresAt: req.adminSession.expires_at }));
 

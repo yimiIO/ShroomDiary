@@ -62,6 +62,15 @@ function buildPrivateImageKey(userId, mediaId, now = new Date(), extension = 'we
   return `private/users/${userId}/diary/${shanghaiYearMonth(now)}/${mediaId}.${safeExtension}`;
 }
 
+function buildPrivateVoiceKey(userId, mediaId, now = new Date(), extension = 'webm') {
+  if (!/^[0-9a-f-]{36}$/i.test(String(userId)) || !/^[0-9a-f-]{36}$/i.test(String(mediaId))) {
+    throw new Error('Invalid private media owner or id');
+  }
+  const allowed = ['mp3', 'm4a', 'wav', 'webm', 'ogg', 'aac', 'flac'];
+  const safeExtension = allowed.includes(extension) ? extension : 'webm';
+  return `private/users/${userId}/diary/${shanghaiYearMonth(now)}/${mediaId}.${safeExtension}`;
+}
+
 async function uploadPrivateImage({ filePath, key, byteSize, mimeType = 'image/webp' }) {
   await cosCall('putObject', {
     Bucket: config.cos.bucket,
@@ -85,6 +94,42 @@ async function readPrivateObject(key) {
     Key: key
   });
   return Buffer.isBuffer(result.Body) ? result.Body : Buffer.from(result.Body || '');
+}
+
+async function statPrivateObject(key) {
+  const result = await cosCall('headObject', {
+    Bucket: config.cos.bucket,
+    Region: config.cos.region,
+    Key: key
+  });
+  const headers = result.headers || {};
+  return {
+    byteSize: Number(headers['content-length'] || result.ContentLength || 0),
+    mimeType: String(headers['content-type'] || result.ContentType || '').split(';')[0].toLowerCase(),
+    etag: String(headers.etag || result.ETag || '').replace(/^"|"$/g, '')
+  };
+}
+
+function signPrivateUploadUrl(key, mimeType, expires = 15 * 60) {
+  if (!key) return Promise.reject(new Error('Private media key is required'));
+  const client = requireCos();
+  return new Promise((resolve, reject) => {
+    client.getObjectUrl({
+      Bucket: config.cos.bucket,
+      Region: config.cos.region,
+      Key: key,
+      Method: 'PUT',
+      Sign: true,
+      Expires: Math.max(60, Number(expires) || 60),
+      Headers: { 'Content-Type': mimeType }
+    }, (error, data) => {
+      if (!error && data && data.Url) return resolve(data.Url);
+      return reject(Object.assign(new Error('Shroom 私有媒体上传地址暂时不可用'), {
+        code: 'SHROOM_COS_SIGNING_UNAVAILABLE',
+        cause: error
+      }));
+    });
+  });
 }
 
 function signPrivateObjectUrl(key, expires = 6 * 60 * 60) {
@@ -118,9 +163,12 @@ async function deletePrivateObject(key) {
 
 module.exports = {
   buildPrivateImageKey,
+  buildPrivateVoiceKey,
   deletePrivateObject,
   isCosConfigured,
   readPrivateObject,
+  signPrivateUploadUrl,
   signPrivateObjectUrl,
+  statPrivateObject,
   uploadPrivateImage
 };

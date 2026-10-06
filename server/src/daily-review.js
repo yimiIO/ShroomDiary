@@ -296,6 +296,7 @@ async function loadDailyReviewContext(userId, date, queryable = db) {
     sourceManifest,
     lifeOsClauses,
     compoundPlans,
+    diarySourceVersions: Object.fromEntries(diaries.rows.map(row => [String(row.id), Number(row.content_version || 1)])),
     lastCodexSyncAt: sync.rows[0]?.last_sync_at || null,
     coverage: {
       diaryCount: diaries.rowCount,
@@ -399,22 +400,47 @@ async function generateDailyReview(userId, date, options = {}) {
   const context = options.context || await loadDailyReviewContext(userId, date);
   const generated = await createReviewResult(userId, context);
   const id = options.id || crypto.randomUUID();
+  const aiContextSnapshot = {
+    version: 'daily-review-context-v1',
+    capturedAt: new Date().toISOString(),
+    sources: context.sources.map(item => {
+      const content = clean(item.content || item.title || item.summary, 6000);
+      return {
+        sourceRef: item.key,
+        sourceType: item.type,
+        sourceId: item.id,
+        diaryId: item.type === 'DIARY' ? item.id : null,
+        sourceVersion: item.type === 'DIARY' ? Number(context.diarySourceVersions?.[String(item.id)] || 1) : null,
+        occurredAt: item.date || null,
+        label: item.label,
+        content,
+        sourceStart: 0,
+        sourceEnd: content.length
+      };
+    }).filter(item => item.content),
+    importantContext: {
+      reviewDate: context.date,
+      signedLifeOs: context.lifeOsClauses,
+      activeCompoundPlans: context.compoundPlans,
+      coverage: context.coverage
+    }
+  };
   const generatedBy = ['USER', 'EMAIL', 'INBOX'].includes(options.generatedBy)
     ? options.generatedBy : 'USER';
   const result = await db.query(
     `INSERT INTO daily_reviews
       (id, user_id, review_date, status, result, source_refs, source_fingerprint,
-       source_cutoff, generated_by, model_version, error_message)
-     VALUES ($1, $2, $3::date, 'READY', $4::jsonb, $5::jsonb, $6, $9::timestamptz, $7, $8, '')
+       source_cutoff, generated_by, model_version, error_message, ai_context_snapshot)
+     VALUES ($1, $2, $3::date, 'READY', $4::jsonb, $5::jsonb, $6, $9::timestamptz, $7, $8, '', $10::jsonb)
      ON CONFLICT (user_id, review_date) DO UPDATE SET
        status = 'READY', result = EXCLUDED.result, source_refs = EXCLUDED.source_refs,
        source_fingerprint = EXCLUDED.source_fingerprint, source_cutoff = EXCLUDED.source_cutoff,
        generated_by = EXCLUDED.generated_by, model_version = EXCLUDED.model_version,
-       error_message = '', updated_at = now()
+       error_message = '', ai_context_snapshot = EXCLUDED.ai_context_snapshot, updated_at = now()
      RETURNING *`,
     [id, userId, date, JSON.stringify(generated.result), JSON.stringify(publicSourceRefs(context)),
       context.fingerprint, generatedBy, generated.modelVersion,
-      context.sourceCutoff]
+      context.sourceCutoff, JSON.stringify(aiContextSnapshot)]
   );
   return mapReview(result.rows[0], context);
 }

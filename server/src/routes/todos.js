@@ -9,6 +9,8 @@ const { createMediaSignature } = require('../security');
 const {
   addDays,
   clockTime,
+  compareTasksByCreatedAt,
+  compareTasksByTime,
   dateOnly,
   decorateTask,
   groupCurrentTasks,
@@ -264,7 +266,9 @@ async function generateActiveRules(userId, today) {
 async function listTaskRows(userId, { projectId = null, query = '', includeCancelled = false } = {}) {
   const values = [userId];
   const clauses = ['t.user_id = $1', 't.deleted_at IS NULL'];
-  if (projectId) {
+  if (projectId === '__none__') {
+    clauses.push('t.project_id IS NULL');
+  } else if (projectId) {
     values.push(projectId);
     clauses.push(`t.project_id = $${values.length}`);
   }
@@ -302,15 +306,23 @@ router.get('/home', asyncRoute(async (req, res) => {
   await generateActiveRules(req.user.id, today);
   const view = ['current', 'upcoming', 'unscheduled', 'projects', 'all', 'completed']
     .includes(req.query.view) ? req.query.view : 'current';
+  const sort = req.query.sort === 'created' ? 'created' : 'scheduled';
+  const compareTasks = sort === 'created' ? compareTasksByCreatedAt : compareTasksByTime;
   const query = text(req.query.q, 100);
+  const projectId = req.query.projectId === '__none__'
+    ? '__none__'
+    : (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(req.query.projectId || ''))
+        ? String(req.query.projectId)
+        : null);
   const projects = (await projectRows(req.user.id)).map(mapProject);
-  if (view === 'projects') return ok(res, { view, today, timeZone, projects, groups: [] });
-  const rows = await listTaskRows(req.user.id, { query, includeCancelled: view === 'all' });
+  if (view === 'projects') return ok(res, { view, sort, today, timeZone, projects, groups: [] });
+  const rows = await listTaskRows(req.user.id, { projectId, query, includeCancelled: view === 'all' });
   const tasks = rows.map(row => mapTask(row, today));
   if (view === 'current') {
     const groups = groupCurrentTasks(tasks, today);
+    Object.values(groups).forEach(items => items.sort(compareTasks));
     return ok(res, {
-      view, today, timeZone, projects,
+      view, sort, today, timeZone, projects,
       groups: [
         { key: 'progressing', label: '正在推进', items: groups.progressing },
         { key: 'today', label: '今天安排', items: groups.today },
@@ -320,8 +332,8 @@ router.get('/home', asyncRoute(async (req, res) => {
     });
   }
   const filtered = tasks.filter(item => taskMatchesView(item, view, today));
-  filtered.sort((left, right) => String(left.scheduledDate || left.deadline || '').localeCompare(String(right.scheduledDate || right.deadline || '')));
-  return ok(res, { view, today, timeZone, projects, groups: [{ key: view, label: '', items: filtered }] });
+  filtered.sort(compareTasks);
+  return ok(res, { view, sort, today, timeZone, projects, groups: [{ key: view, label: '', items: filtered }] });
 }));
 
 router.get('/index', asyncRoute(async (req, res) => {
