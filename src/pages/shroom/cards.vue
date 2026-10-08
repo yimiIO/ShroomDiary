@@ -4,16 +4,11 @@
 		<view class="cards-shell">
 			<view class="page-header">
 				<text class="page-title">菇卡</text>
-				<view class="header-actions"><text @tap="toggleSearch">⌕</text><text v-if="hasLogin" @tap="createCard">＋</text></view>
-			</view>
-			<view class="search-field" v-if="searchOpen && hasLogin"><input v-model="searchTerm" placeholder="搜索我的菇卡" confirm-type="search" /></view>
-
-			<view class="library-switch" v-if="hasLogin">
-				<button :class="{ active: activeLibrary === 'mine' }" @tap="switchLibrary('mine')">我的菇卡</button>
-				<button :class="{ active: activeLibrary === 'favorites' }" @tap="switchLibrary('favorites')">我的收藏</button>
+				<view class="header-actions"><button class="favorites-entry" @tap="openFavorites"><text class="favorites-icon">☆</text><text>收藏</text></button><button class="create-entry" v-if="hasLogin" @tap="createCard" aria-label="创建菇卡">＋</button></view>
 			</view>
 
-			<view class="shroom-home" v-if="activeLibrary === 'mine'">
+
+			<view class="shroom-home">
 				<view class="shroom-manifesto">
 					<view class="manifesto-copy">
 						<text class="manifesto-title">过去的自己，<br>保护未来的自己。</text>
@@ -57,11 +52,10 @@
 			</view>
 
 			<view class="empty-state" v-else-if="hasLogin && allCards.length === 0">
-				<text class="empty-number">{{ activeLibrary === 'mine' ? '01' : '◇' }}</text>
-				<text class="empty-title">{{ activeLibrary === 'mine' ? '从一句真话开始' : '还没有收藏的菇卡' }}</text>
-				<text class="empty-copy">{{ activeLibrary === 'mine' ? '你不需要总结人生。只要写下此刻真正意识到的事，再为它设计一个能实践的动作。' : '收藏只是稍后再看；当你想真正使用别人的理解时，再把它引用为自己的私密菇卡。' }}</text>
-				<view class="primary-button" v-if="activeLibrary === 'mine'" @tap="createCard">创建第一张菇卡</view>
-				<view class="primary-button" v-else @tap="openDiscover">去发现广场看看</view>
+				<text class="empty-number">01</text>
+				<text class="empty-title">从一句真话开始</text>
+				<text class="empty-copy">你不需要总结人生。只要写下此刻真正意识到的事，再为它设计一个能实践的动作。</text>
+				<view class="primary-button" @tap="createCard">创建第一张菇卡</view>
 			</view>
 
 			<view class="recent-list" v-else>
@@ -70,14 +64,12 @@
 					<view class="recent-copy"><text>{{ card.seedSentence || '暂无觉察句' }}</text><text>{{ relativeTime(card.lastReviewedAt || card.createdAt) }} · {{ firstTag(card) }}</text></view><text class="recent-arrow">›</text>
 				</view>
 			</view>
-			<view class="library-link" @tap="switchLibrary(activeLibrary === 'mine' ? 'favorites' : 'mine')">{{ activeLibrary === 'mine' ? '我的收藏 ›' : '返回我的菇卡 ›' }}</view>
-			</view>
 		</view>
 	</view>
 </template>
 
 <script>
-import { shroomCardFavorites, shroomCardList } from '@/api/shroomCard';
+import { shroomCardList } from '@/api/shroomCard';
 
 export default {
 	name: 'shroomCards',
@@ -85,13 +77,8 @@ export default {
 		return {
 			statusBarHeight: 0,
 			shroomCards: [],
-			favoriteCards: [],
-			activeLibrary: 'mine',
 			loading: false,
-			currentCardIndex: 0,
 			showAll: false,
-			searchOpen: false,
-			searchTerm: '',
 			sampleCards: [
 				{ title: '情绪上头时，先暂停。', tag: '情绪管理' },
 				{ title: '好的身体状态，是长期自由。', tag: '健康' },
@@ -104,18 +91,10 @@ export default {
 			return this.$mStore.getters.hasLogin;
 		},
 		allCards() {
-			return this.activeLibrary === 'favorites' ? (this.favoriteCards || []) : (this.shroomCards || []);
+			return this.shroomCards || [];
 		},
-		visibleCards() {
-			const term = this.searchTerm.trim().toLowerCase();
-			const cards = term ? this.allCards.filter(card => `${card.seedSentence || ''} ${card.myUnderstanding || ''} ${(card.tags || []).join(' ')}`.toLowerCase().includes(term)) : this.allCards;
-			return this.showAll || term ? cards : cards.slice(0, 3);
-		},
-		librarySubtitle() {
-			if (!this.hasLogin) return '把一次觉察，变成可以练习的理解。';
-			if (this.activeLibrary === 'favorites') return this.allCards.length ? `${this.allCards.length} 张想再回来的理解` : '收藏和引用是两件不同的事。';
-			return this.allCards.length ? `${this.allCards.length} 个正在生长的理解` : '把一次觉察，变成可以练习的理解。';
-		},
+		visibleCards() { return this.showAll ? this.allCards : this.allCards.slice(0, 3); },
+
 		reviewDueCount() {
 			return Math.min(3, this.shroomCards.filter(card => !card.lastReviewedAt || Date.now() - new Date(card.lastReviewedAt).getTime() >= 86400000).length);
 		},
@@ -150,7 +129,7 @@ export default {
 			return !Number.isFinite(days) ? '最近' : days <= 0 ? '今天' : days === 1 ? '昨天' : `${days} 天前`;
 		},
 		toggleAll() { this.showAll = !this.showAll; },
-		toggleSearch() { if (!this.hasLogin) return this.goLogin(); this.searchOpen = !this.searchOpen; if (!this.searchOpen) this.searchTerm = ''; },
+		openFavorites() { if (!this.hasLogin) return this.goLogin(); uni.navigateTo({ url: '/pages/shroom/cards-favorites' }); },
 		normalizeList(data) {
 			let cards = [];
 			if (Array.isArray(data)) cards = data;
@@ -173,26 +152,14 @@ export default {
 			}
 			this.loading = true;
 			try {
-				const endpoint = this.activeLibrary === 'favorites' ? shroomCardFavorites : shroomCardList;
-				const res = await this.$http.get(endpoint, { page: 1, pageSize: 100 });
+				const res = await this.$http.get(shroomCardList, { page: 1, pageSize: 100 });
 				const cards = res && res.code === 200 ? this.normalizeList(res.data) : [];
-				if (this.activeLibrary === 'favorites') this.favoriteCards = cards;
-				else this.shroomCards = cards;
+				this.shroomCards = cards;
 			} catch (error) {
 				console.error('加载菇卡失败', error);
 			} finally {
 				this.loading = false;
 			}
-		},
-		switchLibrary(library) {
-			if (this.activeLibrary === library || this.loading) return;
-			this.activeLibrary = library;
-			this.currentCardIndex = 0;
-			this.showAll = false;
-			this.loadShroomCards();
-		},
-		onSwiperChange(e) {
-			this.currentCardIndex = e.detail.current;
 		},
 		startReview() {
 			uni.navigateTo({ url: this.hasLogin ? '/pages/shroom/cards-review' : '/pages/shroom/cards-review?preview=1' });
@@ -241,30 +208,8 @@ export default {
 	margin-bottom: 44rpx;
 }
 
-.library-switch {
-	display: flex;
-	width: 100%;
-	max-width: 520rpx;
-	margin: -16rpx 0 28rpx;
-	padding: 6rpx;
-	border-radius: 999rpx;
-	background: rgba(255, 255, 255, .58);
-}
 
-.library-switch button {
-	height: 64rpx;
-	margin: 0;
-	padding: 0 26rpx;
-	border-radius: 999rpx;
-	background: transparent;
-	font-size: 22rpx;
-	line-height: 64rpx;
-	color: #69776b;
-	flex: 1;
-}
 
-.library-switch button::after { border: 0; }
-.library-switch button.active { background: #172019; color: #fff; }
 
 .eyebrow,
 .page-title,
@@ -869,11 +814,11 @@ export default {
 .page-header { align-items: center; height: 66rpx; margin-bottom: 10rpx; }
 .page-title { font-size: 43rpx; line-height: 1; font-weight: 800; color: #15191f; }
 .header-actions { display: flex; align-items: center; gap: 22rpx; font-size: 42rpx; line-height: 1; }
-.search-field { margin-bottom: 12rpx; padding: 8rpx 16rpx; border: 1rpx solid #e8eae4; border-radius: 14rpx; background: #fff; }
-.search-field input { height: 58rpx; font-size: 24rpx; }
-.library-switch { max-width: none; margin: 0 0 10rpx; padding: 0; background: transparent; }
-.library-switch button { height: 46rpx; line-height: 46rpx; font-size: 19rpx; }
-.library-switch button.active { background: transparent; color: #15191f; font-weight: 750; box-shadow: inset 0 -3rpx 0 #15191f; border-radius: 0; }
+.header-actions button { display: flex; align-items: center; justify-content: center; margin: 0; height: 64rpx; padding: 0; background: transparent; color: #26352a; }
+.header-actions button::after { border: 0; }
+.favorites-entry { gap: 8rpx; min-width: 108rpx; font-size: 23rpx; line-height: 1; }
+.favorites-icon { font-size: 34rpx; }
+.create-entry { width: 54rpx; font-size: 38rpx; line-height: 1; }
 .shroom-home { gap: 14rpx; margin-bottom: 0; }
 .shroom-manifesto { height: 350rpx; min-height: 0; padding: 33rpx 26rpx; border: 0; border-radius: 23rpx; background: radial-gradient(circle at 70% 66%, #f1f4df, #fbfbf2 72%); box-shadow: none; }
 .shroom-manifesto::after { display: none; }
@@ -892,7 +837,7 @@ export default {
 .recent-list, .guest-recent { margin-top: 8rpx; }.recent-row { display: flex; align-items: center; gap: 14rpx; min-height: 78rpx; border-bottom: 1rpx solid #f0f1ed; }
 .recent-thumb { display: flex; width: 67rpx; height: 64rpx; flex-shrink: 0; align-items: center; justify-content: center; overflow: hidden; border-radius: 11rpx; background: #f3eadf; }.recent-thumb image { width: 86rpx; height: 72rpx; }.recent-thumb text { font-size: 42rpx; color: #dca968; }.thumb-1 { background: #e4eee5; }.thumb-2 { background: #e1edf3; }
 .recent-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4rpx; }.recent-copy text:first-child { overflow: hidden; font-size: 21rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.recent-copy text:last-child { font-size: 17rpx; color: #8c939a; }.recent-arrow { font-size: 28rpx; color: #a5aaa7; }
-.library-link { margin-top: 18rpx; text-align: center; font-size: 20rpx; color: #778378; }.guest-login { width: 100%; margin: 20rpx 0 0; height: 68rpx; border-radius: 999rpx; background: #20262b; color: #fff; font-size: 22rpx; line-height: 68rpx; }.guest-login::after { border: 0; }
+.guest-login { width: 100%; margin: 20rpx 0 0; height: 68rpx; border-radius: 999rpx; background: #20262b; color: #fff; font-size: 22rpx; line-height: 68rpx; }.guest-login::after { border: 0; }
 .empty-state { min-height: 280rpx; }
 @media (max-width: 750px) {
 	.cards-shell { padding: 30rpx 46rpx 180rpx; }

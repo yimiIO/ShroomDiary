@@ -141,6 +141,15 @@
 			}
 		},
 		{
+			"path": "pages/shroom/cards-favorites",
+			"style": {
+				"navigationBarTitleText": "我的收藏",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true,
+				"app-plus": { "titleNView": false }
+			}
+		},
+		{
 			"path": "pages/shroom/cards-review",
 			"style": {
 				"navigationBarTitleText": "复习菇卡",
