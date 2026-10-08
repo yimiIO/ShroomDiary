@@ -569,7 +569,8 @@ test('observers are user-configurable and analysis renders dynamic seats with co
   assert.match(observers, /@change="toggleObserver\(item, \$event\)"/);
   assert.match(observers, /增加自定义观察席/);
   assert.match(observers, /最多 20 席/);
-  assert.match(analysis, /analysis\.observations/);
+  assert.match(analysis, /observerAnalysis\.displayedObservations/);
+  assert.match(source('src/utils/observer-analysis.js'), /analysis\.observations/);
   assert.match(analysis, /viewType === 'custom'/);
   assert.match(analysis, /analysis\.costSummary/);
   assert.match(me, /openObservers/);

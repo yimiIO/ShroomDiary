@@ -5,6 +5,10 @@
 			<view class="header"><view class="back" @tap="goBack">‹</view><view class="heading"><text class="kicker">MY OBSERVERS</text><text class="title">重新看见这一天</text><text class="subtitle">让你选择的观察席，从不同机制理解同一段经历。</text></view></view>
 
 			<view class="privacy"><view class="privacy-dot"></view><text>观察席只在你主动开始时运行；本次使用哪些席位会随结果保存，之后修改设置不会改写历史分析。</text></view>
+			<view class="observer-settings" v-if="!invalidDiaryContext && analysisEnabled && observersLoaded">
+				<view class="observer-settings-head"><text>当前启用 {{ enabledObserverCount }} 个观察席</text><text @tap="openObservers">选择 / 新增　›</text></view>
+				<view class="observer-preview"><text v-for="item in enabledObservers" :key="item.id">{{ item.shortName || item.name }}</text></view>
+			</view>
 
 			<view class="unavailable" v-if="invalidDiaryContext">
 				<text class="state-index">DIARY REQUIRED</text><text class="state-title">请先选择一篇日记</text><text class="state-copy">观察席只会分析你主动打开的那篇日记，不会在没有上下文时发起请求。</text>
@@ -28,6 +32,11 @@
 			</view>
 
 			<view v-else-if="analysis.status === 'done'">
+				<view class="observer-settings-warning" v-if="observerSettingsChanged">
+					<text>观察席设置已更新</text><text>{{ showSavedObservers ? '当前查看上次分析使用的席位与结果。' : '下方按当前选择显示；已有内容仍是上次分析的结果。' }}重新分析后，才会按当前席位和说明更新。</text>
+					<view @tap="confirmRerun">用当前观察席重新分析　›</view>
+					<view @tap="toggleSavedObservers">{{ showSavedObservers ? '返回当前选择' : '查看上次分析的观察席' }}</view>
+				</view>
 				<view class="saved-result-warning" v-if="analysis.error"><text>上次重新思考没有完成</text><text>当前仍显示已保存的结果；你可以稍后再主动重试。</text></view>
 				<view class="source-context" v-if="analysis.sourceActivities && analysis.sourceActivities.length">
 					<view class="source-context-head"><view><text>CONNECTED CONTEXT</text><text>这份分析读取了 {{ analysis.sourceActivities.length }} 条 Codex 任务线索</text></view><text>CODEX</text></view>
@@ -36,36 +45,37 @@
 				</view>
 				<scroll-view class="lens-scroll" scroll-x :show-scrollbar="false"><view class="lens-tabs"><view v-for="tab in tabs" :key="tab.id" :class="{ active: activeView === tab.id, disabled: tab.disabled }" @tap="selectView(tab)"><text>{{ tab.index }}</text><text>{{ tab.name }}</text></view></view></scroll-view>
 
-				<view class="view-sheet" v-if="viewType === 'first_principles'">
-					<view class="view-heading"><text>01</text><view><text>第一性原理</text><text>拆开假设，回到真正依赖的前提</text></view></view>
+				<view class="view-sheet" v-if="currentObservation.pending"><view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description || '你的自定义观察角度' }}</text></view></view><text class="block-body">这个观察席还没有分析这篇日记。</text><view class="manage-link" @tap="confirmRerun">用当前观察席重新分析　›</view></view>
+				<view class="view-sheet" v-if="viewType === 'first_principles' && !currentObservation.pending">
+					<view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description }}</text></view></view>
 					<view class="analysis-block" v-for="(item,index) in currentView.principles || []" :key="index"><text class="block-label">{{ item.principle }}</text><text class="block-body">{{ item.reflection }}</text><view class="callout" v-if="item.unverifiedAssumption"><text>未经验证的假设</text><text>{{ item.unverifiedAssumption }}</text></view><view class="action"><text>下一步</text><text>{{ item.actionableFix }}</text></view></view>
 				</view>
 
-				<view class="view-sheet" v-if="viewType === 'entropy'">
-					<view class="view-heading"><text>02</text><view><text>熵增 / 熵减</text><text>观察秩序、能量与系统走向</text></view></view>
+				<view class="view-sheet" v-if="viewType === 'entropy' && !currentObservation.pending">
+					<view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description }}</text></view></view>
 					<view class="analysis-block" v-for="(item,index) in currentView.events || []" :key="index"><view class="event-title"><text>{{ item.event }}</text><text :class="item.state">{{ stateLabel(item.state) }}</text></view><text class="block-body">{{ item.prediction }}</text><view class="chips"><text v-for="source in item.entropySources || []" :key="source">{{ source }}</text></view><view class="action"><text>熵减动作</text><text>{{ item.action }}</text></view></view>
 				</view>
 
-				<view class="view-sheet" v-if="viewType === 'compound'">
-					<view class="view-heading"><text>03</text><view><text>人生复利</text><text>哪些在积累，哪些在消耗存量</text></view></view>
+				<view class="view-sheet" v-if="viewType === 'compound' && !currentObservation.pending">
+					<view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description }}</text></view></view>
 					<view class="split-list"><view><text>复利增强</text><text v-for="(item,index) in currentView.compounders || []" :key="index">＋ {{ item }}</text></view><view class="erosion"><text>复利削弱</text><text v-for="(item,index) in currentView.eroders || []" :key="index">－ {{ item }}</text></view></view>
 					<view class="analysis-block" v-for="(item,index) in currentView.ruleCheck || []" :key="index"><text class="block-label">{{ item.rule }}</text><text class="block-body">{{ item.evidence }}</text><text class="rule-state">{{ ruleLabel(item.status) }}</text></view>
 					<view class="new-rules" v-if="currentView.newRules && currentView.newRules.length"><text>可沉淀的新规则</text><text v-for="(item,index) in currentView.newRules" :key="index">{{ item }}</text></view>
 				</view>
 
-				<view class="view-sheet" v-if="viewType === 'life_os'">
-					<view class="view-heading"><text>04</text><view><text>人生 OS 对照</text><text>只检查今天真正触发的规则</text></view></view>
+				<view class="view-sheet" v-if="viewType === 'life_os' && !currentObservation.pending">
+					<view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description }}</text></view></view>
 					<view class="os-empty" v-if="currentView.disabled"><text>还没有人生 OS</text><text>先写下你的原则与边界，这个视角才有真实的对照依据。</text><view @tap="openLifeOs">去配置人生 OS　›</view></view>
 					<view v-else><view class="analysis-block followed" v-for="item in currentView.followed || []" :key="item.rule"><text class="block-label">✓ {{ item.rule }}</text><text class="block-body">{{ item.evidence }}</text></view><view class="analysis-block violated" v-for="item in currentView.violated || []" :key="item.rule"><text class="block-label">△ {{ item.rule }}</text><text class="block-body">{{ item.evidence }}</text><view class="action" v-if="item.remediation"><text>补救动作</text><text>{{ item.remediation }}</text></view></view></view>
 				</view>
 
-				<view class="view-sheet" v-if="viewType === 'biological'">
-					<view class="view-heading"><text>05</text><view><text>生物驱动观察席</text><text>识别奖励结构，而不是评价意志</text></view></view>
+				<view class="view-sheet" v-if="viewType === 'biological' && !currentObservation.pending">
+					<view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description }}</text></view></view>
 					<view class="os-empty" v-if="currentView.skipped"><text>今天没有明显触发</text><text>日记中没有足够证据表明存在重复性或情绪驱动行为。</text></view>
 					<view v-else><view class="essence"><text>本质问题</text><text>{{ currentView.essence }}</text><text>{{ currentView.riskState }}</text></view><view class="analysis-block" v-for="(item,index) in currentView.strategies || []" :key="index"><text class="block-label">{{ item.type }}</text><text class="block-body">{{ item.action }}</text></view><view class="new-rules" v-if="currentView.reflectionQuestions && currentView.reflectionQuestions.length"><text>下次先问自己</text><text v-for="(item,index) in currentView.reflectionQuestions" :key="index">{{ item }}</text></view></view>
 				</view>
 
-				<view class="view-sheet custom-view" v-if="viewType === 'custom'">
+				<view class="view-sheet custom-view" v-if="viewType === 'custom' && !currentObservation.pending">
 					<view class="view-heading"><text>{{ activeTab ? activeTab.index : '—' }}</text><view><text>{{ currentObserver.name }}</text><text>{{ currentObserver.description || '你的自定义观察角度' }}</text></view></view>
 					<text class="custom-title" v-if="currentView.title">{{ currentView.title }}</text>
 					<text class="custom-summary" v-if="currentView.summary">{{ currentView.summary }}</text>
@@ -180,19 +190,22 @@ import { inquiryCandidateAccept, inquiryCandidateIgnore } from '@/api/inquiry';
 import HealthConsentSheet from '@/components/HealthConsentSheet.vue';
 import AiResultContinue from '@/components/AiResultContinue.vue';
 import { wellbeingStatus } from '@/api/wellbeing';
+import observerAnalysis from '@/utils/observer-analysis.js';
 
 export default {
 	components: { AiResultContinue, HealthConsentSheet },
-		data() { return { statusBarHeight: 0, diaryId: '', invalidDiaryContext: false, autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
+		data() { return { statusBarHeight: 0, diaryId: '', invalidDiaryContext: false, autoStart: false, analysisEnabled: false, capabilityKnown: false, configuredObservers: [], observersLoaded: false, showSavedObservers: false, analysis: null, activeView: '', pollTimer: null, pollCount: 0, candidates: [], cardMatches: [], inquiryCandidates: [], wellbeingRecord: null, processingWellbeing: false, compoundLinks: [], lifeOsRecordTypes: [{ value: 'PLAN', label: '计划' }, { value: 'ACTION', label: '行动' }, { value: 'RESULT', label: '结果' }, { value: 'OBSERVATION', label: '观察' }, { value: 'INQUIRY', label: '疑问' }], processingInquiryId: '', creatingTodos: false, createdTodoNotice: '', creatingCard: false, bindingCards: false, healthConsentVisible: false, healthConsentType: 'PSYCHOLOGICAL' }; },
 	computed: {
-		currentObservation() { return ((this.analysis && this.analysis.observations) || []).find(item => item.observer && item.observer.id === this.activeView) || {}; },
+		observerRows() { return observerAnalysis.displayedObservations(this.configuredObservers, this.analysis, this.observersLoaded, this.showSavedObservers); },
+		observerSettingsChanged() { return this.observersLoaded && observerAnalysis.observerSettingsChanged(this.configuredObservers, this.analysis); },
+		currentObservation() { return this.observerRows.find(item => item.observer.id === this.activeView) || {}; },
 		currentObserver() { return this.currentObservation.observer || {}; },
 		currentView() { return this.currentObservation.result || {}; },
 		viewType() { return this.currentObserver.renderType || 'custom'; },
 		activeTab() { return this.tabs.find(item => item.id === this.activeView) || null; },
 		cardSuggestion() { return this.analysis && this.analysis.cardSuggestion ? this.analysis.cardSuggestion : null; },
 		tabs() {
-			return ((this.analysis && this.analysis.observations) || []).map((item, index) => ({ id: item.observer.id, index: String(index + 1).padStart(2, '0'), name: item.observer.shortName || item.observer.name, disabled: Boolean(item.result && item.result.disabled) }));
+			return this.observerRows.map((item, index) => ({ id: item.observer.id, index: String(index + 1).padStart(2, '0'), name: item.label, disabled: Boolean(item.result && item.result.disabled) }));
 		},
 		enabledObserverCount() { return this.configuredObservers.filter(item => item.enabled).length; },
 		enabledObservers() { return this.configuredObservers.filter(item => item.enabled); },
@@ -220,6 +233,7 @@ export default {
 		}
 		this.load();
 	},
+	onShow() { if (this.observersLoaded && !this.invalidDiaryContext) this.refreshObservers(); },
 	onUnload() { this.stopPolling(); this.resolveHealthConsent(false); },
 	methods: {
 		async load() {
@@ -227,13 +241,22 @@ export default {
 				const [status, existing, observers] = await Promise.all([this.$http.get(aiStatus), this.$http.get(aiAnalysis, { diaryId: this.diaryId }), this.$http.get(aiObservers)]);
 				this.analysisEnabled = Boolean(status.data && status.data.enabled); this.capabilityKnown = true;
 				this.configuredObservers = Array.isArray(observers.data) ? observers.data : [];
+				this.observersLoaded = true;
 				if (existing.data) { this.acceptAnalysis(existing.data); if (['pending', 'running'].includes(existing.data.status)) this.startPolling(); }
 					if (this.autoStart && this.analysisEnabled && !existing.data) { this.autoStart = false; this.startAnalysis(); }
 			} catch (error) { this.capabilityKnown = true; console.error('加载分析状态失败', error); }
 		},
-		acceptAnalysis(value) { this.analysis = value; const observations = value.observations || []; if (!observations.some(item => item.observer && item.observer.id === this.activeView)) this.activeView = observations[0] && observations[0].observer ? observations[0].observer.id : ''; this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
+		async refreshObservers() {
+			try { const res = await this.$http.get(aiObservers); this.configuredObservers = Array.isArray(res.data) ? res.data : []; this.observersLoaded = true; this.showSavedObservers = false; this.syncActiveView(); return true; }
+			catch (error) { console.error('刷新观察席失败', error); uni.showToast({ title: '观察席读取失败，请重试', icon: 'none' }); return false; }
+		},
+		syncActiveView() { if (!this.tabs.some(item => item.id === this.activeView)) this.activeView = this.tabs[0] ? this.tabs[0].id : ''; },
+		toggleSavedObservers() { this.showSavedObservers = !this.showSavedObservers; this.syncActiveView(); },
+		acceptAnalysis(value) { if (!this.analysis || this.analysis.taskId !== value.taskId) this.showSavedObservers = false; this.analysis = value; this.syncActiveView(); this.candidates = (value.todoCandidates || []).map(item => ({ ...item, selected: !item.createdTodoId })); this.cardMatches = ((value.cardSuggestion && value.cardSuggestion.existingMatches) || []).map(item => ({ ...item, selected: false })); this.inquiryCandidates = Array.isArray(value.inquiryCandidates) ? value.inquiryCandidates : []; this.wellbeingRecord = value.wellbeingRecord || null; this.compoundLinks = Array.isArray(value.compoundLinks) ? value.compoundLinks : (Array.isArray(value.lifeOsLinks) ? value.lifeOsLinks : []); },
 			async startAnalysis(options = {}) {
 				if (!this.diaryId || !this.analysisEnabled) return;
+				if (!await this.refreshObservers()) return;
+				if (!this.enabledObserverCount) return uni.showToast({ title: '请至少启用一个观察席', icon: 'none' });
 				this.stopPolling();
 				try { const res = await this.$http.post(aiAnalyze, { diaryId: this.diaryId, sync: false, regenerate: options.regenerate === true }); this.acceptAnalysis(res.data); this.pollCount = 0; if (['pending', 'running'].includes(res.data.status)) this.startPolling(); }
 				catch (error) { console.error('启动观察席分析失败', error); }
@@ -416,6 +439,14 @@ button::after { border: 0; }
 .retry-note { color: #77725f; }
 .observer-preview { display: flex; flex-wrap: wrap; gap: 9rpx; margin-top: 24rpx; }
 .observer-preview text { padding: 8rpx 13rpx; border: 1rpx solid rgba(255,255,255,.15); border-radius: 999rpx; font-size: 17rpx; color: #c4d0c3; }
+.observer-settings { margin: 20rpx 0; padding: 24rpx; border-radius: 20rpx; background: #edf1e8; }
+.observer-settings-head { display: flex; justify-content: space-between; gap: 12rpx; font-size: 23rpx; color: #435844; }
+.observer-settings-head text:last-child { color: #667e55; }
+.observer-settings .observer-preview { margin-top: 16rpx; }
+.observer-settings .observer-preview text { border-color: #d2dccb; color: #506346; }
+.observer-settings-warning { display: flex; flex-direction: column; gap: 16rpx; padding: 24rpx; margin: 20rpx 0; border-radius: 20rpx; background: #f3eedf; font-size: 24rpx; color: #74623e; line-height: 1.6; }
+.observer-settings-warning > text:first-child { font-weight: 650; }
+.observer-settings-warning > view { color: #526f48; padding: 6rpx 0; }
 .manage-link { margin-top: 20rpx; text-align: center; font-size: 19rpx; color: #abbbaa; }
 .unavailable .primary-button, .todo-section .primary-button { background: #172019; color: #fff; }
 	.primary-button.disabled { opacity: .45; }

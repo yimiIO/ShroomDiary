@@ -36,6 +36,8 @@ async function activeObserverSnapshot(userId) {
     name: item.name,
     shortName: item.shortName,
     description: item.description,
+    instructions: item.instructions,
+    updatedAt: item.updatedAt,
     prompt: item.prompt,
     renderType: item.renderType,
     requiresLifeOs: item.requiresLifeOs,
